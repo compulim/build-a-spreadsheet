@@ -1,7 +1,6 @@
 import { SpreadsheetGrid } from './grid.js';
 import { formatValue } from './csv.js';
 import { cellsToPNG } from './printCells.js';
-import { UndoManager } from './UndoManager.js';
 import { MAX_WORKSHEETS } from './workbook/constants.js';
 import { getColumnName } from './workbook/getColumnName.js';
 import { Workbook } from './workbook/Workbook.js';
@@ -34,8 +33,6 @@ const grid = new SpreadsheetGrid(gridContainer, {
   lockedColumnCount: LOCKED_COLUMN_COUNT,
   lockedRowCount: LOCKED_ROW_COUNT
 });
-
-const undoManager = new UndoManager();
 
 /** @type {Workbook} */
 let workbook;
@@ -79,7 +76,9 @@ function renderTabs() {
       tab.setAttribute('role', 'tab');
       tab.setAttribute('aria-selected', String(worksheet === active));
       tab.title = 'Click to select, double-click to rename';
-      label.textContent = worksheet.name;
+      const name = workbook.getWorksheetName(worksheet);
+
+      label.textContent = name;
       tab.append(label);
 
       tab.addEventListener('click', () => activateWorksheet(worksheet));
@@ -91,8 +90,8 @@ function renderTabs() {
         close.type = 'button';
         close.className = 'sheet-tab__close';
         close.textContent = '×';
-        close.title = `Delete "${worksheet.name}"`;
-        close.setAttribute('aria-label', `Delete sheet ${worksheet.name}`);
+        close.title = `Delete "${name}"`;
+        close.setAttribute('aria-label', `Delete sheet ${name}`);
         close.addEventListener('click', event => {
           event.stopPropagation();
           deleteWorksheet(worksheet);
@@ -112,19 +111,20 @@ function renderTabs() {
 function activateWorksheet(worksheet) {
   grid.setWorksheet(worksheet);
   renderTabs();
+  updateUndoButtons();
   grid.focus();
 }
 
 /** @param {Worksheet} worksheet */
 function renameWorksheet(worksheet) {
-  const name = prompt('Rename sheet', worksheet.name);
+  const name = prompt('Rename sheet', workbook.getWorksheetName(worksheet));
 
   if (name === null) {
     return;
   }
 
   try {
-    worksheet.name = name.trim();
+    workbook.renameWorksheet(worksheet, name.trim());
   } catch (error) {
     alert(/** @type {Error} */ (error).message);
   }
@@ -132,7 +132,7 @@ function renameWorksheet(worksheet) {
 
 /** @param {Worksheet} worksheet */
 function deleteWorksheet(worksheet) {
-  if (workbook.worksheets.length <= 1 || !confirm(`Delete sheet "${worksheet.name}"?`)) {
+  if (workbook.worksheets.length <= 1 || !confirm(`Delete sheet "${workbook.getWorksheetName(worksheet)}"?`)) {
     return;
   }
 
@@ -155,18 +155,14 @@ function setWorkbook(nextWorkbook) {
     workbook.removeEventListener('worksheetadd', renderTabs);
     workbook.removeEventListener('worksheetremove', renderTabs);
     workbook.removeEventListener('worksheetrename', renderTabs);
-    workbook.removeEventListener('worksheetremove', resetUndo);
-    undoManager.untrack(workbook);
+    workbook.removeEventListener('cellchange', updateUndoButtons);
   }
 
   workbook = nextWorkbook;
   workbook.addEventListener('worksheetadd', renderTabs);
   workbook.addEventListener('worksheetremove', renderTabs);
   workbook.addEventListener('worksheetrename', renderTabs);
-  // Undo history may refer to cells of a removed sheet, forget it.
-  workbook.addEventListener('worksheetremove', resetUndo);
-  undoManager.track(workbook);
-  undoManager.reset();
+  workbook.addEventListener('cellchange', updateUndoButtons);
 
   // Expose for scripting from the browser console, e.g. `app.workbook.worksheets[0].setValue(0, 0, 'Hello')`.
   Object.assign(globalThis, { app: { workbook, grid } });
@@ -184,44 +180,54 @@ function updateSelectionInfo() {
   valueBox.value = grid.worksheet ? formatValue(grid.worksheet.getValue(column, row)) : '';
 }
 
-function resetUndo() {
-  undoManager.reset();
+function updateUndoButtons() {
+  undoButton.disabled = !grid.worksheet?.canUndo;
+  redoButton.disabled = !grid.worksheet?.canRedo;
 }
 
 /** @param {'undo' | 'redo'} action */
 function undoOrRedo(action) {
-  const next = action === 'undo' ? undoManager.nextUndo : undoManager.nextRedo;
+  const worksheet = grid.worksheet;
 
-  if (grid.locked && next?.some(({ column, row }) => column < LOCKED_COLUMN_COUNT || row < LOCKED_ROW_COUNT)) {
-    showStatus(`Cannot ${action} because some cells are locked.`);
-
+  if (!worksheet) {
     return;
   }
 
-  const changes = undoManager[action]();
+  /** @type {{ x: number; y: number }[]} */
+  const changes = [];
+  const handleCellChange = (/** @type {Event} */ event) =>
+    changes.push(/** @type {import('./workbook/private/CellChangeEvent.js').CellChangeEvent} */ (event));
 
-  if (!changes?.length) {
-    return;
+  worksheet.addEventListener('cellchange', handleCellChange);
+
+  try {
+    if (!worksheet[action]()) {
+      return;
+    }
+
+    if (grid.locked && changes.some(({ x, y }) => x < LOCKED_COLUMN_COUNT || y < LOCKED_ROW_COUNT)) {
+      // Revert, locked cells cannot be changed.
+      worksheet[action === 'undo' ? 'redo' : 'undo']();
+      showStatus(`Cannot ${action} because some cells are locked.`);
+
+      return;
+    }
+  } finally {
+    worksheet.removeEventListener('cellchange', handleCellChange);
+    updateUndoButtons();
   }
 
-  const { worksheet } = changes[0];
+  grid.focus();
 
-  grid.worksheet === worksheet ? grid.focus() : activateWorksheet(worksheet);
+  if (changes.length) {
+    const xs = changes.map(({ x }) => x);
+    const ys = changes.map(({ y }) => y);
 
-  const columns = changes.map(({ column }) => column);
-  const rows = changes.map(({ row }) => row);
+    grid.select({ column: Math.min(...xs), row: Math.min(...ys) }, { column: Math.max(...xs), row: Math.max(...ys) });
+  }
 
-  grid.select(
-    { column: Math.min(...columns), row: Math.min(...rows) },
-    { column: Math.max(...columns), row: Math.max(...rows) }
-  );
   updateSelectionInfo();
 }
-
-undoManager.addEventListener('change', () => {
-  undoButton.disabled = !undoManager.canUndo;
-  redoButton.disabled = !undoManager.canRedo;
-});
 
 undoButton.addEventListener('click', () => undoOrRedo('undo'));
 redoButton.addEventListener('click', () => undoOrRedo('redo'));
@@ -302,7 +308,7 @@ fileInput.addEventListener('change', async () => {
 
       const name = workbook.getUniqueWorksheetName(file.name.replace(/\.csv$/i, ''));
 
-      activateWorksheet(workbook.addWorksheet(Worksheet.fromCSV(await file.text(), name)));
+      activateWorksheet(workbook.addWorksheet(name, Worksheet.fromCSV(await file.text())));
     }
   } catch (error) {
     alert(`Failed to open "${file.name}": ${/** @type {Error} */ (error).message}`);
@@ -314,7 +320,7 @@ saveCSVButton.addEventListener('click', () => {
 
   if (worksheet) {
     // Byte order mark so Excel recognizes the file as UTF-8.
-    download(new Blob(['\ufeff', worksheet.toCSV()], { type: 'text/csv' }), `${worksheet.name}.csv`);
+    download(new Blob(['\ufeff', worksheet.toCSV()], { type: 'text/csv' }), `${workbook.getWorksheetName(worksheet)}.csv`);
   }
 });
 
@@ -334,17 +340,7 @@ printButton.addEventListener('click', async () => {
   }
 
   const { left, top, right, bottom } = grid.selection;
-  const rows = [];
-
-  for (let row = top; row <= bottom; row++) {
-    const values = [];
-
-    for (let column = left; column <= right; column++) {
-      values.push(worksheet.getValue(column, row));
-    }
-
-    rows.push(values);
-  }
+  const rows = worksheet.getValues(left, top, right - left + 1, bottom - top + 1);
 
   try {
     const getBorder = (/** @type {number} */ column, /** @type {number} */ row) =>
@@ -358,10 +354,10 @@ printButton.addEventListener('click', async () => {
     const columnWidths = [];
 
     for (let column = left; column <= right; column++) {
-      columnWidths.push(grid.getColumnWidth(column));
+      columnWidths.push(worksheet.getColumnWidth(column));
     }
 
-    download(await cellsToPNG(rows, { columnWidths, getBorder }), `${worksheet.name}.png`);
+    download(await cellsToPNG(rows, { columnWidths, getBorder }), `${workbook.getWorksheetName(worksheet)}.png`);
   } catch (error) {
     alert(`Failed to print selected cells: ${/** @type {Error} */ (error).message}`);
   }

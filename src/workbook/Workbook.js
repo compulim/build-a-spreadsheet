@@ -3,7 +3,7 @@ import { CellChangeEvent } from './private/CellChangeEvent.js';
 import { MAX_WORKSHEET_NAME_LENGTH, MAX_WORKSHEETS } from './constants.js';
 import { owners } from './private/owners.js';
 import { Worksheet } from './Worksheet.js';
-import { sanitizeWorksheetName } from './private/worksheetName.js';
+import { sanitizeWorksheetName, validateWorksheetName } from './private/worksheetName.js';
 import { WorksheetEvent } from './private/WorksheetEvent.js';
 
 /**
@@ -15,6 +15,9 @@ import { WorksheetEvent } from './private/WorksheetEvent.js';
 export class Workbook extends EventTarget {
   /** @type {Worksheet[]} */
   #worksheets = [];
+
+  /** @type {Map<Worksheet, string>} */
+  #names = new Map();
 
   /** @param {Event} event */
   #handleCellChange = event => {
@@ -47,7 +50,58 @@ export class Workbook extends EventTarget {
 
     const lowerName = nameOrIndex.toLowerCase();
 
-    return this.#worksheets.find(({ name }) => name.toLowerCase() === lowerName);
+    return this.#worksheets.find(worksheet => this.#names.get(worksheet)?.toLowerCase() === lowerName);
+  }
+
+  /**
+   * Returns the name of a worksheet in this workbook, or `undefined` if it does not belong to this workbook.
+   *
+   * @param {Worksheet} worksheet
+   * @returns {string | undefined}
+   */
+  getWorksheetName(worksheet) {
+    return this.#names.get(worksheet);
+  }
+
+  /**
+   * @param {string} name
+   * @param {Worksheet} [except]
+   */
+  #assertName(name, except) {
+    const error = validateWorksheetName(name);
+
+    if (error) {
+      throw new TypeError(error);
+    }
+
+    const existing = this.getWorksheet(name);
+
+    if (existing && existing !== except) {
+      throw new TypeError(`A sheet named "${name}" already exists.`);
+    }
+  }
+
+  /**
+   * Renames a worksheet. Dispatches `worksheetrename` if changed.
+   *
+   * @param {Worksheet} worksheet
+   * @param {string} name
+   */
+  renameWorksheet(worksheet, name) {
+    const previousName = this.#names.get(worksheet);
+
+    if (previousName === undefined) {
+      throw new RangeError('Worksheet not found.');
+    } else if (name === previousName) {
+      return;
+    }
+
+    this.#assertName(name, worksheet);
+    this.#names.set(worksheet, name);
+
+    this.dispatchEvent(
+      new WorksheetEvent('worksheetrename', { worksheet, index: this.indexOf(worksheet), previousName })
+    );
   }
 
   /**
@@ -84,28 +138,26 @@ export class Workbook extends EventTarget {
   /**
    * Adds a worksheet.
    *
-   * @param {string | Worksheet} [nameOrWorksheet] Name of the new worksheet, or an existing worksheet. Default to an unused name.
-   * @param {number} [index] Position of the new worksheet, default to the end.
+   * @param {string} [name] Name of the worksheet, default to an unused name.
+   * @param {Worksheet} [worksheet] The worksheet to add, default to a new worksheet.
+   * @param {number} [index] Position of the worksheet, default to the end.
    * @returns {Worksheet}
    */
-  addWorksheet(nameOrWorksheet = this.getUniqueWorksheetName(), index = this.#worksheets.length) {
+  addWorksheet(name = this.getUniqueWorksheetName(), worksheet = new Worksheet(), index = this.#worksheets.length) {
     if (this.#worksheets.length >= MAX_WORKSHEETS) {
       throw new RangeError(`A workbook cannot have more than ${MAX_WORKSHEETS} sheets.`);
-    }
-
-    const worksheet = typeof nameOrWorksheet === 'string' ? new Worksheet(nameOrWorksheet) : nameOrWorksheet;
-
-    if (!(worksheet instanceof Worksheet)) {
-      throw new TypeError('Argument must be a string or Worksheet.');
+    } else if (!(worksheet instanceof Worksheet)) {
+      throw new TypeError('Worksheet must be a Worksheet.');
     } else if (owners.has(worksheet)) {
       throw new TypeError('Worksheet already belongs to a workbook.');
-    } else if (this.getWorksheet(worksheet.name)) {
-      throw new TypeError(`A sheet named "${worksheet.name}" already exists.`);
     }
+
+    this.#assertName(name);
 
     index = Math.max(0, Math.min(index, this.#worksheets.length));
 
     owners.set(worksheet, this);
+    this.#names.set(worksheet, name);
     this.#worksheets.splice(index, 0, worksheet);
     worksheet.addEventListener('cellchange', this.#handleCellChange);
 
@@ -131,6 +183,7 @@ export class Workbook extends EventTarget {
 
     this.#worksheets.splice(index, 1);
     owners.delete(worksheet);
+    this.#names.delete(worksheet);
     worksheet.removeEventListener('cellchange', this.#handleCellChange);
 
     this.dispatchEvent(new WorksheetEvent('worksheetremove', { worksheet, index }));
@@ -148,7 +201,7 @@ export class Workbook extends EventTarget {
 
     return createZip(
       this.#worksheets.map(worksheet => ({
-        name: `${worksheet.name}.csv`,
+        name: `${this.#names.get(worksheet)}.csv`,
         // Byte order mark so Excel recognizes the CSV file as UTF-8.
         data: encoder.encode(`\ufeff${worksheet.toCSV()}`)
       }))
@@ -177,7 +230,8 @@ export class Workbook extends EventTarget {
       }
 
       workbook.addWorksheet(
-        Worksheet.fromCSV(decoder.decode(content), workbook.getUniqueWorksheetName(fileName.replace(/\.csv$/i, '')))
+        workbook.getUniqueWorksheetName(fileName.replace(/\.csv$/i, '')),
+        Worksheet.fromCSV(decoder.decode(content))
       );
     }
 

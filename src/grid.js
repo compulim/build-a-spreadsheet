@@ -157,9 +157,6 @@ export class SpreadsheetGrid extends EventTarget {
   /** @type {'cell' | 'row' | 'column' | 'resize' | ''} */
   #dragging = '';
 
-  /** Width of each column in pixels. @type {number[]} */
-  #columnWidths = [];
-
   /** Columns being resized and where the drag started. @type {{ columns: number[]; startX: number; startWidth: number } | undefined} */
   #resizing;
 
@@ -190,7 +187,6 @@ export class SpreadsheetGrid extends EventTarget {
     super();
 
     this.columnWidth = columnWidth;
-    this.#columnWidths = new Array(columnCount).fill(columnWidth);
     this.rowHeight = rowHeight;
     this.headerHeight = rowHeight;
     this.rowHeaderWidth = rowHeaderWidth;
@@ -308,7 +304,7 @@ export class SpreadsheetGrid extends EventTarget {
 
   /** @param {Event} event */
   #handleCellChange = event => {
-    const { row } = /** @type {import('./workbook/private/CellChangeEvent.js').CellChangeEvent} */ (event);
+    const { x, y: row } = /** @type {import('./workbook/private/CellChangeEvent.js').CellChangeEvent} */ (event);
 
     // Only re-render if the changed cell is currently rendered. Multiple changes are batched into a single frame.
     if ((row >= this.#firstRow && row < this.#firstRow + this.#pool.length) || row < this.#lockedRowCount) {
@@ -316,9 +312,15 @@ export class SpreadsheetGrid extends EventTarget {
       this.#scheduleRender();
     }
 
-    if (row === this.#anchor.row && /** @type {any} */ (event).column === this.#anchor.column) {
+    if (row === this.#anchor.row && x === this.#anchor.column) {
       this.#dispatchSelectionChange();
     }
+  };
+
+  /** @param {Event} event */
+  #handleColumnWidthChange = event => {
+    this.#applyColumnWidth(/** @type {Event & { x: number }} */ (event).x);
+    this.#updateColumnLayout();
   };
 
   #handleBorderChange = () => {
@@ -353,6 +355,7 @@ export class SpreadsheetGrid extends EventTarget {
 
       this.#worksheet.removeEventListener('cellchange', this.#handleCellChange);
       this.#worksheet.removeEventListener('borderchange', this.#handleBorderChange);
+      this.#worksheet.removeEventListener('columnwidthchange', this.#handleColumnWidthChange);
     }
 
     this.#worksheet = worksheet;
@@ -364,6 +367,13 @@ export class SpreadsheetGrid extends EventTarget {
 
     worksheet?.addEventListener('cellchange', this.#handleCellChange);
     worksheet?.addEventListener('borderchange', this.#handleBorderChange);
+    worksheet?.addEventListener('columnwidthchange', this.#handleColumnWidthChange);
+
+    for (let column = 0; column < this.columnCount; column++) {
+      this.#applyColumnWidth(column);
+    }
+
+    this.#updateColumnLayout();
 
     this.#clearScrollTarget();
     this.element.scrollLeft = state?.scrollLeft || 0;
@@ -453,7 +463,7 @@ export class SpreadsheetGrid extends EventTarget {
    */
   scrollIntoView({ column, row }, { behavior = 'auto' } = {}) {
     const { element, rowHeight, headerHeight, rowHeaderWidth } = this;
-    const columnWidth = this.#columnWidths[column] ?? this.columnWidth;
+    const columnWidth = this.getColumnWidth(column);
     const { clientWidth, clientHeight, scrollLeft, scrollTop } = element;
 
     // While a smooth scroll is in progress, continue from where it will end, so repeated key presses add up.
@@ -616,7 +626,7 @@ export class SpreadsheetGrid extends EventTarget {
       const cell = createElement('div', 'grid__cell');
 
       cell.setAttribute('role', 'gridcell');
-      cell.style.width = `${this.#columnWidths[column]}px`;
+      cell.style.width = `${this.getColumnWidth(column)}px`;
       this.#initLockableColumn(cell, column);
       cells.push(cell);
       element.append(cell);
@@ -634,7 +644,7 @@ export class SpreadsheetGrid extends EventTarget {
     let offset = 0;
 
     for (let index = 0; index < column; index++) {
-      offset += this.#columnWidths[index];
+      offset += this.getColumnWidth(index);
     }
 
     return offset;
@@ -651,7 +661,7 @@ export class SpreadsheetGrid extends EventTarget {
     }
 
     for (let column = 0, offset = 0; column < this.columnCount; column++) {
-      offset += this.#columnWidths[column];
+      offset += this.getColumnWidth(column);
 
       if (x < offset) {
         return column;
@@ -661,39 +671,42 @@ export class SpreadsheetGrid extends EventTarget {
     return this.columnCount;
   }
 
-  /** @param {number} column */
+  /**
+   * Returns the width of a column of the current worksheet.
+   *
+   * @param {number} column
+   */
   getColumnWidth(column) {
-    return this.#columnWidths[column];
+    return this.#worksheet && column >= 0 && column < this.columnCount
+      ? this.#worksheet.getColumnWidth(column)
+      : this.columnWidth;
   }
 
   /**
-   * Sets the width of a column.
+   * Sets the width of a column of the current worksheet.
    *
    * @param {number} column
    * @param {number} width
    */
   setColumnWidth(column, width) {
-    if (column < 0 || column >= this.columnCount) {
-      return;
+    if (this.#worksheet && column >= 0 && column < this.columnCount) {
+      this.#worksheet.setColumnWidth(column, Math.max(MIN_COLUMN_WIDTH, Math.round(width)));
     }
+  }
 
-    width = Math.max(MIN_COLUMN_WIDTH, Math.round(width));
-
-    if (this.#columnWidths[column] === width) {
-      return;
-    }
-
-    this.#columnWidths[column] = width;
-
-    const style = `${width}px`;
+  /**
+   * Applies the width of a column to the column header and cells.
+   *
+   * @param {number} column
+   */
+  #applyColumnWidth(column) {
+    const style = `${this.getColumnWidth(column)}px`;
 
     this.#columnHeaders[column].style.width = style;
 
     for (const { cells } of [...this.#pool, ...this.#frozenRows]) {
       cells[column].style.width = style;
     }
-
-    this.#updateColumnLayout();
   }
 
   /**
@@ -729,7 +742,7 @@ export class SpreadsheetGrid extends EventTarget {
     const extra = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) + 1;
 
     if (!context) {
-      return this.#columnWidths[column];
+      return this.getColumnWidth(column);
     }
 
     context.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
@@ -737,8 +750,8 @@ export class SpreadsheetGrid extends EventTarget {
     let width = context.measureText(getColumnName(column)).width;
 
     if (this.#worksheet) {
-      for (const row of this.#worksheet.getValues()) {
-        const text = formatValue(row[column] ?? '');
+      for (const [value] of this.#worksheet.getValues(column, 0, 1, this.rowCount)) {
+        const text = formatValue(value);
 
         if (text) {
           for (const line of text.split('\n')) {
@@ -884,7 +897,7 @@ export class SpreadsheetGrid extends EventTarget {
     this.#rangeOverlay.hidden = left === right && top === bottom;
 
     activeStyle.left = `${rowHeaderWidth + this.#columnOffset(this.#anchor.column)}px`;
-    activeStyle.width = `${this.#columnWidths[this.#anchor.column]}px`;
+    activeStyle.width = `${this.getColumnWidth(this.#anchor.column)}px`;
     activeStyle.top = `${this.#anchor.row * rowHeight}px`;
 
     this.#columnHeaders.forEach((header, column) =>
@@ -1116,7 +1129,7 @@ export class SpreadsheetGrid extends EventTarget {
       this.#resizing = {
         columns: this.#columnsToResize(resizeColumn),
         startX: event.clientX,
-        startWidth: this.#columnWidths[resizeColumn]
+        startWidth: this.getColumnWidth(resizeColumn)
       };
       this.element.setPointerCapture(event.pointerId);
 
@@ -1229,7 +1242,7 @@ export class SpreadsheetGrid extends EventTarget {
     let offset = 0;
 
     for (let column = 0; column < this.columnCount; column++) {
-      offset += this.#columnWidths[column];
+      offset += this.getColumnWidth(column);
 
       if (Math.abs(x - offset) <= RESIZE_HANDLE_SIZE) {
         return column;
@@ -1321,7 +1334,7 @@ export class SpreadsheetGrid extends EventTarget {
 
     style.left = `${this.rowHeaderWidth + this.#columnOffset(column)}px`;
     style.top = `${row * this.rowHeight}px`;
-    style.minWidth = `${this.#columnWidths[column]}px`;
+    style.minWidth = `${this.getColumnWidth(column)}px`;
   }
 
   commitEdit() {

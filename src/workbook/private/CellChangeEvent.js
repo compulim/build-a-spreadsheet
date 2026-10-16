@@ -4,13 +4,13 @@
 export class CellChangeEvent extends Event {
   /**
    * @param {string} type
-   * @param {{ column: number; row: number; value: CellValue; previousValue: CellValue; worksheet: Worksheet }} init
+   * @param {{ x: number; y: number; value: CellValue; previousValue: CellValue; worksheet: Worksheet }} init
    */
-  constructor(type, { column, row, value, previousValue, worksheet }) {
+  constructor(type, { x, y, value, previousValue, worksheet }) {
     super(type);
 
-    /** @readonly */ this.column = column;
-    /** @readonly */ this.row = row;
+    /** @readonly */ this.x = x;
+    /** @readonly */ this.y = y;
     /** @readonly */ this.value = value;
     /** @readonly */ this.previousValue = previousValue;
     /** @readonly */ this.worksheet = worksheet;
