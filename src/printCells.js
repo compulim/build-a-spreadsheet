@@ -1,5 +1,7 @@
 import { formatValue } from './csv.js';
 
+/** @typedef {import('./workbook/Worksheet.js').CellBorder} CellBorder */
+
 /** Target print resolution of the generated PNG. Change to e.g. 300 for smaller files. */
 export const PRINT_DPI = 600;
 
@@ -13,6 +15,7 @@ const CELL_WIDTH = 100;
 const CELL_HEIGHT = 24;
 const FONT_SIZE = 13;
 const PADDING = 4;
+const BORDER_WIDTH = 3;
 
 /** @param {string} text */
 function escapeXML(text) {
@@ -22,20 +25,44 @@ function escapeXML(text) {
 /**
  * Builds an SVG document of the cells, in CSS pixels.
  *
+ * Borders are centered on the grid lines, the same as in the grid.
+ *
  * @param {readonly (readonly unknown[])[]} rows Values, row by row.
+ * @param {{ getBorder?: (column: number, row: number) => Partial<CellBorder> | undefined }} [options]
+ *   Returns the border of a cell relative to the first cell, called with -1 and the column/row count for neighbors.
  * @returns {{ height: number, svg: string, width: number }}
  */
-export function cellsToSVG(rows) {
+export function cellsToSVG(rows, { getBorder = () => undefined } = {}) {
   const rowCount = rows.length;
   const columnCount = Math.max(0, ...rows.map(row => row.length));
-  const width = columnCount * CELL_WIDTH + 1;
-  const height = rowCount * CELL_HEIGHT + 1;
+  const borderLines = [];
+
+  for (let rowIndex = 0; rowIndex < rowCount; rowIndex++) {
+    for (let columnIndex = -1; columnIndex < columnCount; columnIndex++) {
+      if (getBorder(columnIndex, rowIndex)?.right || getBorder(columnIndex + 1, rowIndex)?.left) {
+        borderLines.push({ x1: columnIndex + 1, y1: rowIndex, x2: columnIndex + 1, y2: rowIndex + 1 });
+      }
+    }
+  }
+
+  for (let columnIndex = 0; columnIndex < columnCount; columnIndex++) {
+    for (let rowIndex = -1; rowIndex < rowCount; rowIndex++) {
+      if (getBorder(columnIndex, rowIndex)?.bottom || getBorder(columnIndex, rowIndex + 1)?.top) {
+        borderLines.push({ x1: columnIndex, y1: rowIndex + 1, x2: columnIndex + 1, y2: rowIndex + 1 });
+      }
+    }
+  }
+
+  // Room for the half of the borders on the outer grid lines that is outside of the cells.
+  const margin = borderLines.length ? Math.ceil((BORDER_WIDTH - 1) / 2) : 0;
+  const width = columnCount * CELL_WIDTH + 1 + margin * 2;
+  const height = rowCount * CELL_HEIGHT + 1 + margin * 2;
   const parts = [];
 
   rows.forEach((row, rowIndex) => {
     for (let columnIndex = 0; columnIndex < columnCount; columnIndex++) {
-      const x = columnIndex * CELL_WIDTH + 0.5;
-      const y = rowIndex * CELL_HEIGHT + 0.5;
+      const x = margin + columnIndex * CELL_WIDTH + 0.5;
+      const y = margin + rowIndex * CELL_HEIGHT + 0.5;
       const value = row[columnIndex];
       const text = value === undefined ? '' : formatValue(value);
       const isNumber = typeof value === 'number';
@@ -53,6 +80,13 @@ export function cellsToSVG(rows) {
     }
   });
 
+  // Drawn after all cells so they are not covered by neighbors. Square caps fill the corners where borders meet.
+  for (const { x1, y1, x2, y2 } of borderLines) {
+    parts.push(
+      `<line x1="${margin + x1 * CELL_WIDTH + 0.5}" y1="${margin + y1 * CELL_HEIGHT + 0.5}" x2="${margin + x2 * CELL_WIDTH + 0.5}" y2="${margin + y2 * CELL_HEIGHT + 0.5}" stroke="#000" stroke-width="${BORDER_WIDTH}" stroke-linecap="square"/>`
+    );
+  }
+
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="Arial, sans-serif" font-size="${FONT_SIZE}">` +
     parts.join('') +
@@ -65,11 +99,11 @@ export function cellsToSVG(rows) {
  * Renders the cells into a PNG suitable for printing at the given DPI.
  *
  * @param {readonly (readonly unknown[])[]} rows
- * @param {{ dpi?: number }} [options]
+ * @param {{ dpi?: number, getBorder?: (column: number, row: number) => Partial<CellBorder> | undefined }} [options]
  * @returns {Promise<Blob>}
  */
-export async function cellsToPNG(rows, { dpi = PRINT_DPI } = {}) {
-  const { height, svg, width } = cellsToSVG(rows);
+export async function cellsToPNG(rows, { dpi = PRINT_DPI, getBorder } = {}) {
+  const { height, svg, width } = cellsToSVG(rows, { getBorder });
   const scale = dpi / CSS_DPI;
   const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
 

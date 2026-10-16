@@ -347,7 +347,15 @@ printButton.addEventListener('click', async () => {
   }
 
   try {
-    download(await cellsToPNG(rows), `${worksheet.name}.png`);
+    const getBorder = (/** @type {number} */ column, /** @type {number} */ row) =>
+      left + column >= 0 &&
+      top + row >= 0 &&
+      left + column < worksheet.columnCount &&
+      top + row < worksheet.rowCount
+        ? worksheet.getBorder(left + column, top + row)
+        : undefined;
+
+    download(await cellsToPNG(rows, { getBorder }), `${worksheet.name}.png`);
   } catch (error) {
     alert(`Failed to print selected cells: ${/** @type {Error} */ (error).message}`);
   }

@@ -180,15 +180,13 @@ body {
   position: relative;
 }
 
-/* Fills the 3px square where a neighbor's border meets the bottom-right corner, so borders join without a notch. */
+/* Fills the parts of border junctions inside the cell, above the grid line shadows, so borders join without a notch. */
 .grid__cell[data-border-corner]::after {
-  background: #000;
-  bottom: 0;
+  background: var(--border-corners);
   content: '';
-  height: 3px;
+  inset: 0;
+  pointer-events: none;
   position: absolute;
-  right: 0;
-  width: 3px;
 }
 
 .grid__cell[data-type='number'] {

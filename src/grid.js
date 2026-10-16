@@ -34,6 +34,60 @@ const BORDER_WIDTH = 3;
 
 const BORDER_COLOR = '#000';
 
+/** Width in pixels of the part of a border drawn past the grid line, inside the cell on the right or below. */
+const BORDER_OUTSIDE_WIDTH = Math.floor((BORDER_WIDTH - 1) / 2);
+
+/**
+ * Returns the border of a cell, or `undefined` if the cell is outside of the worksheet.
+ *
+ * @param {Worksheet} worksheet
+ * @param {number} column
+ * @param {number} row
+ */
+function getBorderOrNone(worksheet, column, row) {
+  return column >= 0 && row >= 0 && column < worksheet.columnCount && row < worksheet.rowCount
+    ? worksheet.getBorder(column, row)
+    : undefined;
+}
+
+/**
+ * Returns `true` if there is a border on the grid line on the right of the cell (column may be -1).
+ *
+ * @param {Worksheet} worksheet
+ * @param {number} column
+ * @param {number} row
+ */
+function hasVerticalEdge(worksheet, column, row) {
+  return !!(getBorderOrNone(worksheet, column, row)?.right || getBorderOrNone(worksheet, column + 1, row)?.left);
+}
+
+/**
+ * Returns `true` if there is a border on the grid line below the cell (row may be -1).
+ *
+ * @param {Worksheet} worksheet
+ * @param {number} column
+ * @param {number} row
+ */
+function hasHorizontalEdge(worksheet, column, row) {
+  return !!(getBorderOrNone(worksheet, column, row)?.bottom || getBorderOrNone(worksheet, column, row + 1)?.top);
+}
+
+/**
+ * Returns `true` if any border ends at or passes through the bottom-right corner of the cell.
+ *
+ * @param {Worksheet} worksheet
+ * @param {number} column
+ * @param {number} row
+ */
+function hasJunction(worksheet, column, row) {
+  return (
+    hasVerticalEdge(worksheet, column, row) ||
+    hasVerticalEdge(worksheet, column, row + 1) ||
+    hasHorizontalEdge(worksheet, column, row) ||
+    hasHorizontalEdge(worksheet, column + 1, row)
+  );
+}
+
 function createElement(tagName, className) {
   const element = document.createElement(tagName);
 
@@ -756,58 +810,57 @@ export class SpreadsheetGrid extends EventTarget {
         cell.style.boxShadow = shadow;
       }
 
-      const corner = !!worksheet && this.#hasBorderCorner(worksheet, column, row);
+      const corners = worksheet ? this.#getBorderCorners(worksheet, column, row) : '';
 
-      if (corner !== cell.hasAttribute('data-border-corner')) {
-        cell.toggleAttribute('data-border-corner', corner);
+      if ((cell.dataset.borderCorners || '') !== corners) {
+        cell.dataset.borderCorners = corners;
+        corners ? cell.style.setProperty('--border-corners', corners) : cell.style.removeProperty('--border-corners');
+        cell.toggleAttribute('data-border-corner', !!corners);
       }
     }
   }
 
   /**
-   * Returns the inset box shadows drawing the borders of a cell. An edge shared by two cells is drawn once, by the cell on
-   * the left or above, so it is always 3 pixels wide.
+   * Returns the inset box shadows drawing the borders of a cell. Each border is centered on the 1px grid line, which is
+   * the last pixel of the cell on the left or above: that cell draws the grid line and 1px before it, the cell on the
+   * right or below draws the remaining 1px.
    *
    * @param {Worksheet} worksheet
    * @param {number} column
    * @param {number} row
    */
   #getBorderShadow(worksheet, column, row) {
-    const border = worksheet.getBorder(column, row);
+    const inside = BORDER_WIDTH - BORDER_OUTSIDE_WIDTH;
     const shadows = [];
 
-    if (border.right || (column + 1 < worksheet.columnCount && worksheet.getBorder(column + 1, row).left)) {
-      shadows.push(`inset -${BORDER_WIDTH}px 0 ${BORDER_COLOR}`);
-    }
+    hasVerticalEdge(worksheet, column, row) && shadows.push(`inset -${inside}px 0 ${BORDER_COLOR}`);
+    hasHorizontalEdge(worksheet, column, row) && shadows.push(`inset 0 -${inside}px ${BORDER_COLOR}`);
+    hasVerticalEdge(worksheet, column - 1, row) && shadows.push(`inset ${BORDER_OUTSIDE_WIDTH}px 0 ${BORDER_COLOR}`);
+    hasHorizontalEdge(worksheet, column, row - 1) && shadows.push(`inset 0 ${BORDER_OUTSIDE_WIDTH}px ${BORDER_COLOR}`);
 
-    if (border.bottom || (row + 1 < worksheet.rowCount && worksheet.getBorder(column, row + 1).top)) {
-      shadows.push(`inset 0 -${BORDER_WIDTH}px ${BORDER_COLOR}`);
-    }
-
-    column === 0 && border.left && shadows.push(`inset ${BORDER_WIDTH}px 0 ${BORDER_COLOR}`);
-    row === 0 && border.top && shadows.push(`inset 0 ${BORDER_WIDTH}px ${BORDER_COLOR}`);
-
-    // Shadows cover the full cell, including the grid lines, so borders of adjacent cells join without gaps.
     return shadows.length ? [...shadows, 'var(--grid-line-shadow)'].join(', ') : '';
   }
 
   /**
-   * Returns `true` if the bottom-right corner of a cell needs to be filled, because a border of a neighbor ends there
-   * (e.g. the top-left corner of a surrounding border), which the cell's own border shadows do not cover.
+   * Returns the background layers filling the parts of border junctions (where grid lines cross) inside a cell, so
+   * borders meeting at a corner join without a notch. Empty if none.
    *
    * @param {Worksheet} worksheet
    * @param {number} column
    * @param {number} row
    */
-  #hasBorderCorner(worksheet, column, row) {
-    const hasRight = column + 1 < worksheet.columnCount;
-    const hasBelow = row + 1 < worksheet.rowCount;
-    const diagonal = hasRight && hasBelow ? worksheet.getBorder(column + 1, row + 1) : undefined;
+  #getBorderCorners(worksheet, column, row) {
+    const inside = BORDER_WIDTH - BORDER_OUTSIDE_WIDTH;
+    const outside = BORDER_OUTSIDE_WIDTH;
+    const fill = `linear-gradient(${BORDER_COLOR}, ${BORDER_COLOR})`;
+    const layers = [];
 
-    return (
-      (hasRight && (worksheet.getBorder(column + 1, row).bottom || !!diagonal?.top)) ||
-      (hasBelow && (worksheet.getBorder(column, row + 1).right || !!diagonal?.left))
-    );
+    hasJunction(worksheet, column, row) && layers.push(`${fill} right bottom / ${inside}px ${inside}px no-repeat`);
+    hasJunction(worksheet, column - 1, row) && layers.push(`${fill} left bottom / ${outside}px ${inside}px no-repeat`);
+    hasJunction(worksheet, column, row - 1) && layers.push(`${fill} right top / ${inside}px ${outside}px no-repeat`);
+    hasJunction(worksheet, column - 1, row - 1) && layers.push(`${fill} left top / ${outside}px ${outside}px no-repeat`);
+
+    return layers.join(', ');
   }
 
   /** @param {{ header: HTMLElement; row: number }} slot */
