@@ -29,6 +29,65 @@ const MIN_COLUMN_WIDTH = 20;
 /** Distance in pixels from a column header border where resizing can start. */
 const RESIZE_HANDLE_SIZE = 8;
 
+/** Width in pixels of cell borders set by the user. */
+const BORDER_WIDTH = 3;
+
+const BORDER_COLOR = '#000';
+
+/** Width in pixels of the part of a border drawn past the grid line, inside the cell on the right or below. */
+const BORDER_OUTSIDE_WIDTH = Math.floor((BORDER_WIDTH - 1) / 2);
+
+/**
+ * Returns the border of a cell, or `undefined` if the cell is outside of the worksheet.
+ *
+ * @param {Worksheet} worksheet
+ * @param {number} column
+ * @param {number} row
+ */
+function getBorderOrNone(worksheet, column, row) {
+  return column >= 0 && row >= 0 && column < worksheet.columnCount && row < worksheet.rowCount
+    ? worksheet.getBorder(column, row)
+    : undefined;
+}
+
+/**
+ * Returns `true` if there is a border on the grid line on the right of the cell (column may be -1).
+ *
+ * @param {Worksheet} worksheet
+ * @param {number} column
+ * @param {number} row
+ */
+function hasVerticalEdge(worksheet, column, row) {
+  return !!(getBorderOrNone(worksheet, column, row)?.right || getBorderOrNone(worksheet, column + 1, row)?.left);
+}
+
+/**
+ * Returns `true` if there is a border on the grid line below the cell (row may be -1).
+ *
+ * @param {Worksheet} worksheet
+ * @param {number} column
+ * @param {number} row
+ */
+function hasHorizontalEdge(worksheet, column, row) {
+  return !!(getBorderOrNone(worksheet, column, row)?.bottom || getBorderOrNone(worksheet, column, row + 1)?.top);
+}
+
+/**
+ * Returns `true` if any border ends at or passes through the bottom-right corner of the cell.
+ *
+ * @param {Worksheet} worksheet
+ * @param {number} column
+ * @param {number} row
+ */
+function hasJunction(worksheet, column, row) {
+  return (
+    hasVerticalEdge(worksheet, column, row) ||
+    hasVerticalEdge(worksheet, column, row + 1) ||
+    hasHorizontalEdge(worksheet, column, row) ||
+    hasHorizontalEdge(worksheet, column + 1, row)
+  );
+}
+
 function createElement(tagName, className) {
   const element = document.createElement(tagName);
 
@@ -262,6 +321,11 @@ export class SpreadsheetGrid extends EventTarget {
     }
   };
 
+  #handleBorderChange = () => {
+    this.#contentDirty = true;
+    this.#scheduleRender();
+  };
+
   /** @returns {Worksheet | undefined} */
   get worksheet() {
     return this.#worksheet;
@@ -288,6 +352,7 @@ export class SpreadsheetGrid extends EventTarget {
       });
 
       this.#worksheet.removeEventListener('cellchange', this.#handleCellChange);
+      this.#worksheet.removeEventListener('borderchange', this.#handleBorderChange);
     }
 
     this.#worksheet = worksheet;
@@ -298,6 +363,7 @@ export class SpreadsheetGrid extends EventTarget {
     this.#focus = state?.focus || { column: 0, row: 0 };
 
     worksheet?.addEventListener('cellchange', this.#handleCellChange);
+    worksheet?.addEventListener('borderchange', this.#handleBorderChange);
 
     this.#clearScrollTarget();
     this.element.scrollLeft = state?.scrollLeft || 0;
@@ -736,7 +802,66 @@ export class SpreadsheetGrid extends EventTarget {
       if (cell.dataset.type !== type) {
         cell.dataset.type = type;
       }
+
+      const shadow = worksheet ? this.#getBorderShadow(worksheet, column, row) : '';
+
+      // Compare with the last set value, as the browser normalizes `style.boxShadow`.
+      if ((cell.dataset.border || '') !== shadow) {
+        cell.dataset.border = shadow;
+        cell.style.boxShadow = shadow;
+      }
+
+      const corners = worksheet ? this.#getBorderCorners(worksheet, column, row) : '';
+
+      if ((cell.dataset.borderCorners || '') !== corners) {
+        cell.dataset.borderCorners = corners;
+        corners ? cell.style.setProperty('--border-corners', corners) : cell.style.removeProperty('--border-corners');
+        cell.toggleAttribute('data-border-corner', !!corners);
+      }
     }
+  }
+
+  /**
+   * Returns the inset box shadows drawing the borders of a cell. Each border is centered on the 1px grid line, which is
+   * the last pixel of the cell on the left or above: that cell draws the grid line and 1px before it, the cell on the
+   * right or below draws the remaining 1px.
+   *
+   * @param {Worksheet} worksheet
+   * @param {number} column
+   * @param {number} row
+   */
+  #getBorderShadow(worksheet, column, row) {
+    const inside = BORDER_WIDTH - BORDER_OUTSIDE_WIDTH;
+    const shadows = [];
+
+    hasVerticalEdge(worksheet, column, row) && shadows.push(`inset -${inside}px 0 ${BORDER_COLOR}`);
+    hasHorizontalEdge(worksheet, column, row) && shadows.push(`inset 0 -${inside}px ${BORDER_COLOR}`);
+    hasVerticalEdge(worksheet, column - 1, row) && shadows.push(`inset ${BORDER_OUTSIDE_WIDTH}px 0 ${BORDER_COLOR}`);
+    hasHorizontalEdge(worksheet, column, row - 1) && shadows.push(`inset 0 ${BORDER_OUTSIDE_WIDTH}px ${BORDER_COLOR}`);
+
+    return shadows.length ? [...shadows, 'var(--grid-line-shadow)'].join(', ') : '';
+  }
+
+  /**
+   * Returns the background layers filling the parts of border junctions (where grid lines cross) inside a cell, so
+   * borders meeting at a corner join without a notch. Empty if none.
+   *
+   * @param {Worksheet} worksheet
+   * @param {number} column
+   * @param {number} row
+   */
+  #getBorderCorners(worksheet, column, row) {
+    const inside = BORDER_WIDTH - BORDER_OUTSIDE_WIDTH;
+    const outside = BORDER_OUTSIDE_WIDTH;
+    const fill = `linear-gradient(${BORDER_COLOR}, ${BORDER_COLOR})`;
+    const layers = [];
+
+    hasJunction(worksheet, column, row) && layers.push(`${fill} right bottom / ${inside}px ${inside}px no-repeat`);
+    hasJunction(worksheet, column - 1, row) && layers.push(`${fill} left bottom / ${outside}px ${inside}px no-repeat`);
+    hasJunction(worksheet, column, row - 1) && layers.push(`${fill} right top / ${inside}px ${outside}px no-repeat`);
+    hasJunction(worksheet, column - 1, row - 1) && layers.push(`${fill} left top / ${outside}px ${outside}px no-repeat`);
+
+    return layers.join(', ');
   }
 
   /** @param {{ header: HTMLElement; row: number }} slot */
