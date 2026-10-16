@@ -755,6 +755,12 @@ export class SpreadsheetGrid extends EventTarget {
         cell.dataset.border = shadow;
         cell.style.boxShadow = shadow;
       }
+
+      const corner = !!worksheet && this.#hasBorderCorner(worksheet, column, row);
+
+      if (corner !== cell.hasAttribute('data-border-corner')) {
+        cell.toggleAttribute('data-border-corner', corner);
+      }
     }
   }
 
@@ -783,6 +789,25 @@ export class SpreadsheetGrid extends EventTarget {
 
     // Shadows cover the full cell, including the grid lines, so borders of adjacent cells join without gaps.
     return shadows.length ? [...shadows, 'var(--grid-line-shadow)'].join(', ') : '';
+  }
+
+  /**
+   * Returns `true` if the bottom-right corner of a cell needs to be filled, because a border of a neighbor ends there
+   * (e.g. the top-left corner of a surrounding border), which the cell's own border shadows do not cover.
+   *
+   * @param {Worksheet} worksheet
+   * @param {number} column
+   * @param {number} row
+   */
+  #hasBorderCorner(worksheet, column, row) {
+    const hasRight = column + 1 < worksheet.columnCount;
+    const hasBelow = row + 1 < worksheet.rowCount;
+    const diagonal = hasRight && hasBelow ? worksheet.getBorder(column + 1, row + 1) : undefined;
+
+    return (
+      (hasRight && (worksheet.getBorder(column + 1, row).bottom || !!diagonal?.top)) ||
+      (hasBelow && (worksheet.getBorder(column, row + 1).right || !!diagonal?.left))
+    );
   }
 
   /** @param {{ header: HTMLElement; row: number }} slot */

@@ -176,6 +176,21 @@ body {
   width: var(--column-width);
 }
 
+.grid__cell[data-border-corner] {
+  position: relative;
+}
+
+/* Fills the 3px square where a neighbor's border meets the bottom-right corner, so borders join without a notch. */
+.grid__cell[data-border-corner]::after {
+  background: #000;
+  bottom: 0;
+  content: '';
+  height: 3px;
+  position: absolute;
+  right: 0;
+  width: 3px;
+}
+
 .grid__cell[data-type='number'] {
   text-align: right;
 }
