@@ -10,8 +10,9 @@ import { getColumnName } from './workbook.js';
  */
 
 /**
- * Minimum number of extra rows rendered above and below the visible area. At least one viewport of rows is rendered on
- * each side, so fast or momentum scrolling (which may be composited ahead of the main thread) does not show blank rows.
+ * Minimum number of extra rows rendered above and below the visible area. Otherwise, about one viewport of extra rows is
+ * rendered on each side, so fast or momentum scrolling (which may be composited ahead of the main thread) does not show
+ * blank rows.
  */
 const MIN_OVERSCAN = 4;
 
@@ -175,7 +176,12 @@ export class SpreadsheetGrid extends EventTarget {
 
     // Render synchronously in the scroll event (fired once per frame), so new rows are ready before the frame is painted.
     scroller.addEventListener('scroll', () => this.#handleScroll(), { passive: true });
-    scroller.addEventListener('scrollend', () => (this.#scrollTarget = undefined), { passive: true });
+    scroller.addEventListener('scrollend', () => this.#clearScrollTarget(), { passive: true });
+
+    // User-initiated scrolling interrupts any smooth scroll started by keyboard navigation.
+    for (const type of ['wheel', 'touchstart']) {
+      scroller.addEventListener(type, () => this.#clearScrollTarget(), { passive: true });
+    }
     scroller.addEventListener('keydown', event => this.#handleKeyDown(event));
     scroller.addEventListener('pointerdown', event => this.#handlePointerDown(event));
     scroller.addEventListener('pointermove', event => this.#handlePointerMove(event));
@@ -258,7 +264,7 @@ export class SpreadsheetGrid extends EventTarget {
 
     worksheet?.addEventListener('cellchange', this.#handleCellChange);
 
-    this.#scrollTarget = undefined;
+    this.#clearScrollTarget();
     this.element.scrollLeft = state?.scrollLeft || 0;
     this.element.scrollTop = state?.scrollTop || 0;
 
@@ -379,9 +385,26 @@ export class SpreadsheetGrid extends EventTarget {
     if (smooth) {
       this.#scrollTarget = { left, top };
       element.scrollTo({ left, top, behavior: 'smooth' });
+      this.#armScrollEndFallback();
     } else {
-      this.#scrollTarget = undefined;
+      this.#clearScrollTarget();
       element.scrollTo({ left, top, behavior: 'instant' });
+    }
+  }
+
+  #clearScrollTarget() {
+    clearTimeout(this.#scrollEndTimeout);
+    this.#scrollTarget = undefined;
+  }
+
+  /**
+   * Fallback for browsers without the "scrollend" event: assume the smooth scroll ended (or was interrupted) when there
+   * is no scroll event for a while.
+   */
+  #armScrollEndFallback() {
+    if (!('onscrollend' in this.element)) {
+      clearTimeout(this.#scrollEndTimeout);
+      this.#scrollEndTimeout = setTimeout(() => (this.#scrollTarget = undefined), 150);
     }
   }
 
@@ -394,12 +417,9 @@ export class SpreadsheetGrid extends EventTarget {
       const { scrollLeft, scrollTop } = this.element;
 
       if (Math.abs(scrollLeft - target.left) < 1 && Math.abs(scrollTop - target.top) < 1) {
-        this.#scrollTarget = undefined;
-      } else if (!('onscrollend' in this.element)) {
-        // Fallback for browsers without the "scrollend" event: assume the smooth scroll ended (or was interrupted by the
-        // user) when there is no scroll event for a while.
-        clearTimeout(this.#scrollEndTimeout);
-        this.#scrollEndTimeout = setTimeout(() => (this.#scrollTarget = undefined), 150);
+        this.#clearScrollTarget();
+      } else {
+        this.#armScrollEndFallback();
       }
     }
   }
