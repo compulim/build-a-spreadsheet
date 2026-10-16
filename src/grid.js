@@ -27,7 +27,7 @@ const prefersReducedMotion =
 const MIN_COLUMN_WIDTH = 20;
 
 /** Distance in pixels from a column header border where resizing can start. */
-const RESIZE_HANDLE_SIZE = 4;
+const RESIZE_HANDLE_SIZE = 8;
 
 function createElement(tagName, className) {
   const element = document.createElement(tagName);
@@ -101,7 +101,7 @@ export class SpreadsheetGrid extends EventTarget {
   /** Width of each column in pixels. @type {number[]} */
   #columnWidths = [];
 
-  /** Column being resized and where the drag started. @type {{ column: number; startX: number; startWidth: number } | undefined} */
+  /** Columns being resized and where the drag started. @type {{ columns: number[]; startX: number; startWidth: number } | undefined} */
   #resizing;
 
   /**
@@ -630,11 +630,31 @@ export class SpreadsheetGrid extends EventTarget {
   }
 
   /**
+   * Resizes columns to fit the content of all their cells and headers. All columns are set to the same width.
+   *
+   * @param {number[]} columns
+   */
+  autoFitColumns(columns) {
+    const width = Math.max(...columns.map(column => this.#measureColumn(column)));
+
+    columns.forEach(column => this.setColumnWidth(column, width));
+  }
+
+  /**
    * Resizes a column to fit the content of all its cells and its header.
    *
    * @param {number} column
    */
   autoFitColumn(column) {
+    this.autoFitColumns([column]);
+  }
+
+  /**
+   * Returns the width needed to fit the content of all cells in a column and its header.
+   *
+   * @param {number} column
+   */
+  #measureColumn(column) {
     const sample = this.#pool[0]?.cells[column] || this.#columnHeaders[column];
     const context = (this.#measureContext ||= document.createElement('canvas').getContext('2d'));
     const style = getComputedStyle(sample);
@@ -642,7 +662,7 @@ export class SpreadsheetGrid extends EventTarget {
     const extra = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) + 1;
 
     if (!context) {
-      return;
+      return this.#columnWidths[column];
     }
 
     context.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
@@ -661,7 +681,7 @@ export class SpreadsheetGrid extends EventTarget {
       }
     }
 
-    this.setColumnWidth(column, Math.ceil(width + extra + 2));
+    return Math.ceil(width + extra + 2);
   }
 
   /** @type {CanvasRenderingContext2D | null | undefined} */
@@ -968,7 +988,7 @@ export class SpreadsheetGrid extends EventTarget {
     if (resizeColumn >= 0) {
       this.#dragging = 'resize';
       this.#resizing = {
-        column: resizeColumn,
+        columns: this.#columnsToResize(resizeColumn),
         startX: event.clientX,
         startWidth: this.#columnWidths[resizeColumn]
       };
@@ -1026,9 +1046,9 @@ export class SpreadsheetGrid extends EventTarget {
     }
 
     if (this.#dragging === 'resize') {
-      const { column, startX, startWidth } = /** @type {NonNullable<typeof this.#resizing>} */ (this.#resizing);
+      const { columns, startX, startWidth } = /** @type {NonNullable<typeof this.#resizing>} */ (this.#resizing);
 
-      this.setColumnWidth(column, startWidth + event.clientX - startX);
+      columns.forEach(column => this.setColumnWidth(column, startWidth + event.clientX - startX));
 
       return;
     }
@@ -1091,13 +1111,29 @@ export class SpreadsheetGrid extends EventTarget {
     return -1;
   }
 
+  /**
+   * Returns the columns to resize when resizing a column: all selected columns if the column is part of a whole-column selection, otherwise only the column.
+   *
+   * @param {number} column
+   * @returns {number[]}
+   */
+  #columnsToResize(column) {
+    const { left, top, right, bottom } = this.selection;
+
+    if (top === 0 && bottom === this.rowCount - 1 && column >= left && column <= right) {
+      return Array.from({ length: right - left + 1 }, (_, index) => left + index);
+    }
+
+    return [column];
+  }
+
   /** @param {MouseEvent} event */
   #handleDoubleClick(event) {
     const target = /** @type {HTMLElement} */ (event.target);
     const resizeColumn = this.#resizeColumnFromPoint(event);
 
     if (resizeColumn >= 0) {
-      this.autoFitColumn(resizeColumn);
+      this.autoFitColumns(this.#columnsToResize(resizeColumn));
 
       return;
     }
