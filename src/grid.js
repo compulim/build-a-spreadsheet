@@ -9,8 +9,14 @@ import { getColumnName } from './workbook.js';
  * @typedef {{ anchor: CellPosition; focus: CellPosition; scrollLeft: number; scrollTop: number }} ViewState
  */
 
-/** Number of extra rows rendered above and below the visible area. */
-const OVERSCAN = 4;
+/**
+ * Minimum number of extra rows rendered above and below the visible area. At least one viewport of rows is rendered on
+ * each side, so fast or momentum scrolling (which may be composited ahead of the main thread) does not show blank rows.
+ */
+const MIN_OVERSCAN = 4;
+
+const prefersReducedMotion =
+  typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
 
 /**
  * @param {string} tagName
@@ -71,6 +77,12 @@ export class SpreadsheetGrid extends EventTarget {
   #editMode = /** @type {'' | 'enter' | 'edit'} */ ('');
 
   #renderScheduled = false;
+
+  /** Where an in-progress smooth scroll will end. @type {{ left: number; top: number } | undefined} */
+  #scrollTarget;
+
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  #scrollEndTimeout;
   #firstRow = 0;
   #contentDirty = false;
 
@@ -161,7 +173,9 @@ export class SpreadsheetGrid extends EventTarget {
     scroller.append(content);
     container.append(scroller);
 
-    scroller.addEventListener('scroll', () => this.#scheduleRender(), { passive: true });
+    // Render synchronously in the scroll event (fired once per frame), so new rows are ready before the frame is painted.
+    scroller.addEventListener('scroll', () => this.#handleScroll(), { passive: true });
+    scroller.addEventListener('scrollend', () => (this.#scrollTarget = undefined), { passive: true });
     scroller.addEventListener('keydown', event => this.#handleKeyDown(event));
     scroller.addEventListener('pointerdown', event => this.#handlePointerDown(event));
     scroller.addEventListener('pointermove', event => this.#handlePointerMove(event));
@@ -244,6 +258,7 @@ export class SpreadsheetGrid extends EventTarget {
 
     worksheet?.addEventListener('cellchange', this.#handleCellChange);
 
+    this.#scrollTarget = undefined;
     this.element.scrollLeft = state?.scrollLeft || 0;
     this.element.scrollTop = state?.scrollTop || 0;
 
@@ -320,25 +335,72 @@ export class SpreadsheetGrid extends EventTarget {
   /**
    * Scrolls the grid (using the native scrollbar) so the cell is fully visible.
    *
+   * Short distances (up to one viewport) are scrolled smoothly by the browser, unless `behavior` is `'instant'` or the
+   * user prefers reduced motion. Long jumps (e.g. Ctrl+Down) are instant, same as Excel.
+   *
    * @param {CellPosition} cell
+   * @param {{ behavior?: 'auto' | 'instant' }} [options]
    */
-  scrollIntoView({ column, row }) {
+  scrollIntoView({ column, row }, { behavior = 'auto' } = {}) {
     const { element, columnWidth, rowHeight, headerHeight, rowHeaderWidth } = this;
-    const { clientWidth, clientHeight } = element;
+    const { clientWidth, clientHeight, scrollLeft, scrollTop } = element;
 
-    const left = rowHeaderWidth + column * columnWidth;
-    const top = headerHeight + row * rowHeight;
+    // While a smooth scroll is in progress, continue from where it will end, so repeated key presses add up.
+    const from = this.#scrollTarget || { left: scrollLeft, top: scrollTop };
+    const cellLeft = rowHeaderWidth + column * columnWidth;
+    const cellTop = headerHeight + row * rowHeight;
+    let { left, top } = from;
 
-    if (left - rowHeaderWidth < element.scrollLeft) {
-      element.scrollLeft = left - rowHeaderWidth;
-    } else if (left + columnWidth > element.scrollLeft + clientWidth) {
-      element.scrollLeft = left + columnWidth - clientWidth;
+    if (cellLeft - rowHeaderWidth < left) {
+      left = cellLeft - rowHeaderWidth;
+    } else if (cellLeft + columnWidth > left + clientWidth) {
+      left = cellLeft + columnWidth - clientWidth;
     }
 
-    if (top - headerHeight < element.scrollTop) {
-      element.scrollTop = top - headerHeight;
-    } else if (top + rowHeight > element.scrollTop + clientHeight) {
-      element.scrollTop = top + rowHeight - clientHeight;
+    if (cellTop - headerHeight < top) {
+      top = cellTop - headerHeight;
+    } else if (cellTop + rowHeight > top + clientHeight) {
+      top = cellTop + rowHeight - clientHeight;
+    }
+
+    left = Math.max(0, Math.min(left, element.scrollWidth - clientWidth));
+    top = Math.max(0, Math.min(top, element.scrollHeight - clientHeight));
+
+    if (left === from.left && top === from.top) {
+      return;
+    }
+
+    const smooth =
+      behavior !== 'instant' &&
+      !prefersReducedMotion.matches &&
+      Math.abs(left - scrollLeft) <= clientWidth &&
+      Math.abs(top - scrollTop) <= clientHeight;
+
+    if (smooth) {
+      this.#scrollTarget = { left, top };
+      element.scrollTo({ left, top, behavior: 'smooth' });
+    } else {
+      this.#scrollTarget = undefined;
+      element.scrollTo({ left, top, behavior: 'instant' });
+    }
+  }
+
+  #handleScroll() {
+    this.#render();
+
+    const target = this.#scrollTarget;
+
+    if (target) {
+      const { scrollLeft, scrollTop } = this.element;
+
+      if (Math.abs(scrollLeft - target.left) < 1 && Math.abs(scrollTop - target.top) < 1) {
+        this.#scrollTarget = undefined;
+      } else if (!('onscrollend' in this.element)) {
+        // Fallback for browsers without the "scrollend" event: assume the smooth scroll ended (or was interrupted by the
+        // user) when there is no scroll event for a while.
+        clearTimeout(this.#scrollEndTimeout);
+        this.#scrollEndTimeout = setTimeout(() => (this.#scrollTarget = undefined), 150);
+      }
     }
   }
 
@@ -357,7 +419,8 @@ export class SpreadsheetGrid extends EventTarget {
 
   #render() {
     const { element, rowHeight, headerHeight, columnCount, rowCount } = this;
-    const poolSize = Math.min(rowCount, Math.ceil(Math.max(0, element.clientHeight - headerHeight) / rowHeight) + 1 + OVERSCAN * 2);
+    const visibleRows = Math.ceil(Math.max(0, element.clientHeight - headerHeight) / rowHeight) + 1;
+    const poolSize = Math.min(rowCount, visibleRows + Math.max(MIN_OVERSCAN, visibleRows) * 2);
 
     let poolGrew = false;
 
@@ -388,7 +451,10 @@ export class SpreadsheetGrid extends EventTarget {
 
     const firstRow = Math.max(
       0,
-      Math.min(rowCount - this.#pool.length, Math.floor(element.scrollTop / rowHeight) - OVERSCAN)
+      Math.min(
+        rowCount - this.#pool.length,
+        Math.floor(element.scrollTop / rowHeight) - Math.floor((this.#pool.length - visibleRows) / 2)
+      )
     );
     const { length } = this.#pool;
 

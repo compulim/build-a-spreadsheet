@@ -91,6 +91,7 @@ body {
   height: 100%;
   outline: none;
   overflow: auto;
+  overscroll-behavior: contain;
   position: relative;
   width: 100%;
 }
