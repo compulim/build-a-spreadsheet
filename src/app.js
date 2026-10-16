@@ -1,5 +1,6 @@
 import { SpreadsheetGrid } from './grid.js';
 import { formatValue } from './csv.js';
+import { cellsToPNG } from './printCells.js';
 import { MAX_WORKSHEETS } from './workbook/constants.js';
 import { getColumnName } from './workbook/getColumnName.js';
 import { Workbook } from './workbook/Workbook.js';
@@ -19,6 +20,7 @@ const openButton = /** @type {HTMLButtonElement} */ (document.getElementById('op
 const fileInput = /** @type {HTMLInputElement} */ (document.getElementById('file-input'));
 const saveCSVButton = /** @type {HTMLButtonElement} */ (document.getElementById('save-csv-button'));
 const saveZipButton = /** @type {HTMLButtonElement} */ (document.getElementById('save-zip-button'));
+const printButton = /** @type {HTMLButtonElement} */ (document.getElementById('print-button'));
 const lockButton = /** @type {HTMLButtonElement} */ (document.getElementById('lock-button'));
 const nameBox = /** @type {HTMLOutputElement} */ (document.getElementById('name-box'));
 const valueBox = /** @type {HTMLOutputElement} */ (document.getElementById('value-box'));
@@ -234,6 +236,33 @@ saveZipButton.addEventListener('click', async () => {
     download(new Blob([await workbook.toZip()], { type: 'application/zip' }), 'workbook.zip');
   } catch (error) {
     alert(`Failed to save workbook: ${/** @type {Error} */ (error).message}`);
+  }
+});
+
+printButton.addEventListener('click', async () => {
+  const worksheet = grid.worksheet;
+
+  if (!worksheet) {
+    return;
+  }
+
+  const { left, top, right, bottom } = grid.selection;
+  const rows = [];
+
+  for (let row = top; row <= bottom; row++) {
+    const values = [];
+
+    for (let column = left; column <= right; column++) {
+      values.push(worksheet.getValue(column, row));
+    }
+
+    rows.push(values);
+  }
+
+  try {
+    download(await cellsToPNG(rows), `${worksheet.name}.png`);
+  } catch (error) {
+    alert(`Failed to print selected cells: ${/** @type {Error} */ (error).message}`);
   }
 });
 
