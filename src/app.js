@@ -24,6 +24,7 @@ const saveZipButton = /** @type {HTMLButtonElement} */ (document.getElementById(
 const printButton = /** @type {HTMLButtonElement} */ (document.getElementById('print-button'));
 const undoButton = /** @type {HTMLButtonElement} */ (document.getElementById('undo-button'));
 const redoButton = /** @type {HTMLButtonElement} */ (document.getElementById('redo-button'));
+const borderSelect = /** @type {HTMLSelectElement} */ (document.getElementById('border-select'));
 const lockButton = /** @type {HTMLButtonElement} */ (document.getElementById('lock-button'));
 const nameBox = /** @type {HTMLOutputElement} */ (document.getElementById('name-box'));
 const valueBox = /** @type {HTMLOutputElement} */ (document.getElementById('value-box'));
@@ -259,6 +260,14 @@ addSheetButton.addEventListener('click', () => {
   }
 });
 
+borderSelect.addEventListener('change', () => {
+  const preset = /** @type {import('./workbook/Worksheet.js').BorderPreset} */ (borderSelect.value);
+
+  borderSelect.value = '';
+  grid.worksheet?.setRangeBorder(grid.selection, preset);
+  grid.focus();
+});
+
 lockButton.addEventListener('click', () => {
   grid.locked = !grid.locked;
   lockButton.setAttribute('aria-pressed', String(grid.locked));
@@ -338,7 +347,15 @@ printButton.addEventListener('click', async () => {
   }
 
   try {
-    download(await cellsToPNG(rows), `${worksheet.name}.png`);
+    const getBorder = (/** @type {number} */ column, /** @type {number} */ row) =>
+      left + column >= 0 &&
+      top + row >= 0 &&
+      left + column < worksheet.columnCount &&
+      top + row < worksheet.rowCount
+        ? worksheet.getBorder(left + column, top + row)
+        : undefined;
+
+    download(await cellsToPNG(rows, { getBorder }), `${worksheet.name}.png`);
   } catch (error) {
     alert(`Failed to print selected cells: ${/** @type {Error} */ (error).message}`);
   }
