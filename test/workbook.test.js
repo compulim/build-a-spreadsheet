@@ -222,3 +222,46 @@ test('getColumnName', () => {
   assert.equal(getColumnName(701), 'ZZ');
   assert.equal(getColumnName(702), 'AAA');
 });
+
+describe('Worksheet borders', () => {
+  const range = { left: 1, top: 1, right: 2, bottom: 2 };
+  const none = { top: false, right: false, bottom: false, left: false };
+
+  test('left-right', () => {
+    const worksheet = new Worksheet();
+
+    worksheet.setRangeBorder(range, 'left-right');
+
+    assert.deepEqual(worksheet.getBorder(1, 1), { ...none, left: true });
+    assert.deepEqual(worksheet.getBorder(2, 2), { ...none, right: true });
+  });
+
+  test('top-bottom', () => {
+    const worksheet = new Worksheet();
+
+    worksheet.setRangeBorder(range, 'top-bottom');
+
+    assert.deepEqual(worksheet.getBorder(1, 1), { ...none, top: true });
+    assert.deepEqual(worksheet.getBorder(2, 2), { ...none, bottom: true });
+  });
+
+  test('outside, all and none', () => {
+    const worksheet = new Worksheet();
+    let count = 0;
+
+    worksheet.addEventListener('borderchange', () => count++);
+    worksheet.setRangeBorder(range, 'outside');
+
+    assert.deepEqual(worksheet.getBorder(1, 1), { ...none, top: true, left: true });
+    assert.deepEqual(worksheet.getBorder(2, 2), { ...none, bottom: true, right: true });
+    assert.equal(count, 4);
+
+    worksheet.setRangeBorder(range, 'all');
+    assert.deepEqual(worksheet.getBorder(1, 2), { top: true, right: true, bottom: true, left: true });
+
+    worksheet.setBorder(0, 1, { right: true });
+    worksheet.setRangeBorder(range, 'none');
+    assert.deepEqual(worksheet.getBorder(1, 2), none);
+    assert.deepEqual(worksheet.getBorder(0, 1), none);
+  });
+});

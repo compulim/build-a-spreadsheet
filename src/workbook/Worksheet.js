@@ -6,6 +6,11 @@ import { validateWorksheetName } from './private/worksheetName.js';
 import { WorksheetEvent } from './private/WorksheetEvent.js';
 
 /** @typedef {boolean | number | string} CellValue */
+/** @typedef {{ top: boolean; right: boolean; bottom: boolean; left: boolean }} CellBorder */
+/** @typedef {'left-right' | 'top-bottom' | 'outside' | 'all' | 'none'} BorderPreset */
+
+/** @type {readonly (keyof CellBorder)[]} */
+const BORDER_SIDES = ['top', 'right', 'bottom', 'left'];
 
 /**
  * A single worksheet of 50 columns by 10,000 rows (by default). Values are stored sparsely.
@@ -18,6 +23,9 @@ export class Worksheet extends EventTarget {
 
   /** @type {(CellValue[] | undefined)[]} */
   #rows = [];
+
+  /** Borders of cells, keyed by `row * columnCount + column`. @type {Map<number, CellBorder>} */
+  #borders = new Map();
 
   /**
    * @param {string} [name]
@@ -193,6 +201,98 @@ export class Worksheet extends EventTarget {
 
       for (let columnOffset = 0; columnOffset < columnCount; columnOffset++) {
         this.setValue(column + columnOffset, row + rowOffset, rowValues[columnOffset]);
+      }
+    }
+  }
+
+  /**
+   * Returns the borders of a cell.
+   *
+   * @param {number} column
+   * @param {number} row
+   * @returns {CellBorder}
+   */
+  getBorder(column, row) {
+    this.#assertCell(column, row);
+
+    return { top: false, right: false, bottom: false, left: false, ...this.#borders.get(row * this.columnCount + column) };
+  }
+
+  /**
+   * Sets some or all borders of a cell. Dispatches `borderchange` (with `column` and `row`) if changed.
+   *
+   * @param {number} column
+   * @param {number} row
+   * @param {Partial<CellBorder>} border
+   */
+  setBorder(column, row, border) {
+    const previous = this.getBorder(column, row);
+    const next = { ...previous };
+
+    for (const side of BORDER_SIDES) {
+      side in border && (next[side] = !!border[side]);
+    }
+
+    if (BORDER_SIDES.every(side => next[side] === previous[side])) {
+      return;
+    }
+
+    const key = row * this.columnCount + column;
+
+    BORDER_SIDES.some(side => next[side]) ? this.#borders.set(key, next) : this.#borders.delete(key);
+
+    this.dispatchEvent(Object.assign(new Event('borderchange'), { column, row }));
+  }
+
+  /**
+   * Sets borders of a range:
+   *
+   * - `'left-right'`: left of the leftmost cells and right of the rightmost cells.
+   * - `'top-bottom'`: top of the topmost cells and bottom of the bottommost cells.
+   * - `'outside'`: surrounds the range.
+   * - `'all'`: surrounds the range and every cell inside it.
+   * - `'none'`: removes the surrounding and inside borders.
+   *
+   * @param {{ left: number; top: number; right: number; bottom: number }} range
+   * @param {BorderPreset} preset
+   */
+  setRangeBorder({ left, top, right, bottom }, preset) {
+    this.#assertCell(left, top);
+    this.#assertCell(right, bottom);
+
+    const leftRight = preset === 'left-right' || preset === 'outside';
+    const topBottom = preset === 'top-bottom' || preset === 'outside';
+
+    for (let row = top; row <= bottom; row++) {
+      for (let column = left; column <= right; column++) {
+        if (preset === 'all' || preset === 'none') {
+          const set = preset === 'all';
+
+          this.setBorder(column, row, { top: set, right: set, bottom: set, left: set });
+        } else {
+          /** @type {Partial<CellBorder>} */
+          const border = {};
+
+          leftRight && column === left && (border.left = true);
+          leftRight && column === right && (border.right = true);
+          topBottom && row === top && (border.top = true);
+          topBottom && row === bottom && (border.bottom = true);
+
+          this.setBorder(column, row, border);
+        }
+      }
+    }
+
+    // Edges shared with adjacent cells outside of the range are also part of the surrounding border.
+    if (preset === 'none') {
+      for (let row = top; row <= bottom; row++) {
+        left > 0 && this.setBorder(left - 1, row, { right: false });
+        right < this.columnCount - 1 && this.setBorder(right + 1, row, { left: false });
+      }
+
+      for (let column = left; column <= right; column++) {
+        top > 0 && this.setBorder(column, top - 1, { bottom: false });
+        bottom < this.rowCount - 1 && this.setBorder(column, bottom + 1, { top: false });
       }
     }
   }

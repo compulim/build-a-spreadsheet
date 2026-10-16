@@ -24,6 +24,7 @@ const saveZipButton = /** @type {HTMLButtonElement} */ (document.getElementById(
 const printButton = /** @type {HTMLButtonElement} */ (document.getElementById('print-button'));
 const undoButton = /** @type {HTMLButtonElement} */ (document.getElementById('undo-button'));
 const redoButton = /** @type {HTMLButtonElement} */ (document.getElementById('redo-button'));
+const borderSelect = /** @type {HTMLSelectElement} */ (document.getElementById('border-select'));
 const lockButton = /** @type {HTMLButtonElement} */ (document.getElementById('lock-button'));
 const nameBox = /** @type {HTMLOutputElement} */ (document.getElementById('name-box'));
 const valueBox = /** @type {HTMLOutputElement} */ (document.getElementById('value-box'));
@@ -257,6 +258,14 @@ addSheetButton.addEventListener('click', () => {
   if (workbook.worksheets.length < MAX_WORKSHEETS) {
     activateWorksheet(workbook.addWorksheet());
   }
+});
+
+borderSelect.addEventListener('change', () => {
+  const preset = /** @type {import('./workbook/Worksheet.js').BorderPreset} */ (borderSelect.value);
+
+  borderSelect.value = '';
+  grid.worksheet?.setRangeBorder(grid.selection, preset);
+  grid.focus();
 });
 
 lockButton.addEventListener('click', () => {

@@ -29,6 +29,11 @@ const MIN_COLUMN_WIDTH = 20;
 /** Distance in pixels from a column header border where resizing can start. */
 const RESIZE_HANDLE_SIZE = 8;
 
+/** Width in pixels of cell borders set by the user. */
+const BORDER_WIDTH = 3;
+
+const BORDER_COLOR = '#000';
+
 function createElement(tagName, className) {
   const element = document.createElement(tagName);
 
@@ -262,6 +267,11 @@ export class SpreadsheetGrid extends EventTarget {
     }
   };
 
+  #handleBorderChange = () => {
+    this.#contentDirty = true;
+    this.#scheduleRender();
+  };
+
   /** @returns {Worksheet | undefined} */
   get worksheet() {
     return this.#worksheet;
@@ -288,6 +298,7 @@ export class SpreadsheetGrid extends EventTarget {
       });
 
       this.#worksheet.removeEventListener('cellchange', this.#handleCellChange);
+      this.#worksheet.removeEventListener('borderchange', this.#handleBorderChange);
     }
 
     this.#worksheet = worksheet;
@@ -298,6 +309,7 @@ export class SpreadsheetGrid extends EventTarget {
     this.#focus = state?.focus || { column: 0, row: 0 };
 
     worksheet?.addEventListener('cellchange', this.#handleCellChange);
+    worksheet?.addEventListener('borderchange', this.#handleBorderChange);
 
     this.#clearScrollTarget();
     this.element.scrollLeft = state?.scrollLeft || 0;
@@ -735,7 +747,41 @@ export class SpreadsheetGrid extends EventTarget {
       if (cell.dataset.type !== type) {
         cell.dataset.type = type;
       }
+
+      const shadow = worksheet ? this.#getBorderShadow(worksheet, column, row) : '';
+
+      // Compare with the last set value, as the browser normalizes `style.boxShadow`.
+      if ((cell.dataset.border || '') !== shadow) {
+        cell.dataset.border = shadow;
+        cell.style.boxShadow = shadow;
+      }
     }
+  }
+
+  /**
+   * Returns the inset box shadows drawing the borders of a cell. An edge shared by two cells is drawn once, by the cell on
+   * the left or above, so it is always 3 pixels wide.
+   *
+   * @param {Worksheet} worksheet
+   * @param {number} column
+   * @param {number} row
+   */
+  #getBorderShadow(worksheet, column, row) {
+    const border = worksheet.getBorder(column, row);
+    const shadows = [];
+
+    if (border.right || (column + 1 < worksheet.columnCount && worksheet.getBorder(column + 1, row).left)) {
+      shadows.push(`inset -${BORDER_WIDTH}px 0 ${BORDER_COLOR}`);
+    }
+
+    if (border.bottom || (row + 1 < worksheet.rowCount && worksheet.getBorder(column, row + 1).top)) {
+      shadows.push(`inset 0 -${BORDER_WIDTH}px ${BORDER_COLOR}`);
+    }
+
+    column === 0 && border.left && shadows.push(`inset ${BORDER_WIDTH}px 0 ${BORDER_COLOR}`);
+    row === 0 && border.top && shadows.push(`inset 0 ${BORDER_WIDTH}px ${BORDER_COLOR}`);
+
+    return shadows.join(', ');
   }
 
   /** @param {{ header: HTMLElement; row: number }} slot */

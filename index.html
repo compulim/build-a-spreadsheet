@@ -21,6 +21,15 @@
       <button type="button" id="undo-button" title="Undo (Ctrl+Z)" disabled>↶ Undo</button>
       <button type="button" id="redo-button" title="Redo (Ctrl+Y)" disabled>↷ Redo</button>
       <span class="toolbar__separator"></span>
+      <select id="border-select" title="Set the border of the selected cells" aria-label="Border">
+        <option value="" selected disabled>Border…</option>
+        <option value="left-right">Left and right</option>
+        <option value="top-bottom">Top and bottom</option>
+        <option value="outside">Surround</option>
+        <option value="all">Surround and inside</option>
+        <option value="none">Unset surround and inside</option>
+      </select>
+      <span class="toolbar__separator"></span>
       <button type="button" id="lock-button" aria-pressed="false" title="Lock editing of protected rows and columns">
         🔓 Unlocked
       </button>

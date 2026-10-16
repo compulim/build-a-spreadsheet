@@ -30,7 +30,8 @@ body {
   padding: 6px 8px;
 }
 
-.toolbar button {
+.toolbar button,
+.toolbar select {
   background: #fff;
   border: 1px solid #bbb;
   border-radius: 4px;
