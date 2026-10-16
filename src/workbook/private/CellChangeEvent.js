@@ -1,5 +1,5 @@
-/** @typedef {import('./Worksheet.js').CellValue} CellValue */
-/** @typedef {import('./Worksheet.js').Worksheet} Worksheet */
+/** @typedef {import('../Worksheet.js').CellValue} CellValue */
+/** @typedef {import('../Worksheet.js').Worksheet} Worksheet */
 
 export class CellChangeEvent extends Event {
   /**

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { CellChangeEvent } from '../src/workbook/CellChangeEvent.js';
+import { CellChangeEvent } from '../src/workbook/private/CellChangeEvent.js';
 import { COLUMN_COUNT, MAX_WORKSHEETS, ROW_COUNT } from '../src/workbook/constants.js';
 import { getColumnName } from '../src/workbook/getColumnName.js';
 import { Workbook } from '../src/workbook/Workbook.js';

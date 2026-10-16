@@ -1,9 +1,9 @@
 import { parseCSV, stringifyCSV } from '../csv.js';
-import { CellChangeEvent } from './CellChangeEvent.js';
+import { CellChangeEvent } from './private/CellChangeEvent.js';
 import { COLUMN_COUNT, ROW_COUNT } from './constants.js';
-import { owners } from './owners.js';
-import { validateWorksheetName } from './worksheetName.js';
-import { WorksheetEvent } from './WorksheetEvent.js';
+import { owners } from './private/owners.js';
+import { validateWorksheetName } from './private/worksheetName.js';
+import { WorksheetEvent } from './private/WorksheetEvent.js';
 
 /** @typedef {boolean | number | string} CellValue */
 

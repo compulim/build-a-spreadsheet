@@ -214,7 +214,7 @@ export class SpreadsheetGrid extends EventTarget {
 
   /** @param {Event} event */
   #handleCellChange = event => {
-    const { row } = /** @type {import('./workbook/CellChangeEvent.js').CellChangeEvent} */ (event);
+    const { row } = /** @type {import('./workbook/private/CellChangeEvent.js').CellChangeEvent} */ (event);
 
     // Only re-render if the changed cell is currently rendered. Multiple changes are batched into a single frame.
     if (row >= this.#firstRow && row < this.#firstRow + this.#pool.length) {

@@ -1,4 +1,4 @@
-import { MAX_WORKSHEET_NAME_LENGTH } from './constants.js';
+import { MAX_WORKSHEET_NAME_LENGTH } from '../constants.js';
 
 // Same restrictions as Excel, also make sure the name is a valid file name inside the ZIP file.
 const INVALID_NAME_PATTERN = /[\\/?*:[\]\u0000-\u001f]/;
