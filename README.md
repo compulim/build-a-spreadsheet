@@ -6,6 +6,7 @@ Written in plain HTML, CSS and JavaScript (ES modules), so it can be served as s
 ## Features
 
 - 50 columns × 10,000 rows per sheet, with column (A, B, … AX) and row headers.
+- Resize a column by dragging the right border of its header; double-click the border to auto-fit the column to its content.
 - Virtualized rendering: only the visible rows are in the DOM, while scrolling uses the browser's native scrollbars.
 - Smooth scrolling: rows are rendered synchronously on scroll with a viewport of pre-rendered rows on each side, so wheel, touchpad and momentum scrolling stay seamless. Keyboard navigation scrolls smoothly for short distances (instant for long jumps, or when the user prefers reduced motion).
 - Keyboard navigation: arrow keys, <kbd>Ctrl</kbd>+arrow (jump to edge), <kbd>Home</kbd>/<kbd>End</kbd>, <kbd>Page Up</kbd>/<kbd>Page Down</kbd>, <kbd>Enter</kbd>/<kbd>Tab</kbd>.
