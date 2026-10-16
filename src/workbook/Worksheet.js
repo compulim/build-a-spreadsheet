@@ -7,7 +7,7 @@ import { WorksheetEvent } from './private/WorksheetEvent.js';
 
 /** @typedef {boolean | number | string} CellValue */
 /** @typedef {{ top: boolean; right: boolean; bottom: boolean; left: boolean }} CellBorder */
-/** @typedef {'left-right' | 'top-bottom' | 'outside' | 'all' | 'none'} BorderPreset */
+/** @typedef {'left' | 'right' | 'top' | 'bottom' | 'outside' | 'all' | 'none'} BorderPreset */
 
 /** @type {readonly (keyof CellBorder)[]} */
 const BORDER_SIDES = ['top', 'right', 'bottom', 'left'];
@@ -247,8 +247,10 @@ export class Worksheet extends EventTarget {
   /**
    * Sets borders of a range:
    *
-   * - `'left-right'`: left of the leftmost cells and right of the rightmost cells.
-   * - `'top-bottom'`: top of the topmost cells and bottom of the bottommost cells.
+   * - `'left'`: left of the leftmost cells.
+   * - `'right'`: right of the rightmost cells.
+   * - `'top'`: top of the topmost cells.
+   * - `'bottom'`: bottom of the bottommost cells.
    * - `'outside'`: surrounds the range.
    * - `'all'`: surrounds the range and every cell inside it.
    * - `'none'`: removes the surrounding and inside borders.
@@ -260,8 +262,7 @@ export class Worksheet extends EventTarget {
     this.#assertCell(left, top);
     this.#assertCell(right, bottom);
 
-    const leftRight = preset === 'left-right' || preset === 'outside';
-    const topBottom = preset === 'top-bottom' || preset === 'outside';
+    const outside = preset === 'outside';
 
     for (let row = top; row <= bottom; row++) {
       for (let column = left; column <= right; column++) {
@@ -273,10 +274,10 @@ export class Worksheet extends EventTarget {
           /** @type {Partial<CellBorder>} */
           const border = {};
 
-          leftRight && column === left && (border.left = true);
-          leftRight && column === right && (border.right = true);
-          topBottom && row === top && (border.top = true);
-          topBottom && row === bottom && (border.bottom = true);
+          (outside || preset === 'left') && column === left && (border.left = true);
+          (outside || preset === 'right') && column === right && (border.right = true);
+          (outside || preset === 'top') && row === top && (border.top = true);
+          (outside || preset === 'bottom') && row === bottom && (border.bottom = true);
 
           this.setBorder(column, row, border);
         }

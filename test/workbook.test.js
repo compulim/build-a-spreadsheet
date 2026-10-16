@@ -227,23 +227,25 @@ describe('Worksheet borders', () => {
   const range = { left: 1, top: 1, right: 2, bottom: 2 };
   const none = { top: false, right: false, bottom: false, left: false };
 
-  test('left-right', () => {
-    const worksheet = new Worksheet();
+  for (const side of /** @type {const} */ (['left', 'right', 'top', 'bottom'])) {
+    test(side, () => {
+      const worksheet = new Worksheet();
 
-    worksheet.setRangeBorder(range, 'left-right');
+      worksheet.setRangeBorder(range, side);
 
-    assert.deepEqual(worksheet.getBorder(1, 1), { ...none, left: true });
-    assert.deepEqual(worksheet.getBorder(2, 2), { ...none, right: true });
-  });
+      for (let row = 1; row <= 2; row++) {
+        for (let column = 1; column <= 2; column++) {
+          const expected =
+            (side === 'left' && column === 1) ||
+            (side === 'right' && column === 2) ||
+            (side === 'top' && row === 1) ||
+            (side === 'bottom' && row === 2);
 
-  test('top-bottom', () => {
-    const worksheet = new Worksheet();
-
-    worksheet.setRangeBorder(range, 'top-bottom');
-
-    assert.deepEqual(worksheet.getBorder(1, 1), { ...none, top: true });
-    assert.deepEqual(worksheet.getBorder(2, 2), { ...none, bottom: true });
-  });
+          assert.deepEqual(worksheet.getBorder(column, row), { ...none, [side]: expected });
+        }
+      }
+    });
+  }
 
   test('outside, all and none', () => {
     const worksheet = new Worksheet();

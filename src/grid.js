@@ -781,7 +781,8 @@ export class SpreadsheetGrid extends EventTarget {
     column === 0 && border.left && shadows.push(`inset ${BORDER_WIDTH}px 0 ${BORDER_COLOR}`);
     row === 0 && border.top && shadows.push(`inset 0 ${BORDER_WIDTH}px ${BORDER_COLOR}`);
 
-    return shadows.join(', ');
+    // Shadows cover the full cell, including the grid lines, so borders of adjacent cells join without gaps.
+    return shadows.length ? [...shadows, 'var(--grid-line-shadow)'].join(', ') : '';
   }
 
   /** @param {{ header: HTMLElement; row: number }} slot */
