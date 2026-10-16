@@ -24,6 +24,11 @@ const prefersReducedMotion =
  * @param {string} className
  * @returns {HTMLElement}
  */
+const MIN_COLUMN_WIDTH = 20;
+
+/** Distance in pixels from a column header border where resizing can start. */
+const RESIZE_HANDLE_SIZE = 8;
+
 function createElement(tagName, className) {
   const element = document.createElement(tagName);
 
@@ -90,8 +95,14 @@ export class SpreadsheetGrid extends EventTarget {
   #firstRow = 0;
   #contentDirty = false;
 
-  /** @type {'cell' | 'row' | 'column' | ''} */
+  /** @type {'cell' | 'row' | 'column' | 'resize' | ''} */
   #dragging = '';
+
+  /** Width of each column in pixels. @type {number[]} */
+  #columnWidths = [];
+
+  /** Columns being resized and where the drag started. @type {{ columns: number[]; startX: number; startWidth: number } | undefined} */
+  #resizing;
 
   /**
    * @param {HTMLElement} container
@@ -120,6 +131,7 @@ export class SpreadsheetGrid extends EventTarget {
     super();
 
     this.columnWidth = columnWidth;
+    this.#columnWidths = new Array(columnCount).fill(columnWidth);
     this.rowHeight = rowHeight;
     this.headerHeight = rowHeight;
     this.rowHeaderWidth = rowHeaderWidth;
@@ -141,7 +153,7 @@ export class SpreadsheetGrid extends EventTarget {
 
     const content = createElement('div', 'grid__content');
 
-    content.style.width = `${rowHeaderWidth + columnCount * columnWidth}px`;
+    this.#content = content;
 
     const header = createElement('div', 'grid__header');
 
@@ -153,6 +165,7 @@ export class SpreadsheetGrid extends EventTarget {
 
       columnHeader.textContent = getColumnName(column);
       columnHeader.dataset.column = String(column);
+      columnHeader.style.width = `${columnWidth}px`;
       columnHeader.setAttribute('role', 'columnheader');
       this.#initLockableColumn(columnHeader, column);
       this.#columnHeaders.push(columnHeader);
@@ -216,8 +229,11 @@ export class SpreadsheetGrid extends EventTarget {
 
     new ResizeObserver(() => this.#scheduleRender()).observe(scroller);
 
-    this.#updateSelection();
+    this.#updateColumnLayout();
   }
+
+  /** @type {HTMLElement} */
+  #content;
 
   /** @type {HTMLElement} */
   #body;
@@ -369,14 +385,15 @@ export class SpreadsheetGrid extends EventTarget {
    * @param {{ behavior?: 'auto' | 'instant' }} [options]
    */
   scrollIntoView({ column, row }, { behavior = 'auto' } = {}) {
-    const { element, columnWidth, rowHeight, headerHeight, rowHeaderWidth } = this;
+    const { element, rowHeight, headerHeight, rowHeaderWidth } = this;
+    const columnWidth = this.#columnWidths[column] ?? this.columnWidth;
     const { clientWidth, clientHeight, scrollLeft, scrollTop } = element;
 
     // While a smooth scroll is in progress, continue from where it will end, so repeated key presses add up.
     const from = this.#scrollTarget || { left: scrollLeft, top: scrollTop };
-    const cellLeft = rowHeaderWidth + column * columnWidth;
+    const cellLeft = rowHeaderWidth + this.#columnOffset(column);
     const cellTop = headerHeight + row * rowHeight;
-    const frozenWidth = this.#locked ? this.#lockedColumnCount * columnWidth : 0;
+    const frozenWidth = this.#locked ? this.#columnOffset(this.#lockedColumnCount) : 0;
     const frozenHeight = this.#locked ? this.#lockedRowCount * rowHeight : 0;
     let { left, top } = from;
 
@@ -532,12 +549,160 @@ export class SpreadsheetGrid extends EventTarget {
       const cell = createElement('div', 'grid__cell');
 
       cell.setAttribute('role', 'gridcell');
+      cell.style.width = `${this.#columnWidths[column]}px`;
       this.#initLockableColumn(cell, column);
       cells.push(cell);
       element.append(cell);
     }
 
     return { element, header, cells, row: -1 };
+  }
+
+  /**
+   * Returns the left offset of a column, relative to the right of the row header.
+   *
+   * @param {number} column
+   */
+  #columnOffset(column) {
+    let offset = 0;
+
+    for (let index = 0; index < column; index++) {
+      offset += this.#columnWidths[index];
+    }
+
+    return offset;
+  }
+
+  /**
+   * Returns the column at an offset relative to the right of the row header.
+   *
+   * @param {number} x
+   */
+  #columnAtOffset(x) {
+    if (x < 0) {
+      return -1;
+    }
+
+    for (let column = 0, offset = 0; column < this.columnCount; column++) {
+      offset += this.#columnWidths[column];
+
+      if (x < offset) {
+        return column;
+      }
+    }
+
+    return this.columnCount;
+  }
+
+  /** @param {number} column */
+  getColumnWidth(column) {
+    return this.#columnWidths[column];
+  }
+
+  /**
+   * Sets the width of a column.
+   *
+   * @param {number} column
+   * @param {number} width
+   */
+  setColumnWidth(column, width) {
+    if (column < 0 || column >= this.columnCount) {
+      return;
+    }
+
+    width = Math.max(MIN_COLUMN_WIDTH, Math.round(width));
+
+    if (this.#columnWidths[column] === width) {
+      return;
+    }
+
+    this.#columnWidths[column] = width;
+
+    const style = `${width}px`;
+
+    this.#columnHeaders[column].style.width = style;
+
+    for (const { cells } of [...this.#pool, ...this.#frozenRows]) {
+      cells[column].style.width = style;
+    }
+
+    this.#updateColumnLayout();
+  }
+
+  /**
+   * Resizes columns to fit the content of all their cells and headers. All columns are set to the same width.
+   *
+   * @param {number[]} columns
+   */
+  autoFitColumns(columns) {
+    const width = Math.max(...columns.map(column => this.#measureColumn(column)));
+
+    columns.forEach(column => this.setColumnWidth(column, width));
+  }
+
+  /**
+   * Resizes a column to fit the content of all its cells and its header.
+   *
+   * @param {number} column
+   */
+  autoFitColumn(column) {
+    this.autoFitColumns([column]);
+  }
+
+  /**
+   * Returns the width needed to fit the content of all cells in a column and its header.
+   *
+   * @param {number} column
+   */
+  #measureColumn(column) {
+    const sample = this.#pool[0]?.cells[column] || this.#columnHeaders[column];
+    const context = (this.#measureContext ||= document.createElement('canvas').getContext('2d'));
+    const style = getComputedStyle(sample);
+    // Padding plus right border.
+    const extra = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) + 1;
+
+    if (!context) {
+      return this.#columnWidths[column];
+    }
+
+    context.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+
+    let width = context.measureText(getColumnName(column)).width;
+
+    if (this.#worksheet) {
+      for (const row of this.#worksheet.getValues()) {
+        const text = formatValue(row[column] ?? '');
+
+        if (text) {
+          for (const line of text.split('\n')) {
+            width = Math.max(width, context.measureText(line).width);
+          }
+        }
+      }
+    }
+
+    return Math.ceil(width + extra + 2);
+  }
+
+  /** @type {CanvasRenderingContext2D | null | undefined} */
+  #measureContext;
+
+  /** Updates positions which depend on column widths. */
+  #updateColumnLayout() {
+    this.#content.style.width = `${this.rowHeaderWidth + this.#columnOffset(this.columnCount)}px`;
+
+    for (let column = 0; column < this.#lockedColumnCount; column++) {
+      const left = `${this.rowHeaderWidth + this.#columnOffset(column)}px`;
+
+      this.#columnHeaders[column].style.left = left;
+
+      for (const { cells } of [...this.#pool, ...this.#frozenRows]) {
+        cells[column].style.left = left;
+      }
+    }
+
+    this.#editMode && this.#positionEditor();
+    this.#updateSelection();
   }
 
   /**
@@ -549,7 +714,7 @@ export class SpreadsheetGrid extends EventTarget {
   #initLockableColumn(element, column) {
     if (column < this.#lockedColumnCount) {
       element.classList.add('grid__lockable');
-      element.style.left = `${this.rowHeaderWidth + column * this.columnWidth}px`;
+      element.style.left = `${this.rowHeaderWidth + this.#columnOffset(column)}px`;
     }
   }
 
@@ -581,18 +746,19 @@ export class SpreadsheetGrid extends EventTarget {
   }
 
   #updateSelection() {
-    const { columnWidth, rowHeight, rowHeaderWidth } = this;
+    const { rowHeight, rowHeaderWidth } = this;
     const { left, top, right, bottom } = this.selection;
     const rangeStyle = this.#rangeOverlay.style;
     const activeStyle = this.#activeOverlay.style;
 
-    rangeStyle.left = `${rowHeaderWidth + left * columnWidth}px`;
+    rangeStyle.left = `${rowHeaderWidth + this.#columnOffset(left)}px`;
     rangeStyle.top = `${top * rowHeight}px`;
-    rangeStyle.width = `${(right - left + 1) * columnWidth}px`;
+    rangeStyle.width = `${this.#columnOffset(right + 1) - this.#columnOffset(left)}px`;
     rangeStyle.height = `${(bottom - top + 1) * rowHeight}px`;
     this.#rangeOverlay.hidden = left === right && top === bottom;
 
-    activeStyle.left = `${rowHeaderWidth + this.#anchor.column * columnWidth}px`;
+    activeStyle.left = `${rowHeaderWidth + this.#columnOffset(this.#anchor.column)}px`;
+    activeStyle.width = `${this.#columnWidths[this.#anchor.column]}px`;
     activeStyle.top = `${this.#anchor.row * rowHeight}px`;
 
     this.#columnHeaders.forEach((header, column) =>
@@ -776,7 +942,7 @@ export class SpreadsheetGrid extends EventTarget {
    * @returns {CellPosition}
    */
   #cellFromPoint({ clientX, clientY }) {
-    const { columnWidth, element, headerHeight, rowHeaderWidth, rowHeight } = this;
+    const { element, headerHeight, rowHeaderWidth, rowHeight } = this;
     const rect = this.#body.getBoundingClientRect();
     const scrollerRect = element.getBoundingClientRect();
     // Position relative to the top-left of the scrollable area (below the column header, right of the row header).
@@ -786,9 +952,9 @@ export class SpreadsheetGrid extends EventTarget {
 
     return this.#clamp({
       column:
-        frozen && x >= 0 && x < this.#lockedColumnCount * columnWidth
-          ? Math.floor(x / columnWidth)
-          : Math.floor((clientX - rect.left - rowHeaderWidth) / columnWidth),
+        frozen && x >= 0 && x < this.#columnOffset(this.#lockedColumnCount)
+          ? this.#columnAtOffset(x)
+          : this.#columnAtOffset(clientX - rect.left - rowHeaderWidth),
       row:
         frozen && y >= 0 && y < this.#lockedRowCount * rowHeight
           ? Math.floor(y / rowHeight)
@@ -816,6 +982,20 @@ export class SpreadsheetGrid extends EventTarget {
 
     event.preventDefault();
     this.focus();
+
+    const resizeColumn = this.#resizeColumnFromPoint(event);
+
+    if (resizeColumn >= 0) {
+      this.#dragging = 'resize';
+      this.#resizing = {
+        columns: this.#columnsToResize(resizeColumn),
+        startX: event.clientX,
+        startWidth: this.#columnWidths[resizeColumn]
+      };
+      this.element.setPointerCapture(event.pointerId);
+
+      return;
+    }
 
     const cell = this.#cellFromPoint(event);
     const { shiftKey } = event;
@@ -860,6 +1040,16 @@ export class SpreadsheetGrid extends EventTarget {
   /** @param {PointerEvent} event */
   #handlePointerMove(event) {
     if (!this.#dragging) {
+      this.element.classList.toggle('grid--resize-hover', this.#resizeColumnFromPoint(event) >= 0);
+
+      return;
+    }
+
+    if (this.#dragging === 'resize') {
+      const { columns, startX, startWidth } = /** @type {NonNullable<typeof this.#resizing>} */ (this.#resizing);
+
+      columns.forEach(column => this.setColumnWidth(column, startWidth + event.clientX - startX));
+
       return;
     }
 
@@ -878,13 +1068,75 @@ export class SpreadsheetGrid extends EventTarget {
   #handlePointerUp(event) {
     if (this.#dragging) {
       this.#dragging = '';
+      this.#resizing = undefined;
       this.element.hasPointerCapture(event.pointerId) && this.element.releasePointerCapture(event.pointerId);
     }
+  }
+
+  /**
+   * Returns the column whose right border in the column header is under the pointer, or -1.
+   *
+   * @param {PointerEvent | MouseEvent} event
+   */
+  #resizeColumnFromPoint({ clientX, clientY }) {
+    const { element, rowHeaderWidth } = this;
+    const scrollerRect = element.getBoundingClientRect();
+    const y = clientY - scrollerRect.top - element.clientTop;
+
+    if (y < 0 || y >= this.headerHeight) {
+      return -1;
+    }
+
+    const viewportX = clientX - scrollerRect.left - element.clientLeft - rowHeaderWidth;
+
+    if (viewportX < -RESIZE_HANDLE_SIZE || viewportX >= element.clientWidth - rowHeaderWidth) {
+      return -1;
+    }
+
+    const lockedWidth = this.#locked ? this.#columnOffset(this.#lockedColumnCount) : 0;
+    // Frozen columns do not scroll.
+    const x = this.#locked && viewportX < lockedWidth + RESIZE_HANDLE_SIZE ? viewportX : viewportX + element.scrollLeft;
+    let offset = 0;
+
+    for (let column = 0; column < this.columnCount; column++) {
+      offset += this.#columnWidths[column];
+
+      if (Math.abs(x - offset) <= RESIZE_HANDLE_SIZE) {
+        return column;
+      } else if (x < offset - RESIZE_HANDLE_SIZE) {
+        break;
+      }
+    }
+
+    return -1;
+  }
+
+  /**
+   * Returns the columns to resize when resizing a column: all selected columns if the column is part of a whole-column selection, otherwise only the column.
+   *
+   * @param {number} column
+   * @returns {number[]}
+   */
+  #columnsToResize(column) {
+    const { left, top, right, bottom } = this.selection;
+
+    if (top === 0 && bottom === this.rowCount - 1 && column >= left && column <= right) {
+      return Array.from({ length: right - left + 1 }, (_, index) => left + index);
+    }
+
+    return [column];
   }
 
   /** @param {MouseEvent} event */
   #handleDoubleClick(event) {
     const target = /** @type {HTMLElement} */ (event.target);
+    const resizeColumn = this.#resizeColumnFromPoint(event);
+
+    if (resizeColumn >= 0) {
+      this.autoFitColumns(this.#columnsToResize(resizeColumn));
+
+      return;
+    }
 
     // With pointer capture, the target may be the grid itself, so hit-test using coordinates.
     if (
@@ -921,8 +1173,7 @@ export class SpreadsheetGrid extends EventTarget {
     const editor = this.#editor;
     const value = this.#worksheet.getValue(column, row);
 
-    editor.style.left = `${this.rowHeaderWidth + column * this.columnWidth}px`;
-    editor.style.top = `${row * this.rowHeight}px`;
+    this.#positionEditor();
     editor.value = initialText ?? formatValue(value);
     editor.hidden = false;
     editor.focus({ preventScroll: true });
@@ -934,6 +1185,15 @@ export class SpreadsheetGrid extends EventTarget {
   }
 
   /** Commits the editor value to the active cell. */
+  #positionEditor() {
+    const { column, row } = this.#anchor;
+    const style = this.#editor.style;
+
+    style.left = `${this.rowHeaderWidth + this.#columnOffset(column)}px`;
+    style.top = `${row * this.rowHeight}px`;
+    style.minWidth = `${this.#columnWidths[column]}px`;
+  }
+
   commitEdit() {
     if (!this.#editMode) {
       return;

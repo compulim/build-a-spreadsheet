@@ -229,6 +229,11 @@ body {
   font-size: 10px;
 }
 
+.grid--resize-hover,
+.grid--resize-hover * {
+  cursor: col-resize;
+}
+
 .grid__range {
   background: rgb(11 87 208 / 10%);
   border: 1px solid #0b57d0;
