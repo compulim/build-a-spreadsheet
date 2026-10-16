@@ -1,6 +1,7 @@
 import { SpreadsheetGrid } from './grid.js';
 import { formatValue } from './csv.js';
 import { cellsToPNG } from './printCells.js';
+import { UndoManager } from './UndoManager.js';
 import { MAX_WORKSHEETS } from './workbook/constants.js';
 import { getColumnName } from './workbook/getColumnName.js';
 import { Workbook } from './workbook/Workbook.js';
@@ -21,6 +22,8 @@ const fileInput = /** @type {HTMLInputElement} */ (document.getElementById('file
 const saveCSVButton = /** @type {HTMLButtonElement} */ (document.getElementById('save-csv-button'));
 const saveZipButton = /** @type {HTMLButtonElement} */ (document.getElementById('save-zip-button'));
 const printButton = /** @type {HTMLButtonElement} */ (document.getElementById('print-button'));
+const undoButton = /** @type {HTMLButtonElement} */ (document.getElementById('undo-button'));
+const redoButton = /** @type {HTMLButtonElement} */ (document.getElementById('redo-button'));
 const lockButton = /** @type {HTMLButtonElement} */ (document.getElementById('lock-button'));
 const nameBox = /** @type {HTMLOutputElement} */ (document.getElementById('name-box'));
 const valueBox = /** @type {HTMLOutputElement} */ (document.getElementById('value-box'));
@@ -30,6 +33,8 @@ const grid = new SpreadsheetGrid(gridContainer, {
   lockedColumnCount: LOCKED_COLUMN_COUNT,
   lockedRowCount: LOCKED_ROW_COUNT
 });
+
+const undoManager = new UndoManager();
 
 /** @type {Workbook} */
 let workbook;
@@ -149,12 +154,18 @@ function setWorkbook(nextWorkbook) {
     workbook.removeEventListener('worksheetadd', renderTabs);
     workbook.removeEventListener('worksheetremove', renderTabs);
     workbook.removeEventListener('worksheetrename', renderTabs);
+    workbook.removeEventListener('worksheetremove', resetUndo);
+    undoManager.untrack(workbook);
   }
 
   workbook = nextWorkbook;
   workbook.addEventListener('worksheetadd', renderTabs);
   workbook.addEventListener('worksheetremove', renderTabs);
   workbook.addEventListener('worksheetrename', renderTabs);
+  // Undo history may refer to cells of a removed sheet, forget it.
+  workbook.addEventListener('worksheetremove', resetUndo);
+  undoManager.track(workbook);
+  undoManager.reset();
 
   // Expose for scripting from the browser console, e.g. `app.workbook.worksheets[0].setValue(0, 0, 'Hello')`.
   Object.assign(globalThis, { app: { workbook, grid } });
@@ -171,6 +182,73 @@ function updateSelectionInfo() {
   nameBox.value = left === right && top === bottom ? topLeft : `${topLeft}:${getColumnName(right)}${bottom + 1}`;
   valueBox.value = grid.worksheet ? formatValue(grid.worksheet.getValue(column, row)) : '';
 }
+
+function resetUndo() {
+  undoManager.reset();
+}
+
+/** @param {'undo' | 'redo'} action */
+function undoOrRedo(action) {
+  const next = action === 'undo' ? undoManager.nextUndo : undoManager.nextRedo;
+
+  if (grid.locked && next?.some(({ column, row }) => column < LOCKED_COLUMN_COUNT || row < LOCKED_ROW_COUNT)) {
+    showStatus(`Cannot ${action} because some cells are locked.`);
+
+    return;
+  }
+
+  const changes = undoManager[action]();
+
+  if (!changes?.length) {
+    return;
+  }
+
+  const { worksheet } = changes[0];
+
+  grid.worksheet === worksheet ? grid.focus() : activateWorksheet(worksheet);
+
+  const columns = changes.map(({ column }) => column);
+  const rows = changes.map(({ row }) => row);
+
+  grid.select(
+    { column: Math.min(...columns), row: Math.min(...rows) },
+    { column: Math.max(...columns), row: Math.max(...rows) }
+  );
+  updateSelectionInfo();
+}
+
+undoManager.addEventListener('change', () => {
+  undoButton.disabled = !undoManager.canUndo;
+  redoButton.disabled = !undoManager.canRedo;
+});
+
+undoButton.addEventListener('click', () => undoOrRedo('undo'));
+redoButton.addEventListener('click', () => undoOrRedo('redo'));
+
+document.addEventListener('keydown', event => {
+  const target = /** @type {HTMLElement} */ (event.target);
+
+  // Let text fields (e.g. the cell editor) handle their own undo.
+  if (
+    !(event.ctrlKey || event.metaKey) ||
+    event.altKey ||
+    target.isContentEditable ||
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement
+  ) {
+    return;
+  }
+
+  const key = event.key.toLowerCase();
+
+  if (key === 'z' && !event.shiftKey) {
+    event.preventDefault();
+    undoOrRedo('undo');
+  } else if (key === 'y' || (key === 'z' && event.shiftKey)) {
+    event.preventDefault();
+    undoOrRedo('redo');
+  }
+});
 
 grid.addEventListener('selectionchange', updateSelectionInfo);
 grid.addEventListener('lockedit', () => showStatus('Some cells are locked and cannot be edited.'));
