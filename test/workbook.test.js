@@ -1,0 +1,228 @@
+import assert from 'node:assert/strict';
+import { describe, test } from 'node:test';
+
+import {
+  CellChangeEvent,
+  COLUMN_COUNT,
+  getColumnName,
+  MAX_WORKSHEETS,
+  ROW_COUNT,
+  Workbook,
+  Worksheet
+} from '../src/workbook.js';
+import { createZip } from '../src/zip.js';
+
+describe('Worksheet', () => {
+  test('dimensions', () => {
+    const worksheet = new Worksheet();
+
+    assert.equal(worksheet.columnCount, COLUMN_COUNT);
+    assert.equal(worksheet.rowCount, ROW_COUNT);
+    assert.equal(COLUMN_COUNT, 50);
+    assert.equal(ROW_COUNT, 10_000);
+  });
+
+  test('setValue and getValues', () => {
+    const worksheet = new Worksheet();
+
+    assert.deepEqual(worksheet.getValues(), []);
+
+    worksheet.setValue(0, 0, 'A1');
+    worksheet.setValue(2, 1, 3);
+    worksheet.setValue(1, 3, true);
+
+    assert.equal(worksheet.getValue(2, 1), 3);
+    assert.equal(worksheet.getValue(49, 9999), '');
+    assert.deepEqual(worksheet.getValues(), [
+      ['A1', '', ''],
+      ['', '', 3],
+      ['', '', ''],
+      ['', true, '']
+    ]);
+
+    worksheet.setValue(1, 3, '');
+    worksheet.setValue(2, 1, null);
+
+    assert.deepEqual(worksheet.getValues(), [['A1']]);
+  });
+
+  test('setValue validates input', () => {
+    const worksheet = new Worksheet();
+
+    assert.throws(() => worksheet.setValue(50, 0, 1), RangeError);
+    assert.throws(() => worksheet.setValue(0, 10_000, 1), RangeError);
+    assert.throws(() => worksheet.setValue(-1, 0, 1), RangeError);
+    assert.throws(() => worksheet.setValue(0.5, 0, 1), RangeError);
+    assert.throws(() => worksheet.setValue(0, 0, {}), TypeError);
+    assert.throws(() => worksheet.setValue(0, 0, NaN), TypeError);
+
+    worksheet.setValue(49, 9999, 'last');
+    assert.equal(worksheet.getValue(49, 9999), 'last');
+  });
+
+  test('cellchange event', () => {
+    const worksheet = new Worksheet();
+    const events = [];
+
+    worksheet.addEventListener('cellchange', event => events.push(event));
+
+    worksheet.setValue(1, 2, 'x');
+    worksheet.setValue(1, 2, 'x'); // No change, no event.
+    worksheet.setValue(1, 2, 1);
+
+    assert.equal(events.length, 2);
+    assert.ok(events[0] instanceof CellChangeEvent);
+    assert.equal(events[0].type, 'cellchange');
+    assert.deepEqual(
+      events.map(({ column, row, value, previousValue, worksheet }) => ({
+        column,
+        row,
+        value,
+        previousValue,
+        worksheet
+      })),
+      [
+        { column: 1, row: 2, value: 'x', previousValue: '', worksheet },
+        { column: 1, row: 2, value: 1, previousValue: 'x', worksheet }
+      ]
+    );
+  });
+
+  test('CSV round trip', () => {
+    const worksheet = new Worksheet('Data');
+
+    worksheet.setValue(0, 0, 'Name, "quoted"');
+    worksheet.setValue(1, 0, 42);
+    worksheet.setValue(2, 1, false);
+
+    const csv = worksheet.toCSV();
+
+    assert.equal(csv, '"Name, ""quoted""",42,\r\n,,FALSE\r\n');
+    assert.deepEqual(Worksheet.fromCSV(csv).getValues(), worksheet.getValues());
+
+    const other = new Worksheet();
+
+    other.setValue(5, 5, 'gone');
+    other.loadCSV(csv);
+
+    assert.deepEqual(other.getValues(), worksheet.getValues());
+  });
+
+  test('CSV larger than worksheet is clipped', () => {
+    const csv = Array.from({ length: 10_005 }, () => new Array(55).fill(1).join(',')).join('\n');
+    const values = Worksheet.fromCSV(csv).getValues();
+
+    assert.equal(values.length, 10_000);
+    assert.equal(values[0].length, 50);
+  });
+
+  test('invalid names', () => {
+    assert.throws(() => new Worksheet(''), TypeError);
+    assert.throws(() => new Worksheet('a/b'), TypeError);
+    assert.throws(() => new Worksheet('x'.repeat(32)), TypeError);
+  });
+});
+
+describe('Workbook', () => {
+  test('is an EventTarget re-dispatching cellchange', () => {
+    const workbook = new Workbook();
+    const worksheet = workbook.addWorksheet();
+    const events = [];
+
+    assert.ok(workbook instanceof EventTarget);
+    assert.equal(worksheet.name, 'Sheet1');
+
+    workbook.addEventListener('cellchange', event => events.push(event));
+    worksheet.setValue(0, 0, 'hello');
+
+    assert.equal(events.length, 1);
+    assert.equal(events[0].worksheet, worksheet);
+    assert.equal(events[0].value, 'hello');
+
+    workbook.removeWorksheet(worksheet);
+    worksheet.setValue(0, 0, 'bye');
+
+    assert.equal(events.length, 1);
+  });
+
+  test('up to 50 worksheets with unique names', () => {
+    const workbook = new Workbook();
+
+    for (let index = 0; index < MAX_WORKSHEETS; index++) {
+      workbook.addWorksheet();
+    }
+
+    assert.equal(workbook.worksheets.length, 50);
+    assert.equal(new Set(workbook.worksheets.map(({ name }) => name)).size, 50);
+    assert.throws(() => workbook.addWorksheet(), RangeError);
+
+    workbook.removeWorksheet(0);
+
+    assert.throws(() => workbook.addWorksheet('sheet2'), TypeError);
+  });
+
+  test('rename', () => {
+    const workbook = new Workbook();
+    const sheet1 = workbook.addWorksheet();
+    const sheet2 = workbook.addWorksheet();
+    const events = [];
+
+    workbook.addEventListener('worksheetrename', event => events.push(event));
+
+    assert.throws(() => (sheet2.name = 'SHEET1'), TypeError);
+
+    sheet1.name = 'Data';
+
+    assert.equal(workbook.getWorksheet('data'), sheet1);
+    assert.equal(events.length, 1);
+    assert.equal(events[0].previousName, 'Sheet1');
+  });
+
+  test('ZIP round trip', async () => {
+    const workbook = new Workbook();
+    const first = workbook.addWorksheet('First');
+    const second = workbook.addWorksheet('第二');
+
+    workbook.addWorksheet('Empty');
+    first.setValue(0, 0, 'a');
+    first.setValue(3, 2, 1.25);
+    second.setValue(49, 9999, true);
+
+    const zip = await workbook.toZip();
+    const loaded = await Workbook.fromZip(zip);
+
+    assert.deepEqual(
+      loaded.worksheets.map(({ name }) => name),
+      ['First', '第二', 'Empty']
+    );
+    assert.deepEqual(loaded.worksheets[0].getValues(), first.getValues());
+    assert.deepEqual(loaded.worksheets[1].getValues(), second.getValues());
+    assert.deepEqual(loaded.worksheets[2].getValues(), []);
+  });
+
+  test('fromZip ignores non-CSV files and folders', async () => {
+    const encoder = new TextEncoder();
+    const zip = await createZip([
+      { name: 'folder/Sales.CSV', data: encoder.encode('1,2\n') },
+      { name: 'readme.txt', data: encoder.encode('hi') },
+      { name: '__MACOSX/folder/._Sales.CSV', data: encoder.encode('junk') }
+    ]);
+
+    const workbook = await Workbook.fromZip(zip);
+
+    assert.deepEqual(
+      workbook.worksheets.map(({ name }) => name),
+      ['Sales']
+    );
+    assert.deepEqual(workbook.worksheets[0].getValues(), [[1, 2]]);
+  });
+});
+
+test('getColumnName', () => {
+  assert.equal(getColumnName(0), 'A');
+  assert.equal(getColumnName(25), 'Z');
+  assert.equal(getColumnName(26), 'AA');
+  assert.equal(getColumnName(49), 'AX');
+  assert.equal(getColumnName(701), 'ZZ');
+  assert.equal(getColumnName(702), 'AAA');
+});

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Spreadsheet</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="module" src="./src/app.js"></script>
+  </head>
+  <body>
+    <header class="toolbar" role="toolbar" aria-label="Workbook">
+      <button type="button" id="open-button" title="Open a CSV file (as a new sheet) or a ZIP file of CSV files (as a workbook)">
+        Open…
+      </button>
+      <input type="file" id="file-input" accept=".csv,.zip,text/csv,application/zip" hidden />
+      <button type="button" id="save-csv-button" title="Save the current sheet as a CSV file">Save sheet (CSV)</button>
+      <button type="button" id="save-zip-button" title="Save all sheets as CSV files in a ZIP file">Save workbook (ZIP)</button>
+      <span class="toolbar__separator"></span>
+      <button type="button" id="lock-button" aria-pressed="false" title="Lock editing of protected rows and columns">
+        🔓 Unlocked
+      </button>
+      <span class="toolbar__separator"></span>
+      <output id="name-box" class="toolbar__name-box" aria-label="Selected cells">A1</output>
+      <output id="value-box" class="toolbar__value-box" aria-label="Value of active cell"></output>
+      <output id="status" class="toolbar__status" role="status"></output>
+    </header>
+    <main id="grid-container" class="grid-container"></main>
+    <footer class="sheet-bar">
+      <button type="button" id="add-sheet-button" class="sheet-bar__add" title="Add sheet" aria-label="Add sheet">+</button>
+      <div id="sheet-tabs" class="sheet-bar__tabs" role="tablist" aria-label="Sheets"></div>
+    </footer>
+  </body>
+</html>

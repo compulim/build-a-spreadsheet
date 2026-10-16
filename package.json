@@ -1,0 +1,11 @@
+{
+  "name": "build-a-spreadsheet",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A high-performance, purely client-side spreadsheet web app with no dependencies.",
+  "type": "module",
+  "scripts": {
+    "start": "npx --yes serve .",
+    "test": "node --test"
+  }
+}
