@@ -1,6 +1,9 @@
 import { SpreadsheetGrid } from './grid.js';
 import { formatValue } from './csv.js';
-import { getColumnName, MAX_WORKSHEETS, Workbook, Worksheet } from './workbook.js';
+import { MAX_WORKSHEETS } from './workbook/constants.js';
+import { getColumnName } from './workbook/getColumnName.js';
+import { Workbook } from './workbook/Workbook.js';
+import { Worksheet } from './workbook/Worksheet.js';
 
 /**
  * Rows and columns (zero-based) that become read-only when the lock button is pressed.

@@ -1,15 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import {
-  CellChangeEvent,
-  COLUMN_COUNT,
-  getColumnName,
-  MAX_WORKSHEETS,
-  ROW_COUNT,
-  Workbook,
-  Worksheet
-} from '../src/workbook.js';
+import { CellChangeEvent } from '../src/workbook/CellChangeEvent.js';
+import { COLUMN_COUNT, MAX_WORKSHEETS, ROW_COUNT } from '../src/workbook/constants.js';
+import { getColumnName } from '../src/workbook/getColumnName.js';
+import { Workbook } from '../src/workbook/Workbook.js';
+import { Worksheet } from '../src/workbook/Worksheet.js';
 import { createZip } from '../src/zip.js';
 
 describe('Worksheet', () => {

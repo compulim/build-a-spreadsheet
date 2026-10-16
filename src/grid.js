@@ -1,9 +1,9 @@
 import { formatValue, inferValue, parseTSV, stringifyTSV } from './csv.js';
-import { getColumnName } from './workbook.js';
+import { getColumnName } from './workbook/getColumnName.js';
 
 /**
- * @typedef {import('./workbook.js').Worksheet} Worksheet
- * @typedef {import('./workbook.js').CellValue} CellValue
+ * @typedef {import('./workbook/Worksheet.js').Worksheet} Worksheet
+ * @typedef {import('./workbook/Worksheet.js').CellValue} CellValue
  * @typedef {{ column: number; row: number }} CellPosition
  * @typedef {{ left: number; top: number; right: number; bottom: number }} CellRange
  * @typedef {{ anchor: CellPosition; focus: CellPosition; scrollLeft: number; scrollTop: number }} ViewState
@@ -214,7 +214,7 @@ export class SpreadsheetGrid extends EventTarget {
 
   /** @param {Event} event */
   #handleCellChange = event => {
-    const { row } = /** @type {import('./workbook.js').CellChangeEvent} */ (event);
+    const { row } = /** @type {import('./workbook/CellChangeEvent.js').CellChangeEvent} */ (event);
 
     // Only re-render if the changed cell is currently rendered. Multiple changes are batched into a single frame.
     if (row >= this.#firstRow && row < this.#firstRow + this.#pool.length) {
