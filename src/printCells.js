@@ -28,13 +28,21 @@ function escapeXML(text) {
  * Borders are centered on the grid lines, the same as in the grid.
  *
  * @param {readonly (readonly unknown[])[]} rows Values, row by row.
- * @param {{ getBorder?: (column: number, row: number) => Partial<CellBorder> | undefined }} [options]
- *   Returns the border of a cell relative to the first cell, called with -1 and the column/row count for neighbors.
+ * @param {{ columnWidths?: readonly number[], getBorder?: (column: number, row: number) => Partial<CellBorder> | undefined }} [options]
+ *   `columnWidths` are the widths of each column in CSS pixels, defaulting to `CELL_WIDTH`.
+ *   `getBorder` returns the border of a cell relative to the first cell, called with -1 and the column/row count for neighbors.
  * @returns {{ height: number, svg: string, width: number }}
  */
-export function cellsToSVG(rows, { getBorder = () => undefined } = {}) {
+export function cellsToSVG(rows, { columnWidths = [], getBorder = () => undefined } = {}) {
   const rowCount = rows.length;
   const columnCount = Math.max(0, ...rows.map(row => row.length));
+  const widths = Array.from({ length: columnCount }, (_, index) => columnWidths[index] ?? CELL_WIDTH);
+  /** Left offset of each column, plus the right edge of the last column. */
+  const columnLefts = [0];
+
+  for (const columnWidth of widths) {
+    columnLefts.push(columnLefts[columnLefts.length - 1] + columnWidth);
+  }
   const borderLines = [];
 
   for (let rowIndex = 0; rowIndex < rowCount; rowIndex++) {
@@ -55,26 +63,27 @@ export function cellsToSVG(rows, { getBorder = () => undefined } = {}) {
 
   // Room for the half of the borders on the outer grid lines that is outside of the cells.
   const margin = borderLines.length ? Math.ceil((BORDER_WIDTH - 1) / 2) : 0;
-  const width = columnCount * CELL_WIDTH + 1 + margin * 2;
+  const width = columnLefts[columnCount] + 1 + margin * 2;
   const height = rowCount * CELL_HEIGHT + 1 + margin * 2;
   const parts = [];
 
   rows.forEach((row, rowIndex) => {
     for (let columnIndex = 0; columnIndex < columnCount; columnIndex++) {
-      const x = margin + columnIndex * CELL_WIDTH + 0.5;
+      const x = margin + columnLefts[columnIndex] + 0.5;
+      const cellWidth = widths[columnIndex];
       const y = margin + rowIndex * CELL_HEIGHT + 0.5;
       const value = row[columnIndex];
       const text = value === undefined ? '' : formatValue(value);
       const isNumber = typeof value === 'number';
 
-      parts.push(`<rect x="${x}" y="${y}" width="${CELL_WIDTH}" height="${CELL_HEIGHT}" fill="#fff" stroke="#c0c0c0"/>`);
+      parts.push(`<rect x="${x}" y="${y}" width="${cellWidth}" height="${CELL_HEIGHT}" fill="#fff" stroke="#c0c0c0"/>`);
 
       if (text) {
         const clipId = `c${rowIndex}_${columnIndex}`;
 
         parts.push(
-          `<clipPath id="${clipId}"><rect x="${x}" y="${y}" width="${CELL_WIDTH}" height="${CELL_HEIGHT}"/></clipPath>`,
-          `<text clip-path="url(#${clipId})" x="${isNumber ? x + CELL_WIDTH - PADDING : x + PADDING}" y="${y + CELL_HEIGHT / 2}" dominant-baseline="central"${isNumber ? ' text-anchor="end"' : ''}>${escapeXML(text)}</text>`
+          `<clipPath id="${clipId}"><rect x="${x}" y="${y}" width="${cellWidth}" height="${CELL_HEIGHT}"/></clipPath>`,
+          `<text clip-path="url(#${clipId})" x="${isNumber ? x + cellWidth - PADDING : x + PADDING}" y="${y + CELL_HEIGHT / 2}" dominant-baseline="central"${isNumber ? ' text-anchor="end"' : ''}>${escapeXML(text)}</text>`
         );
       }
     }
@@ -83,7 +92,7 @@ export function cellsToSVG(rows, { getBorder = () => undefined } = {}) {
   // Drawn after all cells so they are not covered by neighbors. Square caps fill the corners where borders meet.
   for (const { x1, y1, x2, y2 } of borderLines) {
     parts.push(
-      `<line x1="${margin + x1 * CELL_WIDTH + 0.5}" y1="${margin + y1 * CELL_HEIGHT + 0.5}" x2="${margin + x2 * CELL_WIDTH + 0.5}" y2="${margin + y2 * CELL_HEIGHT + 0.5}" stroke="#000" stroke-width="${BORDER_WIDTH}" stroke-linecap="square"/>`
+      `<line x1="${margin + columnLefts[x1] + 0.5}" y1="${margin + y1 * CELL_HEIGHT + 0.5}" x2="${margin + columnLefts[x2] + 0.5}" y2="${margin + y2 * CELL_HEIGHT + 0.5}" stroke="#000" stroke-width="${BORDER_WIDTH}" stroke-linecap="square"/>`
     );
   }
 
@@ -99,11 +108,11 @@ export function cellsToSVG(rows, { getBorder = () => undefined } = {}) {
  * Renders the cells into a PNG suitable for printing at the given DPI.
  *
  * @param {readonly (readonly unknown[])[]} rows
- * @param {{ dpi?: number, getBorder?: (column: number, row: number) => Partial<CellBorder> | undefined }} [options]
+ * @param {{ columnWidths?: readonly number[], dpi?: number, getBorder?: (column: number, row: number) => Partial<CellBorder> | undefined }} [options]
  * @returns {Promise<Blob>}
  */
-export async function cellsToPNG(rows, { dpi = PRINT_DPI, getBorder } = {}) {
-  const { height, svg, width } = cellsToSVG(rows, { getBorder });
+export async function cellsToPNG(rows, { columnWidths, dpi = PRINT_DPI, getBorder } = {}) {
+  const { height, svg, width } = cellsToSVG(rows, { columnWidths, getBorder });
   const scale = dpi / CSS_DPI;
   const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
 
