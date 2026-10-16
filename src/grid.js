@@ -388,6 +388,7 @@ export class SpreadsheetGrid extends EventTarget {
 
     this.#locked = locked;
     this.element.classList.toggle('grid--locked', locked);
+    locked && this.element.classList.remove('grid--resize-hover');
 
     if (locked && this.#editMode && !this.isEditable(this.#anchor.column, this.#anchor.row)) {
       this.cancelEdit();
@@ -1199,11 +1200,15 @@ export class SpreadsheetGrid extends EventTarget {
   }
 
   /**
-   * Returns the column whose right border in the column header is under the pointer, or -1.
+   * Returns the column whose right border in the column header is under the pointer, or -1. Always -1 while locked.
    *
    * @param {PointerEvent | MouseEvent} event
    */
   #resizeColumnFromPoint({ clientX, clientY }) {
+    if (this.#locked) {
+      return -1;
+    }
+
     const { element, rowHeaderWidth } = this;
     const scrollerRect = element.getBoundingClientRect();
     const y = clientY - scrollerRect.top - element.clientTop;
