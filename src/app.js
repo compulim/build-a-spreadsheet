@@ -137,6 +137,12 @@ function setWorkbook(nextWorkbook) {
     nextWorkbook.addWorksheet();
   }
 
+  if (workbook) {
+    workbook.removeEventListener('worksheetadd', renderTabs);
+    workbook.removeEventListener('worksheetremove', renderTabs);
+    workbook.removeEventListener('worksheetrename', renderTabs);
+  }
+
   workbook = nextWorkbook;
   workbook.addEventListener('worksheetadd', renderTabs);
   workbook.addEventListener('worksheetremove', renderTabs);
@@ -218,7 +224,11 @@ saveCSVButton.addEventListener('click', () => {
 });
 
 saveZipButton.addEventListener('click', async () => {
-  download(new Blob([await workbook.toZip()], { type: 'application/zip' }), 'workbook.zip');
+  try {
+    download(new Blob([await workbook.toZip()], { type: 'application/zip' }), 'workbook.zip');
+  } catch (error) {
+    alert(`Failed to save workbook: ${/** @type {Error} */ (error).message}`);
+  }
 });
 
 setWorkbook(new Workbook());

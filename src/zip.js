@@ -62,10 +62,15 @@ async function transform(data, transformStream) {
  * @returns {{ date: number; time: number }}
  */
 function toDOSDateTime(date) {
-  const year = Math.max(1980, date.getFullYear());
+  // DOS date/time can only represent 1980-01-01 to 2107-12-31.
+  if (date.getFullYear() < 1980) {
+    date = new Date(1980, 0, 1);
+  } else if (date.getFullYear() > 2107) {
+    date = new Date(2107, 11, 31, 23, 59, 58);
+  }
 
   return {
-    date: ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate(),
+    date: ((date.getFullYear() - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate(),
     time: (date.getHours() << 11) | (date.getMinutes() << 5) | (date.getSeconds() >> 1)
   };
 }

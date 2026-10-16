@@ -359,6 +359,8 @@ export class SpreadsheetGrid extends EventTarget {
     const { element, rowHeight, headerHeight, columnCount, rowCount } = this;
     const poolSize = Math.min(rowCount, Math.ceil(Math.max(0, element.clientHeight - headerHeight) / rowHeight) + 1 + OVERSCAN * 2);
 
+    let poolGrew = false;
+
     while (this.#pool.length < poolSize) {
       const rowElement = createElement('div', 'grid__row');
       const header = createElement('div', 'grid__row-header');
@@ -378,10 +380,11 @@ export class SpreadsheetGrid extends EventTarget {
 
       this.#body.insertBefore(rowElement, this.#rangeOverlay);
       this.#pool.push({ element: rowElement, header, cells, row: -1 });
-
-      // Pool size changed, row-to-slot mapping is no longer valid.
-      this.#pool.forEach(slot => (slot.row = -1));
+      poolGrew = true;
     }
+
+    // Pool size changed, row-to-slot mapping is no longer valid.
+    poolGrew && this.#pool.forEach(slot => (slot.row = -1));
 
     const firstRow = Math.max(
       0,
