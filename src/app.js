@@ -6,11 +6,11 @@ import { Workbook } from './workbook/Workbook.js';
 import { Worksheet } from './workbook/Worksheet.js';
 
 /**
- * Rows and columns (zero-based) that become read-only when the lock button is pressed.
- * Change these to protect different rows/columns, e.g. a header row and an ID column.
+ * Number of leading rows and columns that become read-only, and frozen on screen, when the lock button is pressed.
+ * Change these to protect a different range, e.g. 2 header rows and 1 ID column.
  */
-const LOCKED_ROWS = [0];
-const LOCKED_COLUMNS = [0];
+const LOCKED_ROW_COUNT = 1;
+const LOCKED_COLUMN_COUNT = 1;
 
 const gridContainer = /** @type {HTMLElement} */ (document.getElementById('grid-container'));
 const sheetTabs = /** @type {HTMLElement} */ (document.getElementById('sheet-tabs'));
@@ -24,7 +24,10 @@ const nameBox = /** @type {HTMLOutputElement} */ (document.getElementById('name-
 const valueBox = /** @type {HTMLOutputElement} */ (document.getElementById('value-box'));
 const status = /** @type {HTMLOutputElement} */ (document.getElementById('status'));
 
-const grid = new SpreadsheetGrid(gridContainer, { lockedColumns: LOCKED_COLUMNS, lockedRows: LOCKED_ROWS });
+const grid = new SpreadsheetGrid(gridContainer, {
+  lockedColumnCount: LOCKED_COLUMN_COUNT,
+  lockedRowCount: LOCKED_ROW_COUNT
+});
 
 /** @type {Workbook} */
 let workbook;
