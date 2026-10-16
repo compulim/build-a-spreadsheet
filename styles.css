@@ -1,0 +1,311 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  color: #222;
+}
+
+/* #region Toolbar */
+
+.toolbar {
+  align-items: center;
+  background: #f3f3f3;
+  border-bottom: 1px solid #ccc;
+  display: flex;
+  flex: none;
+  gap: 6px;
+  padding: 6px 8px;
+}
+
+.toolbar button {
+  background: #fff;
+  border: 1px solid #bbb;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+  padding: 3px 10px;
+}
+
+.toolbar button:hover {
+  background: #e8f0fe;
+}
+
+.toolbar button[aria-pressed='true'] {
+  background: #fde7e9;
+  border-color: #c42b1c;
+}
+
+.toolbar__separator {
+  align-self: stretch;
+  border-left: 1px solid #ccc;
+}
+
+.toolbar__name-box {
+  background: #fff;
+  border: 1px solid #bbb;
+  min-width: 90px;
+  padding: 3px 6px;
+}
+
+.toolbar__value-box {
+  background: #fff;
+  border: 1px solid #bbb;
+  flex: 1;
+  min-height: 1.6em;
+  overflow: hidden;
+  padding: 3px 6px;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+.toolbar__status {
+  color: #c42b1c;
+  min-width: 0;
+}
+
+/* #endregion */
+
+/* #region Grid */
+
+.grid-container {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.grid {
+  contain: strict;
+  height: 100%;
+  outline: none;
+  overflow: auto;
+  overscroll-behavior: contain;
+  position: relative;
+  width: 100%;
+}
+
+.grid__content {
+  position: relative;
+}
+
+.grid__header {
+  display: flex;
+  height: var(--row-height);
+  position: sticky;
+  top: 0;
+  z-index: 4;
+}
+
+.grid__corner,
+.grid__column-header,
+.grid__row-header {
+  background: #f3f3f3;
+  border-bottom: 1px solid #d0d0d0;
+  border-right: 1px solid #d0d0d0;
+  color: #555;
+  font-size: 12px;
+  line-height: calc(var(--row-height) - 1px);
+  text-align: center;
+  user-select: none;
+}
+
+.grid__corner {
+  flex: none;
+  left: 0;
+  position: sticky;
+  width: var(--row-header-width);
+  z-index: 1;
+}
+
+.grid__column-header {
+  flex: none;
+  width: var(--column-width);
+}
+
+.grid__column-header--selected,
+.grid__row-header--selected {
+  background: #d3e3fd;
+  color: #0b57d0;
+  font-weight: 600;
+}
+
+.grid__body {
+  position: relative;
+}
+
+.grid__row {
+  display: flex;
+  height: var(--row-height);
+  left: 0;
+  position: absolute;
+  width: 100%;
+}
+
+.grid__row-header {
+  flex: none;
+  left: 0;
+  position: sticky;
+  width: var(--row-header-width);
+  z-index: 2;
+}
+
+.grid__cell {
+  border-bottom: 1px solid #e2e2e2;
+  border-right: 1px solid #e2e2e2;
+  flex: none;
+  line-height: calc(var(--row-height) - 1px);
+  overflow: hidden;
+  padding: 0 4px;
+  text-overflow: ellipsis;
+  white-space: pre;
+  width: var(--column-width);
+}
+
+.grid__cell[data-type='number'] {
+  text-align: right;
+}
+
+.grid__cell[data-type='boolean'] {
+  text-align: center;
+}
+
+/* Lockable rows/columns are configured in code, they are only read-only when the grid is locked. */
+.grid--locked .grid__lockable,
+.grid--locked .grid__row--lockable .grid__cell,
+.grid--locked .grid__row--lockable .grid__row-header {
+  background-color: #f1f1f1;
+  color: #777;
+}
+
+.grid--locked .grid__column-header.grid__lockable::after,
+.grid--locked .grid__row--lockable .grid__row-header::after {
+  content: ' 🔒';
+  font-size: 10px;
+}
+
+.grid__range {
+  background: rgb(11 87 208 / 10%);
+  border: 1px solid #0b57d0;
+  pointer-events: none;
+  position: absolute;
+  z-index: 1;
+}
+
+.grid__active {
+  border: 2px solid #0b57d0;
+  height: var(--row-height);
+  pointer-events: none;
+  position: absolute;
+  width: var(--column-width);
+  z-index: 1;
+}
+
+.grid:not(:focus-within) .grid__active {
+  border-color: #888;
+}
+
+.grid__editor {
+  border: 2px solid #0b57d0;
+  font: inherit;
+  height: var(--row-height);
+  min-width: var(--column-width);
+  outline: none;
+  padding: 0 2px;
+  position: absolute;
+  z-index: 3;
+}
+
+.grid__editor[hidden] {
+  display: none;
+}
+
+/* #endregion */
+
+/* #region Sheet bar */
+
+.sheet-bar {
+  align-items: stretch;
+  background: #f3f3f3;
+  border-top: 1px solid #ccc;
+  display: flex;
+  flex: none;
+  height: 32px;
+}
+
+.sheet-bar__add {
+  background: none;
+  border: none;
+  border-right: 1px solid #ccc;
+  cursor: pointer;
+  flex: none;
+  font-size: 18px;
+  width: 36px;
+}
+
+.sheet-bar__add:hover {
+  background: #e3e3e3;
+}
+
+.sheet-bar__add:disabled {
+  color: #aaa;
+  cursor: default;
+}
+
+.sheet-bar__tabs {
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.sheet-tab {
+  align-items: center;
+  border-right: 1px solid #ccc;
+  cursor: pointer;
+  display: flex;
+  flex: none;
+  gap: 4px;
+  padding: 0 6px 0 12px;
+  user-select: none;
+  white-space: pre;
+}
+
+.sheet-tab:hover {
+  background: #e8e8e8;
+}
+
+.sheet-tab[aria-selected='true'] {
+  background: #fff;
+  box-shadow: inset 0 -3px 0 #107c41;
+  color: #107c41;
+  font-weight: 600;
+}
+
+.sheet-tab__close {
+  background: none;
+  border: none;
+  border-radius: 3px;
+  color: #888;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 4px;
+}
+
+.sheet-tab__close:hover {
+  background: #ddd;
+  color: #222;
+}
+
+/* #endregion */
