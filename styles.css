@@ -181,6 +181,40 @@ body {
   text-align: center;
 }
 
+/* While locked, the locked leading rows/columns are frozen (always shown). */
+.grid__frozen {
+  display: none;
+}
+
+.grid--locked .grid__frozen {
+  background: #fff;
+  display: block;
+  position: sticky;
+  top: var(--row-height);
+  z-index: 4;
+}
+
+.grid__frozen .grid__row {
+  position: relative;
+}
+
+.grid--locked .grid__body {
+  margin-top: calc(-1 * var(--locked-row-count) * var(--row-height));
+}
+
+.grid--locked .grid__lockable {
+  position: sticky;
+  z-index: 2;
+}
+
+.grid--locked .grid__frozen .grid__row:last-child > * {
+  border-bottom-color: #999;
+}
+
+.grid--locked .grid__lockable:not(:has(+ .grid__lockable)) {
+  border-right-color: #999;
+}
+
 /* Lockable rows/columns are configured in code, they are only read-only when the grid is locked. */
 .grid--locked .grid__lockable,
 .grid--locked .grid__row--lockable .grid__cell,

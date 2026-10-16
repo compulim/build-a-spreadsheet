@@ -62,11 +62,14 @@ export class SpreadsheetGrid extends EventTarget {
 
   #locked = false;
 
-  /** @type {Set<number>} */
-  #lockedColumns;
+  /** Number of leading columns that are read-only and frozen while locked. */
+  #lockedColumnCount;
 
-  /** @type {Set<number>} */
-  #lockedRows;
+  /** Number of leading rows that are read-only and frozen while locked. */
+  #lockedRowCount;
+
+  /** Copies of the locked rows, shown in a sticky pane while locked. @type {{ header: HTMLElement; cells: HTMLElement[]; row: number }[]} */
+  #frozenRows = [];
 
   /** @type {{ element: HTMLElement; header: HTMLElement; cells: HTMLElement[]; row: number }[]} */
   #pool = [];
@@ -98,8 +101,8 @@ export class SpreadsheetGrid extends EventTarget {
    *   rowHeaderWidth?: number;
    *   columnCount?: number;
    *   rowCount?: number;
-   *   lockedColumns?: Iterable<number>;
-   *   lockedRows?: Iterable<number>;
+   *   lockedColumnCount?: number;
+   *   lockedRowCount?: number;
    * }} [options]
    */
   constructor(
@@ -110,8 +113,8 @@ export class SpreadsheetGrid extends EventTarget {
       rowHeaderWidth = 56,
       columnCount = 50,
       rowCount = 10_000,
-      lockedColumns = [],
-      lockedRows = []
+      lockedColumnCount = 0,
+      lockedRowCount = 0
     } = {}
   ) {
     super();
@@ -122,8 +125,8 @@ export class SpreadsheetGrid extends EventTarget {
     this.rowHeaderWidth = rowHeaderWidth;
     this.columnCount = columnCount;
     this.rowCount = rowCount;
-    this.#lockedColumns = new Set(lockedColumns);
-    this.#lockedRows = new Set(lockedRows);
+    this.#lockedColumnCount = Math.max(0, Math.min(columnCount, lockedColumnCount));
+    this.#lockedRowCount = Math.max(0, Math.min(rowCount, lockedRowCount));
 
     const scroller = (this.element = createElement('div', 'grid'));
 
@@ -134,6 +137,7 @@ export class SpreadsheetGrid extends EventTarget {
     scroller.style.setProperty('--column-width', `${columnWidth}px`);
     scroller.style.setProperty('--row-height', `${rowHeight}px`);
     scroller.style.setProperty('--row-header-width', `${rowHeaderWidth}px`);
+    scroller.style.setProperty('--locked-row-count', String(this.#lockedRowCount));
 
     const content = createElement('div', 'grid__content');
 
@@ -150,9 +154,24 @@ export class SpreadsheetGrid extends EventTarget {
       columnHeader.textContent = getColumnName(column);
       columnHeader.dataset.column = String(column);
       columnHeader.setAttribute('role', 'columnheader');
-      this.#lockedColumns.has(column) && columnHeader.classList.add('grid__lockable');
+      this.#initLockableColumn(columnHeader, column);
       this.#columnHeaders.push(columnHeader);
       header.append(columnHeader);
+    }
+
+    // Locked rows are frozen by showing copies of them in a sticky pane below the header, while the body is shifted up
+    // underneath it so all other coordinates stay the same.
+    const frozen = createElement('div', 'grid__frozen');
+
+    for (let row = 0; row < this.#lockedRowCount; row++) {
+      const slot = this.#createRow();
+
+      slot.element.classList.add('grid__row--lockable');
+      slot.element.setAttribute('aria-hidden', 'true');
+      slot.header.textContent = String(row + 1);
+      slot.row = row;
+      frozen.append(slot.element);
+      this.#frozenRows.push(slot);
     }
 
     const body = (this.#body = createElement('div', 'grid__body'));
@@ -170,7 +189,7 @@ export class SpreadsheetGrid extends EventTarget {
     editor.hidden = true;
 
     body.append(this.#rangeOverlay, this.#activeOverlay, editor);
-    content.append(header, body);
+    content.append(header, frozen, body);
     scroller.append(content);
     container.append(scroller);
 
@@ -217,7 +236,7 @@ export class SpreadsheetGrid extends EventTarget {
     const { row } = /** @type {import('./workbook.js').CellChangeEvent} */ (event);
 
     // Only re-render if the changed cell is currently rendered. Multiple changes are batched into a single frame.
-    if (row >= this.#firstRow && row < this.#firstRow + this.#pool.length) {
+    if ((row >= this.#firstRow && row < this.#firstRow + this.#pool.length) || row < this.#lockedRowCount) {
       this.#contentDirty = true;
       this.#scheduleRender();
     }
@@ -300,7 +319,9 @@ export class SpreadsheetGrid extends EventTarget {
    * @param {number} row
    */
   isEditable(column, row) {
-    return !!this.#worksheet && !(this.#locked && (this.#lockedColumns.has(column) || this.#lockedRows.has(row)));
+    return (
+      !!this.#worksheet && !(this.#locked && (column < this.#lockedColumnCount || row < this.#lockedRowCount))
+    );
   }
 
   /** @returns {CellPosition} */
@@ -355,18 +376,25 @@ export class SpreadsheetGrid extends EventTarget {
     const from = this.#scrollTarget || { left: scrollLeft, top: scrollTop };
     const cellLeft = rowHeaderWidth + column * columnWidth;
     const cellTop = headerHeight + row * rowHeight;
+    const frozenWidth = this.#locked ? this.#lockedColumnCount * columnWidth : 0;
+    const frozenHeight = this.#locked ? this.#lockedRowCount * rowHeight : 0;
     let { left, top } = from;
 
-    if (cellLeft - rowHeaderWidth < left) {
-      left = cellLeft - rowHeaderWidth;
-    } else if (cellLeft + columnWidth > left + clientWidth) {
-      left = cellLeft + columnWidth - clientWidth;
+    // Frozen cells are always visible, so they never require scrolling in their frozen direction.
+    if (!frozenWidth || column >= this.#lockedColumnCount) {
+      if (cellLeft - rowHeaderWidth - frozenWidth < left) {
+        left = cellLeft - rowHeaderWidth - frozenWidth;
+      } else if (cellLeft + columnWidth > left + clientWidth) {
+        left = cellLeft + columnWidth - clientWidth;
+      }
     }
 
-    if (cellTop - headerHeight < top) {
-      top = cellTop - headerHeight;
-    } else if (cellTop + rowHeight > top + clientHeight) {
-      top = cellTop + rowHeight - clientHeight;
+    if (!frozenHeight || row >= this.#lockedRowCount) {
+      if (cellTop - headerHeight - frozenHeight < top) {
+        top = cellTop - headerHeight - frozenHeight;
+      } else if (cellTop + rowHeight > top + clientHeight) {
+        top = cellTop + rowHeight - clientHeight;
+      }
     }
 
     left = Math.max(0, Math.min(left, element.scrollWidth - clientWidth));
@@ -438,31 +466,17 @@ export class SpreadsheetGrid extends EventTarget {
   }
 
   #render() {
-    const { element, rowHeight, headerHeight, columnCount, rowCount } = this;
+    const { element, rowHeight, headerHeight, rowCount } = this;
     const visibleRows = Math.ceil(Math.max(0, element.clientHeight - headerHeight) / rowHeight) + 1;
     const poolSize = Math.min(rowCount, visibleRows + Math.max(MIN_OVERSCAN, visibleRows) * 2);
 
     let poolGrew = false;
 
     while (this.#pool.length < poolSize) {
-      const rowElement = createElement('div', 'grid__row');
-      const header = createElement('div', 'grid__row-header');
-      const cells = [];
+      const slot = this.#createRow();
 
-      rowElement.setAttribute('role', 'row');
-      header.setAttribute('role', 'rowheader');
-      rowElement.append(header);
-
-      for (let column = 0; column < columnCount; column++) {
-        const cell = createElement('div', this.#lockedColumns.has(column) ? 'grid__cell grid__lockable' : 'grid__cell');
-
-        cell.setAttribute('role', 'gridcell');
-        cells.push(cell);
-        rowElement.append(cell);
-      }
-
-      this.#body.insertBefore(rowElement, this.#rangeOverlay);
-      this.#pool.push({ element: rowElement, header, cells, row: -1 });
+      this.#body.insertBefore(slot.element, this.#rangeOverlay);
+      this.#pool.push(slot);
       poolGrew = true;
     }
 
@@ -493,12 +507,49 @@ export class SpreadsheetGrid extends EventTarget {
         slot.element.style.top = `${row * rowHeight}px`;
         slot.element.setAttribute('aria-rowindex', String(row + 2));
         slot.header.textContent = String(row + 1);
-        slot.element.classList.toggle('grid__row--lockable', this.#lockedRows.has(row));
+        slot.element.classList.toggle('grid__row--lockable', row < this.#lockedRowCount);
         this.#renderRowSelection(slot);
         this.#renderRowContent(slot);
       } else if (forceContent) {
         this.#renderRowContent(slot);
       }
+    }
+
+    forceContent && this.#frozenRows.forEach(slot => this.#renderRowContent(slot));
+  }
+
+  /** @returns {{ element: HTMLElement; header: HTMLElement; cells: HTMLElement[]; row: number }} */
+  #createRow() {
+    const element = createElement('div', 'grid__row');
+    const header = createElement('div', 'grid__row-header');
+    const cells = [];
+
+    element.setAttribute('role', 'row');
+    header.setAttribute('role', 'rowheader');
+    element.append(header);
+
+    for (let column = 0; column < this.columnCount; column++) {
+      const cell = createElement('div', 'grid__cell');
+
+      cell.setAttribute('role', 'gridcell');
+      this.#initLockableColumn(cell, column);
+      cells.push(cell);
+      element.append(cell);
+    }
+
+    return { element, header, cells, row: -1 };
+  }
+
+  /**
+   * Marks a cell or column header in a locked column. While locked, it sticks to the left so the column is frozen.
+   *
+   * @param {HTMLElement} element
+   * @param {number} column
+   */
+  #initLockableColumn(element, column) {
+    if (column < this.#lockedColumnCount) {
+      element.classList.add('grid__lockable');
+      element.style.left = `${this.rowHeaderWidth + column * this.columnWidth}px`;
     }
   }
 
@@ -549,6 +600,7 @@ export class SpreadsheetGrid extends EventTarget {
     );
 
     this.#pool.forEach(slot => slot.row !== -1 && this.#renderRowSelection(slot));
+    this.#frozenRows.forEach(slot => this.#renderRowSelection(slot));
 
     this.#dispatchSelectionChange();
   }
@@ -630,7 +682,11 @@ export class SpreadsheetGrid extends EventTarget {
 
     const { key, shiftKey } = event;
     const ctrlKey = event.ctrlKey || event.metaKey;
-    const pageRows = Math.max(1, Math.floor((this.element.clientHeight - this.headerHeight) / this.rowHeight) - 1);
+    const frozenHeight = this.#locked ? this.#lockedRowCount * this.rowHeight : 0;
+    const pageRows = Math.max(
+      1,
+      Math.floor((this.element.clientHeight - this.headerHeight - frozenHeight) / this.rowHeight) - 1
+    );
     const { column, row } = shiftKey ? this.#focus : this.#anchor;
 
     /** @type {[number, number] | undefined} */
@@ -720,11 +776,23 @@ export class SpreadsheetGrid extends EventTarget {
    * @returns {CellPosition}
    */
   #cellFromPoint({ clientX, clientY }) {
+    const { columnWidth, element, headerHeight, rowHeaderWidth, rowHeight } = this;
     const rect = this.#body.getBoundingClientRect();
+    const scrollerRect = element.getBoundingClientRect();
+    // Position relative to the top-left of the scrollable area (below the column header, right of the row header).
+    const x = clientX - scrollerRect.left - element.clientLeft - rowHeaderWidth;
+    const y = clientY - scrollerRect.top - element.clientTop - headerHeight;
+    const frozen = this.#locked;
 
     return this.#clamp({
-      column: Math.floor((clientX - rect.left - this.rowHeaderWidth) / this.columnWidth),
-      row: Math.floor((clientY - rect.top) / this.rowHeight)
+      column:
+        frozen && x >= 0 && x < this.#lockedColumnCount * columnWidth
+          ? Math.floor(x / columnWidth)
+          : Math.floor((clientX - rect.left - rowHeaderWidth) / columnWidth),
+      row:
+        frozen && y >= 0 && y < this.#lockedRowCount * rowHeight
+          ? Math.floor(y / rowHeight)
+          : Math.floor((clientY - rect.top) / rowHeight)
     });
   }
 
