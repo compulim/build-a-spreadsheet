@@ -385,11 +385,14 @@ export class Worksheet extends EventTarget {
    * cell below, and are ignored on the last column and row.
    * Dispatches `borderchange` (with `x` and `y` of the cell storing the edge) for each stored edge changed.
    *
+   * `edges` can be a single edge or an iterable (e.g. `Set`) of edges to apply together, for example
+   * `new Set(['top', 'left'])`. `'outside'` is a shortcut of `'left'`, `'right'`, `'top'` and `'bottom'`.
+   *
    * @param {{ x?: number; y?: number; width?: number; height?: number }} range
-   * @param {BorderEdges} edges
+   * @param {BorderEdges | Iterable<BorderEdges>} edges
    * @param {boolean} [value] `false` to unset the borders.
    */
-  setRangeBorder(range, edges, value = true) {
+  setBorder(range, edges, value = true) {
     const left = range.x ?? 0;
     const top = range.y ?? 0;
     const right = left + (range.width ?? (range.x === undefined ? this.columnCount : 1)) - 1;
@@ -398,25 +401,23 @@ export class Worksheet extends EventTarget {
     this.#assertCell(left, top);
     this.#assertCell(right, bottom);
 
+    const set = new Set(typeof edges === 'string' ? [edges] : edges);
+
+    if (set.delete('outside')) {
+      set.add('left').add('right').add('top').add('bottom');
+    }
+
     for (let y = top; y <= bottom; y++) {
       for (let x = left; x <= right; x++) {
-        if (edges === 'inside') {
+        if (set.has('inside')) {
           x > left && this.#setStoredEdge(x, y, 'left', value);
           y > top && this.#setStoredEdge(x, y, 'top', value);
-        } else {
-          const outside = edges === 'outside';
-
-          (outside || edges === 'left') && x === left && this.#setStoredEdge(x, y, 'left', value);
-          (outside || edges === 'top') && y === top && this.#setStoredEdge(x, y, 'top', value);
-          (outside || edges === 'right') &&
-            x === right &&
-            x + 1 < this.columnCount &&
-            this.#setStoredEdge(x + 1, y, 'left', value);
-          (outside || edges === 'bottom') &&
-            y === bottom &&
-            y + 1 < this.rowCount &&
-            this.#setStoredEdge(x, y + 1, 'top', value);
         }
+
+        set.has('left') && x === left && this.#setStoredEdge(x, y, 'left', value);
+        set.has('top') && y === top && this.#setStoredEdge(x, y, 'top', value);
+        set.has('right') && x === right && x + 1 < this.columnCount && this.#setStoredEdge(x + 1, y, 'left', value);
+        set.has('bottom') && y === bottom && y + 1 < this.rowCount && this.#setStoredEdge(x, y + 1, 'top', value);
       }
     }
   }

@@ -276,13 +276,10 @@ borderSelect.addEventListener('change', () => {
     const { left, top, right, bottom } = grid.selection;
     const range = { x: left, y: top, width: right - left + 1, height: bottom - top + 1 };
 
-    if (preset === 'outside') {
-      worksheet.setRangeBorder(range, 'outside');
-    } else if (preset === 'all' || preset === 'none') {
-      worksheet.setRangeBorder(range, 'outside', preset === 'all');
-      worksheet.setRangeBorder(range, 'inside', preset === 'all');
+    if (preset === 'all' || preset === 'none') {
+      worksheet.setBorder(range, new Set(['outside', 'inside']), preset === 'all');
     } else {
-      worksheet.setRangeBorder(range, /** @type {import('./workbook/Worksheet.js').BorderEdges} */ (preset));
+      worksheet.setBorder(range, /** @type {import('./workbook/Worksheet.js').BorderEdges} */ (preset));
     }
   }
 
