@@ -122,7 +122,7 @@ export function cellsToSVG(rows, { columnWidths = [], getBorder = () => undefine
             markerId = `m${markerIds.size}`;
             markerIds.set(highlight.background, markerId);
             parts.push(
-              `<filter id="${markerId}" x="0" y="0.5" width="1" height="0.5"><feFlood flood-color="${escapeXML(highlight.background)}"/></filter>`
+              `<filter id="${markerId}" x="0" y="0.6" width="1" height="0.4"><feFlood flood-color="${escapeXML(highlight.background)}"/></filter>`
             );
           }
 
