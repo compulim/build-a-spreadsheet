@@ -59,6 +59,21 @@ describe('Worksheet', () => {
     ]);
   });
 
+  test('strings are trimmed and blank strings clear the cell', () => {
+    const worksheet = new Worksheet();
+
+    worksheet.setValue(0, 0, '  hello \n');
+    assert.equal(worksheet.getValue(0, 0), 'hello');
+
+    worksheet.setValues([['   ', ' x ']]);
+    assert.equal(worksheet.getValue(0, 0), undefined);
+    assert.equal(worksheet.getValue(1, 0), 'x');
+
+    worksheet.setValue(1, 0, () => ' \t ');
+    assert.equal(worksheet.getValue(1, 0), undefined);
+    assert.equal(worksheet.toCSV(), '');
+  });
+
   test('updater functions', () => {
     const worksheet = new Worksheet();
     const calls = [];

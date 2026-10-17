@@ -111,7 +111,7 @@ export class Worksheet extends EventTarget {
   }
 
   /**
-   * Sets the value of a cell. Setting `''`, `null` or `undefined` clears the cell.
+   * Sets the value of a cell. Strings are trimmed. Setting an empty or whitespace-only string, `null` or `undefined` clears the cell.
    *
    * @param {number} x
    * @param {number} y
@@ -128,7 +128,9 @@ export class Worksheet extends EventTarget {
       if (!Number.isFinite(value)) {
         throw new TypeError('Number value must be finite.');
       }
-    } else if (typeof value !== 'boolean' && typeof value !== 'string') {
+    } else if (typeof value === 'string') {
+      value = value.trim();
+    } else if (typeof value !== 'boolean') {
       throw new TypeError('Value must be a boolean, number or string.');
     }
 

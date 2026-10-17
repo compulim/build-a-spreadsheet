@@ -60,7 +60,7 @@ const loaded = await Workbook.fromZip(zip);
 
 | Member | Description |
 | --- | --- |
-| `Worksheet#setValue(x, y, valueOrUpdater)` | Sets a cell (zero-based), or updates it with `(value, x, y) => nextValue`. `''`, `null` or `undefined` clears it. Throws `RangeError` / `TypeError` on invalid input. |
+| `Worksheet#setValue(x, y, valueOrUpdater)` | Sets a cell (zero-based), or updates it with `(value, x, y) => nextValue`. Strings are trimmed. Blank strings, `null` or `undefined` clear it. Throws `RangeError` / `TypeError` on invalid input. |
 | `Worksheet#getValue(x, y)` | Returns a cell value, `undefined` if empty. |
 | `Worksheet#getValues(x, y, width, height)` | Returns a 2D array (`values[y][x]`) of a range. |
 | `Worksheet#setValues(values, x?, y?)` / `Worksheet#setValues(updater, x, y, width, height)` | Sets a block of values (use `''` to clear), or updates every cell of a range with `(value, x, y) => nextValue`. Values outside of the sheet are ignored. |
