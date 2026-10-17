@@ -196,17 +196,13 @@ function updateSelectionInfo() {
 function updateFormattingButtons() {
   const { column, row } = grid.activeCell;
   const formatting = grid.worksheet?.getFormatting(column, row);
-  // Without explicit alignment, numbers are aligned right, booleans center and text left.
-  const valueType = typeof grid.worksheet?.getValue(column, row);
-  const effectiveAlign =
-    formatting?.align || (valueType === 'number' ? 'right' : valueType === 'boolean' ? 'center' : 'left');
 
   for (const { style, button } of styleButtons) {
     button.setAttribute('aria-pressed', String(!!formatting?.[style]));
   }
 
   for (const { align, button } of alignButtons) {
-    button.setAttribute('aria-pressed', String(effectiveAlign === align));
+    button.setAttribute('aria-pressed', String(formatting?.align === align));
   }
 }
 
