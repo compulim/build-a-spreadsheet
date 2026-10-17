@@ -251,15 +251,17 @@ function isSelectionMerged() {
 
   const { left, top, right, bottom } = grid.selection;
 
-  for (let row = top; row <= bottom; row++) {
-    for (let column = left; column <= right; column++) {
-      if (!worksheet.getMerge(column, row)) {
-        return false;
-      }
-    }
+  /** Number of selected cells covered by merged cells, per row. @type {Map<number, number>} */
+  const covered = new Map();
+
+  for (const { x, y, width } of worksheet.getMergesInRows(top, bottom)) {
+    const count = Math.min(x + width - 1, right) - Math.max(x, left) + 1;
+
+    count > 0 && covered.set(y, (covered.get(y) || 0) + count);
   }
 
-  return true;
+  // Merged cells never overlap, so all cells are merged if every row is fully covered.
+  return covered.size === bottom - top + 1 && [...covered.values()].every(count => count === right - left + 1);
 }
 
 /** @param {import('./workbook/Worksheet.js').FormattingUpdater} updater */

@@ -683,6 +683,27 @@ export class Worksheet extends EventTarget {
   }
 
   /**
+   * Returns all merged cells within rows `top` to `bottom` (inclusive), in no particular order. Cost is proportional
+   * to the number of merged cells in the worksheet, not to the size of the range.
+   *
+   * @param {number} top
+   * @param {number} bottom
+   * @returns {CellMerge[]}
+   */
+  getMergesInRows(top, bottom) {
+    /** @type {CellMerge[]} */
+    const merges = [];
+
+    for (const [key, width] of this.#merges) {
+      const y = Math.floor(key / this.columnCount);
+
+      y >= top && y <= bottom && merges.push({ x: key % this.columnCount, y, width });
+    }
+
+    return merges;
+  }
+
+  /**
    * @param {number} x
    * @param {number} y
    */

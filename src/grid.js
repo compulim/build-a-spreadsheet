@@ -494,16 +494,16 @@ export class SpreadsheetGrid extends EventTarget {
 
     // The selection covers all merged cells partially selected. Expanding may cover more merged cells in other rows,
     // so it repeats until nothing changes.
-    for (let changed = !!this.#worksheet; changed; ) {
+    const merges = this.#worksheet?.getMergesInRows(top, bottom) || [];
+
+    for (let changed = merges.length > 0; changed; ) {
       changed = false;
 
-      for (let row = top; row <= bottom; row++) {
-        for (const { x, width } of this.#worksheet?.getMerges(row) || []) {
-          if (x <= right && x + width - 1 >= left && (x < left || x + width - 1 > right)) {
-            left = Math.min(left, x);
-            right = Math.max(right, x + width - 1);
-            changed = true;
-          }
+      for (const { x, width } of merges) {
+        if (x <= right && x + width - 1 >= left && (x < left || x + width - 1 > right)) {
+          left = Math.min(left, x);
+          right = Math.max(right, x + width - 1);
+          changed = true;
         }
       }
     }
