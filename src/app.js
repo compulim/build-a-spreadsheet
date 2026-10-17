@@ -35,6 +35,10 @@ const alignButtons = /** @type {const} */ (['left', 'center', 'right']).map(alig
   align,
   button: /** @type {HTMLButtonElement} */ (document.getElementById(`align-${align}-button`))
 }));
+const formatButtons = /** @type {const} */ (['currency', 'percent', 'date', 'datetime', 'duration']).map(format => ({
+  format,
+  button: /** @type {HTMLButtonElement} */ (document.getElementById(`format-${format}-button`))
+}));
 const highlightButtons = HIGHLIGHTS.map(({ name, label, background, color }) => {
   const button = document.createElement('button');
 
@@ -225,6 +229,10 @@ function updateFormattingButtons() {
     button.setAttribute('aria-pressed', String(formatting?.align === align));
   }
 
+  for (const { format, button } of formatButtons) {
+    button.setAttribute('aria-pressed', String(formatting?.format === format));
+  }
+
   for (const { name, button } of highlightButtons) {
     button.setAttribute('aria-pressed', String(formatting?.highlight === name));
   }
@@ -259,6 +267,15 @@ for (const { align, button } of alignButtons) {
     const nextAlign = button.getAttribute('aria-pressed') === 'true' ? undefined : align;
 
     formatSelection(formatting => ({ ...formatting, align: nextAlign }));
+  });
+}
+
+for (const { format, button } of formatButtons) {
+  button.addEventListener('click', () => {
+    // Only one number format at a time, clicking a pushed format button unpushes it, back to the default format.
+    const nextFormat = button.getAttribute('aria-pressed') === 'true' ? undefined : format;
+
+    formatSelection(formatting => ({ ...formatting, format: nextFormat }));
   });
 }
 

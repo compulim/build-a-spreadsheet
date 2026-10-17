@@ -239,6 +239,34 @@ body {
   text-align: right;
 }
 
+/* Accounting style: "$" sticks to the left, the amount to the right, regardless of alignment. */
+.grid__cell[data-format='currency'] {
+  text-align: right;
+}
+
+.grid__cell[data-format='currency']::before {
+  content: '$';
+  float: left;
+}
+
+/* Negative amounts are wrapped in parentheses. An invisible ")" keeps positive amounts aligned with negative ones. */
+.grid__cell[data-format='currency'] .grid__cell-text::after {
+  color: transparent;
+  content: ')';
+}
+
+.grid__cell[data-format='currency'].grid__cell--negative .grid__cell-text::before {
+  content: '(';
+}
+
+.grid__cell[data-format='currency'].grid__cell--negative .grid__cell-text::after {
+  color: inherit;
+}
+
+.grid__cell[data-format='percent'] .grid__cell-text::after {
+  content: '%';
+}
+
 /* While locked, the locked leading rows/columns are frozen (always shown). */
 .grid__frozen {
   display: none;

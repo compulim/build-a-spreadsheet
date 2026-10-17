@@ -11,10 +11,14 @@ import { COLUMN_COUNT, COLUMN_WIDTH, ROW_COUNT } from './constants.js';
 /** @typedef {CellValue | null | undefined} CellInput */
 /** @typedef {(value: CellValue | undefined, x: number, y: number) => CellInput} CellUpdater */
 /** @typedef {'left' | 'center' | 'right'} CellAlign */
+/** @typedef {'currency' | 'date' | 'datetime' | 'duration' | 'percent'} CellNumberFormat */
+
+const NUMBER_FORMATS = ['currency', 'date', 'datetime', 'duration', 'percent'];
 /**
  * `align` is `undefined` when not set: text is aligned left, numbers right and booleans center.
  * `highlight` is the name of a highlight (background/foreground color combination), `undefined` when not set.
- * @typedef {{ bold: boolean; italic: boolean; underline: boolean; strikethrough: boolean; align: CellAlign | undefined; highlight: string | undefined }} CellFormatting
+ * `format` is how numbers are displayed, `undefined` when not set (as-is).
+ * @typedef {{ bold: boolean; italic: boolean; underline: boolean; strikethrough: boolean; align: CellAlign | undefined; highlight: string | undefined; format: CellNumberFormat | undefined }} CellFormatting
  */
 /** @typedef {Partial<CellFormatting> | null | undefined} FormattingInput */
 /** @typedef {(formatting: CellFormatting, x: number, y: number) => FormattingInput} FormattingUpdater */
@@ -26,7 +30,8 @@ const DEFAULT_FORMATTING = Object.freeze({
   underline: false,
   strikethrough: false,
   align: undefined,
-  highlight: undefined
+  highlight: undefined,
+  format: undefined
 });
 
 /**
@@ -492,6 +497,12 @@ export class Worksheet extends EventTarget {
       throw new TypeError('Highlight must be a string.');
     }
 
+    const format = input?.format || undefined;
+
+    if (format !== undefined && !NUMBER_FORMATS.includes(format)) {
+      throw new TypeError(`Format must be one of ${NUMBER_FORMATS.map(name => `"${name}"`).join(', ')}.`);
+    }
+
     /** @type {CellFormatting} */
     const formatting = {
       bold: !!input?.bold,
@@ -499,7 +510,8 @@ export class Worksheet extends EventTarget {
       underline: !!input?.underline,
       strikethrough: !!input?.strikethrough,
       align,
-      highlight
+      highlight,
+      format
     };
 
     const previous = this.#formattings.get(key) || DEFAULT_FORMATTING;
@@ -509,7 +521,8 @@ export class Worksheet extends EventTarget {
       a.underline === b.underline &&
       a.strikethrough === b.strikethrough &&
       a.align === b.align &&
-      a.highlight === b.highlight;
+      a.highlight === b.highlight &&
+      a.format === b.format;
 
     if (isEqual(previous, formatting)) {
       return;
