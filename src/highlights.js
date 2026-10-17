@@ -9,7 +9,7 @@ export const HIGHLIGHTS = Object.freeze([
   { name: 'green', label: 'Green highlight', background: '#c6efce' },
   { name: 'blue', label: 'Blue highlight', background: '#cfe2f3' },
   { name: 'orange', label: 'Orange highlight', background: '#fce4c4' },
-  { name: 'red-text', label: 'Red text', color: '#c00000' }
+  { name: 'red-text', label: 'Red text', color: '#f70000' }
 ]);
 
 /** @param {string | undefined} name */
