@@ -205,6 +205,10 @@ body {
   font-style: italic;
 }
 
+.grid__cell[data-align='left'] {
+  text-align: left;
+}
+
 .grid__cell[data-align='center'] {
   text-align: center;
 }

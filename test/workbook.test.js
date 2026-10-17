@@ -421,8 +421,13 @@ test('Worksheet formatting', () => {
     italic: false,
     underline: false,
     strikethrough: false,
-    align: 'left'
+    align: undefined
   });
+
+  worksheet.setFormatting(0, 2, { align: 'left' });
+  assert.strictEqual(worksheet.getFormatting(0, 2).align, 'left');
+  worksheet.setFormatting(0, 2, null);
+  events.length = 0;
 
   worksheet.setFormatting(1, 1, { bold: true, underline: true, align: 'center' });
   assert.deepStrictEqual(worksheet.getFormatting(1, 1), {
@@ -441,8 +446,8 @@ test('Worksheet formatting', () => {
   assert.deepStrictEqual(
     worksheet.getFormattings(0, 0, 2, 2).map(row => row.map(({ italic, align }) => [italic, align])),
     [
-      [[true, 'left'], [true, 'left']],
-      [[true, 'left'], [true, 'center']]
+      [[true, undefined], [true, undefined]],
+      [[true, undefined], [true, 'center']]
     ]
   );
 

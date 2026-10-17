@@ -822,7 +822,7 @@ export class SpreadsheetGrid extends EventTarget {
       const decorations = [formatting?.underline && 'underline', formatting?.strikethrough && 'line-through']
         .filter(Boolean)
         .join(' ');
-      const align = formatting && formatting.align !== 'left' ? formatting.align : '';
+      const align = formatting?.align || '';
 
       cell.classList.toggle('grid__cell--bold', !!formatting?.bold);
       cell.classList.toggle('grid__cell--italic', !!formatting?.italic);

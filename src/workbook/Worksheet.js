@@ -9,7 +9,10 @@ import { COLUMN_COUNT, COLUMN_WIDTH, ROW_COUNT } from './constants.js';
 /** @typedef {CellValue | null | undefined} CellInput */
 /** @typedef {(value: CellValue | undefined, x: number, y: number) => CellInput} CellUpdater */
 /** @typedef {'left' | 'center' | 'right'} CellAlign */
-/** @typedef {{ bold: boolean; italic: boolean; underline: boolean; strikethrough: boolean; align: CellAlign }} CellFormatting */
+/**
+ * `align` is `undefined` when not set: text is aligned left, numbers right and booleans center.
+ * @typedef {{ bold: boolean; italic: boolean; underline: boolean; strikethrough: boolean; align: CellAlign | undefined }} CellFormatting
+ */
 /** @typedef {Partial<CellFormatting> | null | undefined} FormattingInput */
 /** @typedef {(formatting: CellFormatting, x: number, y: number) => FormattingInput} FormattingUpdater */
 
@@ -19,7 +22,7 @@ const DEFAULT_FORMATTING = Object.freeze({
   italic: false,
   underline: false,
   strikethrough: false,
-  align: 'left'
+  align: undefined
 });
 
 /**
@@ -443,7 +446,7 @@ export class Worksheet extends EventTarget {
   }
 
   /**
-   * Returns the formatting of a cell. Unformatted cells return the default formatting (no styles, aligned left).
+   * Returns the formatting of a cell. Unformatted cells return the default formatting (no styles, `align` of `undefined`).
    *
    * @param {number} x
    * @param {number} y
@@ -476,9 +479,9 @@ export class Worksheet extends EventTarget {
       throw new TypeError('Formatting must be an object.');
     }
 
-    const align = input?.align ?? 'left';
+    const align = input?.align ?? undefined;
 
-    if (align !== 'left' && align !== 'center' && align !== 'right') {
+    if (align !== undefined && align !== 'left' && align !== 'center' && align !== 'right') {
       throw new TypeError('Align must be "left", "center" or "right".');
     }
 

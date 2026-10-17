@@ -230,6 +230,34 @@ for (const { align, button } of alignButtons) {
   button.addEventListener('click', () => formatSelection(formatting => ({ ...formatting, align })));
 }
 
+/** @type {Record<string, HTMLButtonElement>} */
+const formattingHotkeys = {
+  b: styleButtons[0].button,
+  i: styleButtons[1].button,
+  u: styleButtons[2].button,
+  l: alignButtons[0].button,
+  e: alignButtons[1].button,
+  r: alignButtons[2].button
+};
+
+gridContainer.addEventListener('keydown', event => {
+  const target = /** @type {HTMLElement} */ (event.target);
+
+  if (
+    (event.ctrlKey || event.metaKey) &&
+    !event.altKey &&
+    !event.shiftKey &&
+    !(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target.isContentEditable)
+  ) {
+    const button = formattingHotkeys[event.key.toLowerCase()];
+
+    if (button) {
+      event.preventDefault();
+      button.click();
+    }
+  }
+});
+
 unformatButton.addEventListener('click', () => formatSelection(() => null));
 
 function updateUndoButtons() {
