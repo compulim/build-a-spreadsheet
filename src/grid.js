@@ -1334,7 +1334,8 @@ export class SpreadsheetGrid extends EventTarget {
 
     style.left = `${this.rowHeaderWidth + this.#columnOffset(column)}px`;
     style.top = `${row * this.rowHeight}px`;
-    style.minWidth = `${this.getColumnWidth(column)}px`;
+    style.width = `${this.getColumnWidth(column)}px`;
+    style.height = `${this.rowHeight}px`;
   }
 
   commitEdit() {
