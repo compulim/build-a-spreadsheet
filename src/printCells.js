@@ -4,6 +4,7 @@ import { getHighlight } from './highlights.js';
 /** @typedef {import('./workbook/Worksheet.js').CellBorder} CellBorder */
 /** @typedef {import('./workbook/Worksheet.js').CellFormatting} CellFormatting */
 /** @typedef {(column: number, row: number) => Partial<CellFormatting> | undefined} GetFormatting */
+/** @typedef {(column: number, row: number) => number} GetColumnSpan */
 
 /** Target print resolution of the generated PNG. Change to e.g. 300 for smaller files. */
 export const PRINT_DPI = 600;
@@ -33,13 +34,17 @@ function escapeXML(text) {
  * Borders are centered on the grid lines, the same as in the grid.
  *
  * @param {readonly (readonly unknown[])[]} rows Values, row by row.
- * @param {{ columnWidths?: readonly number[], getBorder?: (column: number, row: number) => Partial<CellBorder> | undefined, getFormatting?: GetFormatting }} [options]
+ * @param {{ columnWidths?: readonly number[], getBorder?: (column: number, row: number) => Partial<CellBorder> | undefined, getColumnSpan?: GetColumnSpan, getFormatting?: GetFormatting }} [options]
  *   `columnWidths` are the widths of each column in CSS pixels, defaulting to `CELL_WIDTH`.
+ *   `getColumnSpan` returns the number of columns a merged cell spans (relative to the first cell), 0 for cells covered by a merged cell, defaulting to 1.
  *   `getBorder` returns the border of a cell relative to the first cell, called with -1 and the column/row count for neighbors.
  *   `getFormatting` returns the formatting of a cell relative to the first cell.
  * @returns {{ height: number, svg: string, width: number }}
  */
-export function cellsToSVG(rows, { columnWidths = [], getBorder = () => undefined, getFormatting = () => undefined } = {}) {
+export function cellsToSVG(
+  rows,
+  { columnWidths = [], getBorder = () => undefined, getColumnSpan = () => 1, getFormatting = () => undefined } = {}
+) {
   const rowCount = rows.length;
   const columnCount = Math.max(0, ...rows.map(row => row.length));
   const widths = Array.from({ length: columnCount }, (_, index) => columnWidths[index] ?? CELL_WIDTH);
@@ -53,6 +58,11 @@ export function cellsToSVG(rows, { columnWidths = [], getBorder = () => undefine
 
   for (let rowIndex = 0; rowIndex < rowCount; rowIndex++) {
     for (let columnIndex = -1; columnIndex < columnCount; columnIndex++) {
+      // No borders inside merged cells.
+      if (columnIndex + 1 < columnCount && getColumnSpan(columnIndex + 1, rowIndex) === 0) {
+        continue;
+      }
+
       if (getBorder(columnIndex, rowIndex)?.right || getBorder(columnIndex + 1, rowIndex)?.left) {
         borderLines.push({ x1: columnIndex + 1, y1: rowIndex, x2: columnIndex + 1, y2: rowIndex + 1 });
       }
@@ -77,8 +87,14 @@ export function cellsToSVG(rows, { columnWidths = [], getBorder = () => undefine
 
   rows.forEach((row, rowIndex) => {
     for (let columnIndex = 0; columnIndex < columnCount; columnIndex++) {
+      const span = Math.min(getColumnSpan(columnIndex, rowIndex), columnCount - columnIndex);
+
+      if (span < 1) {
+        continue;
+      }
+
       const x = margin + columnLefts[columnIndex] + 0.5;
-      const cellWidth = widths[columnIndex];
+      const cellWidth = columnLefts[columnIndex + span] - columnLefts[columnIndex];
       const y = margin + rowIndex * CELL_HEIGHT + 0.5;
       const value = row[columnIndex];
       const text = value === undefined ? '' : formatValue(value);
@@ -160,11 +176,11 @@ export function cellsToSVG(rows, { columnWidths = [], getBorder = () => undefine
  * Renders the cells into a PNG suitable for printing at the given DPI.
  *
  * @param {readonly (readonly unknown[])[]} rows
- * @param {{ columnWidths?: readonly number[], dpi?: number, getBorder?: (column: number, row: number) => Partial<CellBorder> | undefined, getFormatting?: GetFormatting }} [options]
+ * @param {{ columnWidths?: readonly number[], dpi?: number, getBorder?: (column: number, row: number) => Partial<CellBorder> | undefined, getColumnSpan?: GetColumnSpan, getFormatting?: GetFormatting }} [options]
  * @returns {Promise<Blob>}
  */
-export async function cellsToPNG(rows, { columnWidths, dpi = PRINT_DPI, getBorder, getFormatting } = {}) {
-  const { height, svg, width } = cellsToSVG(rows, { columnWidths, getBorder, getFormatting });
+export async function cellsToPNG(rows, { columnWidths, dpi = PRINT_DPI, getBorder, getColumnSpan, getFormatting } = {}) {
+  const { height, svg, width } = cellsToSVG(rows, { columnWidths, getBorder, getColumnSpan, getFormatting });
   const scale = dpi / CSS_DPI;
   const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
 

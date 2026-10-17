@@ -144,6 +144,8 @@ export class SpreadsheetGrid extends EventTarget {
 
   /** Active cell, where editing happens. @type {CellPosition} */
   #anchor = { column: 0, row: 0 };
+  /** Column the active cell was entered from, used when moving vertically out of a merged cell. */
+  #preferredColumn = 0;
 
   /** The other end of the selected range. @type {CellPosition} */
   #focus = { column: 0, row: 0 };
@@ -345,7 +347,40 @@ export class SpreadsheetGrid extends EventTarget {
   #handleColumnWidthChange = event => {
     this.#applyColumnWidth(/** @type {Event & { x: number }} */ (event).x);
     this.#updateColumnLayout();
+    // Merged cells span multiple columns.
+    this.#contentDirty = true;
+    this.#scheduleRender();
   };
+
+  #handleMergeChange = () => {
+    this.#contentDirty = true;
+    this.#scheduleRender();
+    this.#anchor = this.#toMergeStart(this.#anchor);
+    this.#updateSelection();
+  };
+
+  /**
+   * Returns the first cell of the merged cell containing the cell, or the cell itself if not merged.
+   *
+   * @param {CellPosition} cell
+   * @returns {CellPosition}
+   */
+  #toMergeStart(cell) {
+    const merge = this.#worksheet?.getMerge(cell.column, cell.row);
+
+    return merge ? { column: merge.x, row: cell.row } : cell;
+  }
+
+  /**
+   * Returns the last column of the merged cell containing the cell, or the column of the cell if not merged.
+   *
+   * @param {CellPosition} cell
+   */
+  #mergeEndColumn({ column, row }) {
+    const merge = this.#worksheet?.getMerge(column, row);
+
+    return merge ? merge.x + merge.width - 1 : column;
+  }
 
   #handleBorderChange = () => {
     this.#contentDirty = true;
@@ -381,6 +416,7 @@ export class SpreadsheetGrid extends EventTarget {
       this.#worksheet.removeEventListener('borderchange', this.#handleBorderChange);
       this.#worksheet.removeEventListener('formattingchange', this.#handleBorderChange);
       this.#worksheet.removeEventListener('columnwidthchange', this.#handleColumnWidthChange);
+      this.#worksheet.removeEventListener('mergechange', this.#handleMergeChange);
     }
 
     this.#worksheet = worksheet;
@@ -394,6 +430,7 @@ export class SpreadsheetGrid extends EventTarget {
     worksheet?.addEventListener('borderchange', this.#handleBorderChange);
     worksheet?.addEventListener('formattingchange', this.#handleBorderChange);
     worksheet?.addEventListener('columnwidthchange', this.#handleColumnWidthChange);
+    worksheet?.addEventListener('mergechange', this.#handleMergeChange);
 
     for (let column = 0; column < this.columnCount; column++) {
       this.#applyColumnWidth(column);
@@ -450,12 +487,28 @@ export class SpreadsheetGrid extends EventTarget {
 
   /** @returns {CellRange} */
   get selection() {
-    return {
-      left: Math.min(this.#anchor.column, this.#focus.column),
-      top: Math.min(this.#anchor.row, this.#focus.row),
-      right: Math.max(this.#anchor.column, this.#focus.column),
-      bottom: Math.max(this.#anchor.row, this.#focus.row)
-    };
+    const top = Math.min(this.#anchor.row, this.#focus.row);
+    const bottom = Math.max(this.#anchor.row, this.#focus.row);
+    let left = Math.min(this.#anchor.column, this.#focus.column);
+    let right = Math.max(this.#anchor.column, this.#focus.column);
+
+    // The selection covers all merged cells partially selected. Expanding may cover more merged cells in other rows,
+    // so it repeats until nothing changes.
+    const merges = this.#worksheet?.getMergesInRows(top, bottom) || [];
+
+    for (let changed = merges.length > 0; changed; ) {
+      changed = false;
+
+      for (const { x, width } of merges) {
+        if (x <= right && x + width - 1 >= left && (x < left || x + width - 1 > right)) {
+          left = Math.min(left, x);
+          right = Math.max(right, x + width - 1);
+          changed = true;
+        }
+      }
+    }
+
+    return { left, top, right, bottom };
   }
 
   /**
@@ -467,8 +520,9 @@ export class SpreadsheetGrid extends EventTarget {
   select(anchor, focus = anchor) {
     this.#editMode && this.commitEdit();
 
-    this.#anchor = this.#clamp(anchor);
+    this.#anchor = this.#toMergeStart(this.#clamp(anchor));
     this.#focus = this.#clamp(focus);
+    this.#preferredColumn = this.#clamp(anchor).column;
 
     this.#updateSelection();
     this.scrollIntoView(this.#focus);
@@ -781,8 +835,18 @@ export class SpreadsheetGrid extends EventTarget {
       const values = this.#worksheet.getValues(column, 0, 1, this.rowCount);
 
       for (let row = 0; row < values.length; row++) {
-        const value = values[row][0];
-        const format = formattings[row][0].format;
+        const merge = this.#worksheet.getMerge(column, row);
+        // Content of a merged cell is in its first cell, and spans all merged columns.
+        const value = merge ? this.#worksheet.getValue(merge.x, row) : values[row][0];
+        const format = (merge ? this.#worksheet.getFormattings(merge.x, row, 1, 1)[0][0] : formattings[row][0]).format;
+        let otherColumnsWidth = 0;
+
+        if (merge) {
+          for (let index = merge.x; index < merge.x + merge.width; index++) {
+            index !== column && (otherColumnsWidth += this.getColumnWidth(index));
+          }
+        }
+
         const { text: formatted } = formatDisplayValue(value, format);
         // Includes decorations added by CSS: currency sign (with a gap) and parentheses, or percent sign.
         const text =
@@ -790,7 +854,7 @@ export class SpreadsheetGrid extends EventTarget {
 
         if (text) {
           for (const line of text.split('\n')) {
-            width = Math.max(width, context.measureText(line).width);
+            width = Math.max(width, context.measureText(line).width - otherColumnsWidth);
           }
         }
       }
@@ -809,10 +873,10 @@ export class SpreadsheetGrid extends EventTarget {
     for (let column = 0; column < this.#lockedColumnCount; column++) {
       const left = `${this.rowHeaderWidth + this.#columnOffset(column)}px`;
 
-      this.#columnHeaders[column].style.left = left;
+      this.#columnHeaders[column].style.setProperty('--sticky-left', left);
 
       for (const { cells } of [...this.#pool, ...this.#frozenRows]) {
-        cells[column].style.left = left;
+        cells[column].style.setProperty('--sticky-left', left);
       }
     }
 
@@ -829,16 +893,35 @@ export class SpreadsheetGrid extends EventTarget {
   #initLockableColumn(element, column) {
     if (column < this.#lockedColumnCount) {
       element.classList.add('grid__lockable');
-      element.style.left = `${this.rowHeaderWidth + this.#columnOffset(column)}px`;
+      // Only applied while locked, otherwise it would offset relatively positioned cells (e.g. with borders).
+      element.style.setProperty('--sticky-left', `${this.rowHeaderWidth + this.#columnOffset(column)}px`);
     }
   }
 
   /** @param {{ cells: HTMLElement[]; row: number }} slot */
   #renderRowContent({ cells, row }) {
     const worksheet = this.#worksheet;
+    const merges = worksheet ? worksheet.getMerges(row) : [];
+    let mergeIndex = 0;
 
     for (let column = 0; column < cells.length; column++) {
       const cell = cells[column];
+      const merge = merges[mergeIndex]?.x <= column ? merges[mergeIndex] : undefined;
+      const lastColumn = merge ? merge.x + merge.width - 1 : column;
+
+      merge && column === lastColumn && mergeIndex++;
+
+      // A merged cell is shown as its first cell spanning all merged columns, other cells are hidden.
+      const hidden = !!merge && column !== merge.x;
+      const width = `${merge ? this.#columnOffset(lastColumn + 1) - this.#columnOffset(column) : this.getColumnWidth(column)}px`;
+
+      if (cell.style.display !== (hidden ? 'none' : '')) {
+        cell.style.display = hidden ? 'none' : '';
+      }
+
+      if (cell.style.width !== width) {
+        cell.style.width = width;
+      }
       const value = worksheet ? worksheet.getValue(column, row) : '';
       const type = typeof value;
       const formatting = worksheet?.getFormattings(column, row, 1, 1)[0][0];
@@ -895,7 +978,7 @@ export class SpreadsheetGrid extends EventTarget {
         color ? (cell.dataset.color = color) : delete cell.dataset.color;
       }
 
-      const shadow = worksheet ? this.#getBorderShadow(worksheet, column, row) : '';
+      const shadow = worksheet ? this.#getBorderShadow(worksheet, column, row, lastColumn) : '';
 
       // Compare with the last set value, as the browser normalizes `style.boxShadow`.
       if ((cell.dataset.border || '') !== shadow) {
@@ -903,7 +986,7 @@ export class SpreadsheetGrid extends EventTarget {
         cell.style.boxShadow = shadow;
       }
 
-      const corners = worksheet ? this.#getBorderCorners(worksheet, column, row) : '';
+      const corners = worksheet ? this.#getBorderCorners(worksheet, column, row, lastColumn) : '';
 
       if ((cell.dataset.borderCorners || '') !== corners) {
         cell.dataset.borderCorners = corners;
@@ -921,12 +1004,13 @@ export class SpreadsheetGrid extends EventTarget {
    * @param {Worksheet} worksheet
    * @param {number} column
    * @param {number} row
+   * @param {number} [lastColumn] Last column of a merged cell.
    */
-  #getBorderShadow(worksheet, column, row) {
+  #getBorderShadow(worksheet, column, row, lastColumn = column) {
     const inside = BORDER_WIDTH - BORDER_OUTSIDE_WIDTH;
     const shadows = [];
 
-    hasVerticalEdge(worksheet, column, row) && shadows.push(`inset -${inside}px 0 ${BORDER_COLOR}`);
+    hasVerticalEdge(worksheet, lastColumn, row) && shadows.push(`inset -${inside}px 0 ${BORDER_COLOR}`);
     hasHorizontalEdge(worksheet, column, row) && shadows.push(`inset 0 -${inside}px ${BORDER_COLOR}`);
     hasVerticalEdge(worksheet, column - 1, row) && shadows.push(`inset ${BORDER_OUTSIDE_WIDTH}px 0 ${BORDER_COLOR}`);
     hasHorizontalEdge(worksheet, column, row - 1) && shadows.push(`inset 0 ${BORDER_OUTSIDE_WIDTH}px ${BORDER_COLOR}`);
@@ -941,16 +1025,17 @@ export class SpreadsheetGrid extends EventTarget {
    * @param {Worksheet} worksheet
    * @param {number} column
    * @param {number} row
+   * @param {number} [lastColumn] Last column of a merged cell.
    */
-  #getBorderCorners(worksheet, column, row) {
+  #getBorderCorners(worksheet, column, row, lastColumn = column) {
     const inside = BORDER_WIDTH - BORDER_OUTSIDE_WIDTH;
     const outside = BORDER_OUTSIDE_WIDTH;
     const fill = `linear-gradient(${BORDER_COLOR}, ${BORDER_COLOR})`;
     const layers = [];
 
-    hasJunction(worksheet, column, row) && layers.push(`${fill} right bottom / ${inside}px ${inside}px no-repeat`);
+    hasJunction(worksheet, lastColumn, row) && layers.push(`${fill} right bottom / ${inside}px ${inside}px no-repeat`);
     hasJunction(worksheet, column - 1, row) && layers.push(`${fill} left bottom / ${outside}px ${inside}px no-repeat`);
-    hasJunction(worksheet, column, row - 1) && layers.push(`${fill} right top / ${inside}px ${outside}px no-repeat`);
+    hasJunction(worksheet, lastColumn, row - 1) && layers.push(`${fill} right top / ${inside}px ${outside}px no-repeat`);
     hasJunction(worksheet, column - 1, row - 1) && layers.push(`${fill} left top / ${outside}px ${outside}px no-repeat`);
 
     return layers.join(', ');
@@ -968,15 +1053,16 @@ export class SpreadsheetGrid extends EventTarget {
     const { left, top, right, bottom } = this.selection;
     const rangeStyle = this.#rangeOverlay.style;
     const activeStyle = this.#activeOverlay.style;
+    const anchorEnd = this.#mergeEndColumn(this.#anchor);
 
     rangeStyle.left = `${rowHeaderWidth + this.#columnOffset(left)}px`;
     rangeStyle.top = `${top * rowHeight}px`;
     rangeStyle.width = `${this.#columnOffset(right + 1) - this.#columnOffset(left)}px`;
     rangeStyle.height = `${(bottom - top + 1) * rowHeight}px`;
-    this.#rangeOverlay.hidden = left === right && top === bottom;
+    this.#rangeOverlay.hidden = left === this.#anchor.column && right === anchorEnd && top === bottom;
 
     activeStyle.left = `${rowHeaderWidth + this.#columnOffset(this.#anchor.column)}px`;
-    activeStyle.width = `${this.getColumnWidth(this.#anchor.column)}px`;
+    activeStyle.width = `${this.#columnOffset(anchorEnd + 1) - this.#columnOffset(this.#anchor.column)}px`;
     activeStyle.top = `${this.#anchor.row * rowHeight}px`;
 
     this.#columnHeaders.forEach((header, column) =>
@@ -1017,7 +1103,15 @@ export class SpreadsheetGrid extends EventTarget {
    */
   #move(deltaColumn, deltaRow, extend) {
     const from = extend ? this.#focus : this.#anchor;
-    const to = this.#clamp({ column: from.column + deltaColumn, row: from.row + deltaRow });
+    const preferredColumn = this.#preferredColumn;
+    // Moving right skips the rest of a merged cell. Moving vertically out of a merged cell keeps the column entered from.
+    const column =
+      deltaColumn > 0
+        ? this.#mergeEndColumn(from)
+        : !extend && deltaRow && preferredColumn >= from.column && preferredColumn <= this.#mergeEndColumn(from)
+          ? preferredColumn
+          : from.column;
+    const to = this.#clamp({ column: column + deltaColumn, row: from.row + deltaRow });
 
     extend ? this.select(this.#anchor, to) : this.select(to);
   }
@@ -1037,7 +1131,8 @@ export class SpreadsheetGrid extends EventTarget {
 
     let { column, row } = this.#anchor;
 
-    column += deltaColumn;
+    // Moving right skips the rest of a merged cell.
+    column = (deltaColumn > 0 ? this.#mergeEndColumn(this.#anchor) : column) + deltaColumn;
     row += deltaRow;
 
     if (column > right) {
@@ -1250,7 +1345,7 @@ export class SpreadsheetGrid extends EventTarget {
    */
   #selectKeepingScroll(anchor, focus) {
     this.#editMode && this.commitEdit();
-    this.#anchor = this.#clamp(anchor);
+    this.#anchor = this.#toMergeStart(this.#clamp(anchor));
     this.#focus = this.#clamp(focus);
     this.#updateSelection();
   }
@@ -1413,7 +1508,7 @@ export class SpreadsheetGrid extends EventTarget {
 
     style.left = `${this.rowHeaderWidth + this.#columnOffset(column)}px`;
     style.top = `${row * this.rowHeight}px`;
-    style.width = `${this.getColumnWidth(column)}px`;
+    style.width = `${this.#columnOffset(this.#mergeEndColumn(this.#anchor) + 1) - this.#columnOffset(column)}px`;
     style.height = `${this.rowHeight}px`;
   }
 

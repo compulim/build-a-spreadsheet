@@ -27,6 +27,7 @@ const redoButton = /** @type {HTMLButtonElement} */ (document.getElementById('re
 const borderSelect = /** @type {HTMLSelectElement} */ (document.getElementById('border-select'));
 const lockButton = /** @type {HTMLButtonElement} */ (document.getElementById('lock-button'));
 const unformatButton = /** @type {HTMLButtonElement} */ (document.getElementById('unformat-button'));
+const mergeButton = /** @type {HTMLButtonElement} */ (document.getElementById('merge-button'));
 const styleButtons = /** @type {const} */ (['bold', 'italic', 'underline', 'strikethrough']).map(style => ({
   style,
   button: /** @type {HTMLButtonElement} */ (document.getElementById(`${style}-button`))
@@ -236,6 +237,31 @@ function updateFormattingButtons() {
   for (const { name, button } of highlightButtons) {
     button.setAttribute('aria-pressed', String(formatting?.highlight === name));
   }
+
+  mergeButton.setAttribute('aria-pressed', String(isSelectionMerged()));
+}
+
+/** Whether every selected cell is in a merged cell. */
+function isSelectionMerged() {
+  const worksheet = grid.worksheet;
+
+  if (!worksheet) {
+    return false;
+  }
+
+  const { left, top, right, bottom } = grid.selection;
+
+  /** Number of selected cells covered by merged cells, per row. @type {Map<number, number>} */
+  const covered = new Map();
+
+  for (const { x, y, width } of worksheet.getMergesInRows(top, bottom)) {
+    const count = Math.min(x + width - 1, right) - Math.max(x, left) + 1;
+
+    count > 0 && covered.set(y, (covered.get(y) || 0) + count);
+  }
+
+  // Merged cells never overlap, so all cells are merged if every row is fully covered.
+  return covered.size === bottom - top + 1 && [...covered.values()].every(count => count === right - left + 1);
 }
 
 /** @param {import('./workbook/Worksheet.js').FormattingUpdater} updater */
@@ -317,6 +343,38 @@ gridContainer.addEventListener('keydown', event => {
 });
 
 unformatButton.addEventListener('click', () => formatSelection(() => null));
+
+mergeButton.addEventListener('click', () => {
+  const worksheet = grid.worksheet;
+
+  if (worksheet) {
+    const { left, top, right, bottom } = grid.selection;
+    // Unmerges only if all selected cells are merged, otherwise merges all of them.
+    const unmerge = isSelectionMerged();
+    let skipped = false;
+
+    // Cells are merged horizontally only, each selected row separately.
+    for (let row = top; row <= bottom; row++) {
+      const merges = worksheet.getMerges(row).filter(({ x, width }) => x <= right && x + width - 1 >= left);
+      const start = Math.min(left, ...merges.map(({ x }) => x));
+      const end = Math.max(right, ...merges.map(({ x, width }) => x + width - 1));
+
+      if (!grid.isEditable(start, row) || !grid.isEditable(end, row)) {
+        skipped = true;
+      } else if (unmerge) {
+        merges.forEach(({ x }) => worksheet.unmergeCells(x, row));
+      } else if (end > start) {
+        worksheet.mergeCells(start, row, end - start + 1);
+      }
+    }
+
+    skipped && showStatus('Some cells are locked and cannot be merged.');
+    updateFormattingButtons();
+    updateUndoButtons();
+  }
+
+  grid.focus();
+});
 
 function updateUndoButtons() {
   undoButton.disabled = !grid.worksheet?.canUndo;
@@ -422,6 +480,8 @@ borderSelect.addEventListener('change', () => {
     } else {
       worksheet.setBorder(range, new Set([/** @type {import('./workbook/Worksheet.js').BorderEdges} */ (preset)]));
     }
+
+    updateUndoButtons();
   }
 
   grid.focus();
@@ -511,9 +571,32 @@ printButton.addEventListener('click', async () => {
     }
 
     const formattings = worksheet.getFormattings(left, top, right - left + 1, bottom - top + 1);
+    /** Column spans of merged cells (clipped to the selection), keyed by `row,column`, 0 for covered cells. @type {Map<string, number>} */
+    const spans = new Map();
+
+    for (let row = top; row <= bottom; row++) {
+      for (const merge of worksheet.getMerges(row)) {
+        const start = Math.max(merge.x, left);
+        const end = Math.min(merge.x + merge.width - 1, right);
+
+        if (start > end) {
+          continue;
+        }
+
+        // The selection may start in the middle of a merged cell, whose content and formatting are in its first cell.
+        rows[row - top][start - left] = worksheet.getValue(merge.x, row) ?? '';
+        formattings[row - top][start - left] = worksheet.getFormattings(merge.x, row, 1, 1)[0][0];
+
+        for (let column = start; column <= end; column++) {
+          spans.set(`${row - top},${column - left}`, column === start ? end - start + 1 : 0);
+        }
+      }
+    }
+
+    const getColumnSpan = (/** @type {number} */ column, /** @type {number} */ row) => spans.get(`${row},${column}`) ?? 1;
     const getFormatting = (/** @type {number} */ column, /** @type {number} */ row) => formattings[row]?.[column];
 
-    download(await cellsToPNG(rows, { columnWidths, getBorder, getFormatting }), `${workbook.getWorksheetName(worksheet)}.png`);
+    download(await cellsToPNG(rows, { columnWidths, getBorder, getColumnSpan, getFormatting }), `${workbook.getWorksheetName(worksheet)}.png`);
   } catch (error) {
     alert(`Failed to print selected cells: ${/** @type {Error} */ (error).message}`);
   }
