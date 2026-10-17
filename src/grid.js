@@ -1011,9 +1011,12 @@ export class SpreadsheetGrid extends EventTarget {
     const shadows = [];
 
     hasVerticalEdge(worksheet, lastColumn, row) && shadows.push(`inset -${inside}px 0 ${BORDER_COLOR}`);
-    hasHorizontalEdge(worksheet, column, row) && shadows.push(`inset 0 -${inside}px ${BORDER_COLOR}`);
+    // Edges along a merged cell only span its full width if present in every column, otherwise drawn by segments.
+    this.#everyColumn(column, lastColumn, c => hasHorizontalEdge(worksheet, c, row)) &&
+      shadows.push(`inset 0 -${inside}px ${BORDER_COLOR}`);
     hasVerticalEdge(worksheet, column - 1, row) && shadows.push(`inset ${BORDER_OUTSIDE_WIDTH}px 0 ${BORDER_COLOR}`);
-    hasHorizontalEdge(worksheet, column, row - 1) && shadows.push(`inset 0 ${BORDER_OUTSIDE_WIDTH}px ${BORDER_COLOR}`);
+    this.#everyColumn(column, lastColumn, c => hasHorizontalEdge(worksheet, c, row - 1)) &&
+      shadows.push(`inset 0 ${BORDER_OUTSIDE_WIDTH}px ${BORDER_COLOR}`);
 
     return shadows.length ? [...shadows, 'var(--grid-line-shadow)'].join(', ') : '';
   }
@@ -1038,7 +1041,40 @@ export class SpreadsheetGrid extends EventTarget {
     hasJunction(worksheet, lastColumn, row - 1) && layers.push(`${fill} right top / ${inside}px ${outside}px no-repeat`);
     hasJunction(worksheet, column - 1, row - 1) && layers.push(`${fill} left top / ${outside}px ${outside}px no-repeat`);
 
+    // Segments of edges present along only some columns of a merged cell.
+    const bottomPartial = !this.#everyColumn(column, lastColumn, c => hasHorizontalEdge(worksheet, c, row));
+    const topPartial = !this.#everyColumn(column, lastColumn, c => hasHorizontalEdge(worksheet, c, row - 1));
+
+    for (let c = column; c <= lastColumn; c++) {
+      const x = this.#columnOffset(c) - this.#columnOffset(column);
+      const width = this.getColumnWidth(c);
+
+      bottomPartial &&
+        hasHorizontalEdge(worksheet, c, row) &&
+        layers.push(`${fill} ${x}px bottom / ${width}px ${inside}px no-repeat`);
+      topPartial &&
+        hasHorizontalEdge(worksheet, c, row - 1) &&
+        layers.push(`${fill} ${x}px top / ${width}px ${outside}px no-repeat`);
+    }
+
     return layers.join(', ');
+  }
+
+  /**
+   * Returns `true` if the predicate is true for every column from `column` to `lastColumn`.
+   *
+   * @param {number} column
+   * @param {number} lastColumn
+   * @param {(column: number) => boolean} predicate
+   */
+  #everyColumn(column, lastColumn, predicate) {
+    for (let c = column; c <= lastColumn; c++) {
+      if (!predicate(c)) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   /** @param {{ header: HTMLElement; row: number }} slot */
