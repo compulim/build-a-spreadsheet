@@ -414,6 +414,11 @@ test('Worksheet formatting', () => {
   const worksheet = new Worksheet({ columnCount: 3, rowCount: 3 });
   const events = [];
 
+  worksheet.setValues([
+    [1, 2, 3],
+    [4, 5, 6],
+    [7, 8, 9]
+  ]);
   worksheet.addEventListener('formattingchange', ({ x, y }) => events.push([x, y]));
 
   assert.deepStrictEqual(worksheet.getFormatting(0, 0), {
@@ -456,5 +461,22 @@ test('Worksheet formatting', () => {
   assert.deepStrictEqual(worksheet.getFormatting(2, 1).align, 'right');
 
   assert.throws(() => worksheet.setFormatting(0, 0, { align: 'justify' }), TypeError);
-  assert.strictEqual(worksheet.toCSV(), '');
+});
+
+test('Worksheet formatting is not kept on empty cells', () => {
+  const worksheet = new Worksheet({ columnCount: 3, rowCount: 3 });
+
+  worksheet.setValue(0, 0, 'a');
+  worksheet.setFormattings(() => ({ bold: true }), 0, 0, 2, 1);
+  assert.strictEqual(worksheet.getFormatting(0, 0).bold, true);
+  assert.strictEqual(worksheet.getFormatting(1, 0).bold, false);
+
+  const events = [];
+
+  worksheet.addEventListener('formattingchange', ({ x, y }) => events.push([x, y]));
+  worksheet.setValue(0, 0, '');
+  assert.deepStrictEqual(events, [[0, 0]]);
+
+  worksheet.setValue(0, 0, 'b');
+  assert.strictEqual(worksheet.getFormatting(0, 0).bold, false);
 });

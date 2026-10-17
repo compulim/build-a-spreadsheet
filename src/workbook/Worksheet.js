@@ -179,6 +179,11 @@ export class Worksheet extends EventTarget {
 
     this.#applyingHistory || this.#record({ x, y, value, previousValue });
 
+    // Empty cells never keep formatting.
+    if (value === '' && this.#formattings.delete(y * this.columnCount + x)) {
+      this.dispatchEvent(Object.assign(new Event('formattingchange'), { x, y }));
+    }
+
     this.dispatchEvent(new CellChangeEvent('cellchange', { x, y, value, previousValue, worksheet: this }));
   }
 
@@ -460,7 +465,8 @@ export class Worksheet extends EventTarget {
 
   /**
    * Sets the formatting of a cell. Missing properties are set to default. Setting `null`, `undefined` or the default
-   * formatting removes the formatting. Dispatches `formattingchange` (with `x` and `y`) if changed.
+   * formatting removes the formatting. Empty cells cannot be formatted and are left as-is. Dispatches
+   * `formattingchange` (with `x` and `y`) if changed.
    *
    * @param {number} x
    * @param {number} y
@@ -468,6 +474,10 @@ export class Worksheet extends EventTarget {
    */
   setFormatting(x, y, formattingOrUpdater) {
     this.#assertCell(x, y);
+
+    if ((this.#rows[y]?.[x] ?? '') === '') {
+      return;
+    }
 
     const key = y * this.columnCount + x;
     const input =
