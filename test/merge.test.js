@@ -74,3 +74,41 @@ test('merge is undoable', async () => {
   worksheet.redo();
   assert.deepEqual(worksheet.getMerge(1, 0), { x: 0, y: 0, width: 2 });
 });
+
+test('merge uses the formatting of the first non-empty cell', () => {
+  const worksheet = new Worksheet();
+
+  worksheet.setValues([['', 'b', 'c']], 1, 1);
+  worksheet.setFormattings([[null, { italic: true }, { bold: true }]], 1, 1);
+  worksheet.mergeCells(1, 1, 3);
+
+  assert.deepEqual(worksheet.getValues(1, 1, 3, 1), [['b c', '', '']]);
+  assert.equal(worksheet.getFormattings(1, 1, 1, 1)[0][0].italic, true);
+  assert.equal(worksheet.getFormattings(1, 1, 1, 1)[0][0].bold, false);
+});
+
+test('undo of merge restores inner borders', async () => {
+  const worksheet = new Worksheet();
+
+  worksheet.setBorder({ x: 1, y: 1, width: 3, height: 1 }, new Set(['outside', 'inside']));
+  await Promise.resolve();
+  worksheet.mergeCells(1, 1, 3);
+  assert.equal(worksheet.getBorder(2, 1).left, false);
+  await Promise.resolve();
+  worksheet.undo();
+
+  assert.equal(worksheet.getBorder(2, 1).left, true);
+  assert.equal(worksheet.getBorder(3, 1).left, true);
+  assert.equal(worksheet.getMerge(1, 1), undefined);
+  worksheet.redo();
+  assert.equal(worksheet.getBorder(2, 1).left, false);
+});
+
+test('CSV keeps merged content in the first cell', () => {
+  const worksheet = new Worksheet();
+
+  worksheet.setValues([['a', 'b', 'c', 'e']], 1, 1);
+  worksheet.mergeCells(1, 1, 3);
+
+  assert.equal(worksheet.toCSV().split(/\r?\n/)[1], ',a b c,,,e');
+});

@@ -9,7 +9,8 @@ import { COLUMN_COUNT, COLUMN_WIDTH, ROW_COUNT } from './constants.js';
 /** @typedef {{ x: number; y: number; formatting: CellFormatting; previousFormatting: CellFormatting }} CellFormattingChange */
 /** @typedef {{ x: number; y: number; merge: number; previousMerge: number }} CellMergeChange */
 /** @typedef {{ x: number; y: number; width: number }} CellMerge */
-/** @typedef {CellValueChange | CellFormattingChange | CellMergeChange} CellChange */
+/** @typedef {{ x: number; y: number; edge: 'left' | 'top'; border: boolean; previousBorder: boolean }} CellBorderChange */
+/** @typedef {CellValueChange | CellFormattingChange | CellMergeChange | CellBorderChange} CellChange */
 /** @typedef {CellValue | null | undefined} CellInput */
 /** @typedef {(value: CellValue | undefined, x: number, y: number) => CellInput} CellUpdater */
 /** @typedef {'left' | 'center' | 'right'} CellAlign */
@@ -362,7 +363,9 @@ export class Worksheet extends EventTarget {
 
     try {
       for (const change of isUndo ? [...changes].reverse() : changes) {
-        if ('merge' in change) {
+        if ('edge' in change) {
+          this.#setStoredEdge(change.x, change.y, change.edge, isUndo ? change.previousBorder : change.border, true);
+        } else if ('merge' in change) {
           this.#setMerge(change.x, change.y, isUndo ? change.previousMerge : change.merge);
         } else if ('formatting' in change) {
           this.#setFormatting(change.x, change.y, isUndo ? change.previousFormatting : change.formatting);
@@ -402,8 +405,9 @@ export class Worksheet extends EventTarget {
    * @param {number} y
    * @param {'left' | 'top'} side
    * @param {boolean} value
+   * @param {boolean} [record] Records the change for undo.
    */
-  #setStoredEdge(x, y, side, value) {
+  #setStoredEdge(x, y, side, value, record = false) {
     const key = y * this.columnCount + x;
     const previous = this.#borders.get(key) || { top: false, left: false };
 
@@ -414,6 +418,8 @@ export class Worksheet extends EventTarget {
     const next = { ...previous, [side]: value };
 
     next.top || next.left ? this.#borders.set(key, next) : this.#borders.delete(key);
+
+    record && !this.#applyingHistory && this.#record({ x, y, edge: side, border: value, previousBorder: previous[side] });
 
     this.dispatchEvent(Object.assign(new Event('borderchange'), { x, y }));
   }
@@ -711,7 +717,7 @@ export class Worksheet extends EventTarget {
    * Merges cells of a row horizontally into a single cell. Merged cells overlapping the range are merged together.
    *
    * Non-empty values are concatenated (separated by a space) into the first cell and other cells are cleared. The
-   * formatting of the first cell is kept. Borders between the merged cells are removed. Undoable.
+   * formatting of the first non-empty cell is used. Borders between the merged cells are removed. Undoable.
    *
    * @param {number} x
    * @param {number} y
@@ -735,6 +741,9 @@ export class Worksheet extends EventTarget {
 
     /** @type {CellValue[]} */
     const values = [];
+    const [formatting] = this.getFormattings(left, y, right - left + 1, 1)[0].filter(
+      (_, index) => (this.#rows[y]?.[left + index] ?? '') !== ''
+    );
 
     for (let column = left; column <= right; column++) {
       this.#setMerge(column, y, 0);
@@ -744,11 +753,12 @@ export class Worksheet extends EventTarget {
       value !== undefined && values.push(value);
     }
 
-    this.setValue(left, y, values.length > 1 ? values.map(formatValue).join(' ') : values[0]);
+    this.setValue(left, y, values.length > 1 ? values.map(formatValue).join(' ') : values[0] ?? '');
+    formatting && this.#setFormatting(left, y, formatting);
 
     for (let column = left + 1; column <= right; column++) {
       this.setValue(column, y, '');
-      this.#setStoredEdge(column, y, 'left', false);
+      this.#setStoredEdge(column, y, 'left', false, true);
     }
 
     this.#setMerge(left, y, right - left + 1);

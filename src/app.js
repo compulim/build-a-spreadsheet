@@ -238,7 +238,28 @@ function updateFormattingButtons() {
     button.setAttribute('aria-pressed', String(formatting?.highlight === name));
   }
 
-  mergeButton.setAttribute('aria-pressed', String(!!grid.worksheet?.getMerge(column, row)));
+  mergeButton.setAttribute('aria-pressed', String(isSelectionMerged()));
+}
+
+/** Whether every selected cell is in a merged cell. */
+function isSelectionMerged() {
+  const worksheet = grid.worksheet;
+
+  if (!worksheet) {
+    return false;
+  }
+
+  const { left, top, right, bottom } = grid.selection;
+
+  for (let row = top; row <= bottom; row++) {
+    for (let column = left; column <= right; column++) {
+      if (!worksheet.getMerge(column, row)) {
+        return false;
+      }
+    }
+  }
+
+  return true;
 }
 
 /** @param {import('./workbook/Worksheet.js').FormattingUpdater} updater */
@@ -326,7 +347,8 @@ mergeButton.addEventListener('click', () => {
 
   if (worksheet) {
     const { left, top, right, bottom } = grid.selection;
-    const unmerge = mergeButton.getAttribute('aria-pressed') === 'true';
+    // Unmerges only if all selected cells are merged, otherwise merges all of them.
+    const unmerge = isSelectionMerged();
     let skipped = false;
 
     // Cells are merged horizontally only, each selected row separately.

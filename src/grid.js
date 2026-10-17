@@ -144,6 +144,8 @@ export class SpreadsheetGrid extends EventTarget {
 
   /** Active cell, where editing happens. @type {CellPosition} */
   #anchor = { column: 0, row: 0 };
+  /** Column the active cell was entered from, used when moving vertically out of a merged cell. */
+  #preferredColumn = 0;
 
   /** The other end of the selected range. @type {CellPosition} */
   #focus = { column: 0, row: 0 };
@@ -504,6 +506,7 @@ export class SpreadsheetGrid extends EventTarget {
 
     this.#anchor = this.#toMergeStart(this.#clamp(anchor));
     this.#focus = this.#clamp(focus);
+    this.#preferredColumn = this.#clamp(anchor).column;
 
     this.#updateSelection();
     this.scrollIntoView(this.#focus);
@@ -1092,8 +1095,14 @@ export class SpreadsheetGrid extends EventTarget {
    */
   #move(deltaColumn, deltaRow, extend) {
     const from = extend ? this.#focus : this.#anchor;
-    // Moving right skips the rest of a merged cell.
-    const column = deltaColumn > 0 ? this.#mergeEndColumn(from) : from.column;
+    const preferredColumn = this.#preferredColumn;
+    // Moving right skips the rest of a merged cell. Moving vertically out of a merged cell keeps the column entered from.
+    const column =
+      deltaColumn > 0
+        ? this.#mergeEndColumn(from)
+        : !extend && deltaRow && preferredColumn >= from.column && preferredColumn <= this.#mergeEndColumn(from)
+          ? preferredColumn
+          : from.column;
     const to = this.#clamp({ column: column + deltaColumn, row: from.row + deltaRow });
 
     extend ? this.select(this.#anchor, to) : this.select(to);
