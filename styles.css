@@ -210,7 +210,7 @@ body {
  * center of the font and ends below the baseline. Padding extends it sideways, negative margin keeps the text in place.
  */
 .grid__cell-text--marker {
-  background: linear-gradient(to bottom, transparent 50%, var(--marker-color) 50%);
+  background: linear-gradient(to bottom, transparent 60%, var(--marker-color) 50%);
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
   margin: 0 -0.2em;
