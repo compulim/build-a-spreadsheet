@@ -355,6 +355,7 @@ export class SpreadsheetGrid extends EventTarget {
 
       this.#worksheet.removeEventListener('cellchange', this.#handleCellChange);
       this.#worksheet.removeEventListener('borderchange', this.#handleBorderChange);
+      this.#worksheet.removeEventListener('formattingchange', this.#handleBorderChange);
       this.#worksheet.removeEventListener('columnwidthchange', this.#handleColumnWidthChange);
     }
 
@@ -367,6 +368,7 @@ export class SpreadsheetGrid extends EventTarget {
 
     worksheet?.addEventListener('cellchange', this.#handleCellChange);
     worksheet?.addEventListener('borderchange', this.#handleBorderChange);
+    worksheet?.addEventListener('formattingchange', this.#handleBorderChange);
     worksheet?.addEventListener('columnwidthchange', this.#handleColumnWidthChange);
 
     for (let column = 0; column < this.columnCount; column++) {
@@ -814,6 +816,23 @@ export class SpreadsheetGrid extends EventTarget {
 
       if (cell.dataset.type !== type) {
         cell.dataset.type = type;
+      }
+
+      const formatting = worksheet?.getFormatting(column, row);
+      const decorations = [formatting?.underline && 'underline', formatting?.strikethrough && 'line-through']
+        .filter(Boolean)
+        .join(' ');
+      const align = formatting?.align || '';
+
+      cell.classList.toggle('grid__cell--bold', !!formatting?.bold);
+      cell.classList.toggle('grid__cell--italic', !!formatting?.italic);
+
+      if (cell.style.textDecorationLine !== decorations) {
+        cell.style.textDecorationLine = decorations;
+      }
+
+      if ((cell.dataset.align || '') !== align) {
+        align ? (cell.dataset.align = align) : delete cell.dataset.align;
       }
 
       const shadow = worksheet ? this.#getBorderShadow(worksheet, column, row) : '';

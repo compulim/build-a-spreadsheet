@@ -197,6 +197,26 @@ body {
   text-align: center;
 }
 
+.grid__cell--bold {
+  font-weight: bold;
+}
+
+.grid__cell--italic {
+  font-style: italic;
+}
+
+.grid__cell[data-align='left'] {
+  text-align: left;
+}
+
+.grid__cell[data-align='center'] {
+  text-align: center;
+}
+
+.grid__cell[data-align='right'] {
+  text-align: right;
+}
+
 /* While locked, the locked leading rows/columns are frozen (always shown). */
 .grid__frozen {
   display: none;

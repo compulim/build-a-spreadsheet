@@ -25,6 +25,15 @@ const undoButton = /** @type {HTMLButtonElement} */ (document.getElementById('un
 const redoButton = /** @type {HTMLButtonElement} */ (document.getElementById('redo-button'));
 const borderSelect = /** @type {HTMLSelectElement} */ (document.getElementById('border-select'));
 const lockButton = /** @type {HTMLButtonElement} */ (document.getElementById('lock-button'));
+const unformatButton = /** @type {HTMLButtonElement} */ (document.getElementById('unformat-button'));
+const styleButtons = /** @type {const} */ (['bold', 'italic', 'underline', 'strikethrough']).map(style => ({
+  style,
+  button: /** @type {HTMLButtonElement} */ (document.getElementById(`${style}-button`))
+}));
+const alignButtons = /** @type {const} */ (['left', 'center', 'right']).map(align => ({
+  align,
+  button: /** @type {HTMLButtonElement} */ (document.getElementById(`align-${align}-button`))
+}));
 const nameBox = /** @type {HTMLOutputElement} */ (document.getElementById('name-box'));
 const valueBox = /** @type {HTMLOutputElement} */ (document.getElementById('value-box'));
 const status = /** @type {HTMLOutputElement} */ (document.getElementById('status'));
@@ -112,6 +121,7 @@ function activateWorksheet(worksheet) {
   grid.setWorksheet(worksheet);
   renderTabs();
   updateUndoButtons();
+  updateFormattingButtons();
   grid.focus();
 }
 
@@ -156,6 +166,7 @@ function setWorkbook(nextWorkbook) {
     workbook.removeEventListener('worksheetremove', renderTabs);
     workbook.removeEventListener('worksheetrename', renderTabs);
     workbook.removeEventListener('cellchange', updateUndoButtons);
+    workbook.removeEventListener('cellchange', updateFormattingButtons);
   }
 
   workbook = nextWorkbook;
@@ -163,6 +174,7 @@ function setWorkbook(nextWorkbook) {
   workbook.addEventListener('worksheetremove', renderTabs);
   workbook.addEventListener('worksheetrename', renderTabs);
   workbook.addEventListener('cellchange', updateUndoButtons);
+  workbook.addEventListener('cellchange', updateFormattingButtons);
 
   // Expose for scripting from the browser console, e.g. `app.workbook.worksheets[0].setValue(0, 0, 'Hello')`.
   Object.assign(globalThis, { app: { workbook, grid } });
@@ -178,7 +190,83 @@ function updateSelectionInfo() {
 
   nameBox.value = left === right && top === bottom ? topLeft : `${topLeft}:${getColumnName(right)}${bottom + 1}`;
   valueBox.value = grid.worksheet ? formatValue(grid.worksheet.getValue(column, row)) : '';
+  updateFormattingButtons();
 }
+
+function updateFormattingButtons() {
+  const { column, row } = grid.activeCell;
+  const formatting = grid.worksheet?.getFormatting(column, row);
+
+  for (const { style, button } of styleButtons) {
+    button.setAttribute('aria-pressed', String(!!formatting?.[style]));
+  }
+
+  for (const { align, button } of alignButtons) {
+    button.setAttribute('aria-pressed', String(formatting?.align === align));
+  }
+}
+
+/** @param {import('./workbook/Worksheet.js').FormattingUpdater} updater */
+function formatSelection(updater) {
+  const worksheet = grid.worksheet;
+
+  if (worksheet) {
+    const { left, top, right, bottom } = grid.selection;
+
+    worksheet.setFormattings(updater, left, top, right - left + 1, bottom - top + 1);
+    updateFormattingButtons();
+    updateUndoButtons();
+  }
+
+  grid.focus();
+}
+
+for (const { style, button } of styleButtons) {
+  button.addEventListener('click', () => {
+    const value = button.getAttribute('aria-pressed') !== 'true';
+
+    formatSelection(formatting => ({ ...formatting, [style]: value }));
+  });
+}
+
+for (const { align, button } of alignButtons) {
+  button.addEventListener('click', () => {
+    // Clicking a pushed align button unpushes it, back to the default (type-based) alignment.
+    const nextAlign = button.getAttribute('aria-pressed') === 'true' ? undefined : align;
+
+    formatSelection(formatting => ({ ...formatting, align: nextAlign }));
+  });
+}
+
+/** @type {Record<string, HTMLButtonElement>} */
+const formattingHotkeys = {
+  b: styleButtons[0].button,
+  i: styleButtons[1].button,
+  u: styleButtons[2].button,
+  l: alignButtons[0].button,
+  e: alignButtons[1].button,
+  r: alignButtons[2].button
+};
+
+gridContainer.addEventListener('keydown', event => {
+  const target = /** @type {HTMLElement} */ (event.target);
+
+  if (
+    (event.ctrlKey || event.metaKey) &&
+    !event.altKey &&
+    !event.shiftKey &&
+    !(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target.isContentEditable)
+  ) {
+    const button = formattingHotkeys[event.key.toLowerCase()];
+
+    if (button) {
+      event.preventDefault();
+      button.click();
+    }
+  }
+});
+
+unformatButton.addEventListener('click', () => formatSelection(() => null));
 
 function updateUndoButtons() {
   undoButton.disabled = !grid.worksheet?.canUndo;
@@ -215,6 +303,7 @@ function undoOrRedo(action) {
   } finally {
     worksheet.removeEventListener('cellchange', handleCellChange);
     updateUndoButtons();
+    updateFormattingButtons();
   }
 
   grid.focus();
