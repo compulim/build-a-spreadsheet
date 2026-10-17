@@ -41,10 +41,14 @@ const highlightButtons = HIGHLIGHTS.map(({ name, label, background, color }) => 
   button.type = 'button';
   button.className = 'toolbar__highlight-button';
   button.title = label;
-  button.textContent = 'A';
+  const icon = document.createElement('span');
+
+  icon.className = 'grid__cell-text--marker';
+  icon.textContent = 'A';
+  button.append(icon);
   button.setAttribute('aria-label', label);
   button.setAttribute('aria-pressed', 'false');
-  background && button.style.setProperty('--highlight-background', background);
+  background && button.style.setProperty('--marker-color', background);
   color && button.style.setProperty('--highlight-color', color);
   unformatButton.before(button);
 

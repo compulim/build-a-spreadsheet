@@ -46,7 +46,9 @@ test('cellsToSVG renders formatting', () => {
           : undefined
   });
 
-  assert.ok(svg.includes(`fill="${getHighlight('green').background}"`));
+  assert.ok(svg.includes(`<feFlood flood-color="${getHighlight('green').background}"/>`));
+  assert.ok(svg.includes('filter="url(#m0)"'));
+  assert.equal((svg.match(/<rect [^/]*fill="#fff"/g) || []).length, 3);
   assert.ok(svg.includes('text-anchor="middle" font-weight="bold" font-style="italic" text-decoration="underline line-through"'));
   assert.ok(svg.includes(`x="104.5" y="12.5" dominant-baseline="central" fill="${getHighlight('red-text').color}">1</text>`));
   assert.ok(svg.includes('text-anchor="middle">TRUE</text>'));
