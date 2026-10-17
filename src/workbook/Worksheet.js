@@ -13,7 +13,8 @@ import { COLUMN_COUNT, COLUMN_WIDTH, ROW_COUNT } from './constants.js';
 /** @typedef {'left' | 'center' | 'right'} CellAlign */
 /**
  * `align` is `undefined` when not set: text is aligned left, numbers right and booleans center.
- * @typedef {{ bold: boolean; italic: boolean; underline: boolean; strikethrough: boolean; align: CellAlign | undefined }} CellFormatting
+ * `highlight` is the name of a highlight (background/foreground color combination), `undefined` when not set.
+ * @typedef {{ bold: boolean; italic: boolean; underline: boolean; strikethrough: boolean; align: CellAlign | undefined; highlight: string | undefined }} CellFormatting
  */
 /** @typedef {Partial<CellFormatting> | null | undefined} FormattingInput */
 /** @typedef {(formatting: CellFormatting, x: number, y: number) => FormattingInput} FormattingUpdater */
@@ -24,7 +25,8 @@ const DEFAULT_FORMATTING = Object.freeze({
   italic: false,
   underline: false,
   strikethrough: false,
-  align: undefined
+  align: undefined,
+  highlight: undefined
 });
 
 /**
@@ -499,13 +501,20 @@ export class Worksheet extends EventTarget {
       throw new TypeError('Align must be "left", "center" or "right".');
     }
 
+    const highlight = input?.highlight || undefined;
+
+    if (highlight !== undefined && typeof highlight !== 'string') {
+      throw new TypeError('Highlight must be a string.');
+    }
+
     /** @type {CellFormatting} */
     const formatting = {
       bold: !!input?.bold,
       italic: !!input?.italic,
       underline: !!input?.underline,
       strikethrough: !!input?.strikethrough,
-      align
+      align,
+      highlight
     };
 
     const previous = this.#formattings.get(key) || DEFAULT_FORMATTING;
@@ -514,7 +523,8 @@ export class Worksheet extends EventTarget {
       a.italic === b.italic &&
       a.underline === b.underline &&
       a.strikethrough === b.strikethrough &&
-      a.align === b.align;
+      a.align === b.align &&
+      a.highlight === b.highlight;
 
     if (isEqual(previous, formatting)) {
       return;

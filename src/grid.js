@@ -1,4 +1,5 @@
 import { formatValue, inferValue, parseTSV, stringifyTSV } from './csv.js';
+import { getHighlight } from './highlights.js';
 import { getColumnName } from './workbook/getColumnName.js';
 
 /**
@@ -833,6 +834,21 @@ export class SpreadsheetGrid extends EventTarget {
 
       if ((cell.dataset.align || '') !== align) {
         align ? (cell.dataset.align = align) : delete cell.dataset.align;
+      }
+
+      const highlight = getHighlight(formatting?.highlight);
+      const background = highlight?.background || '';
+      const color = highlight?.color || '';
+
+      // Compare with the last set value, as the browser normalizes colors.
+      if ((cell.dataset.background || '') !== background) {
+        cell.style.backgroundColor = background;
+        background ? (cell.dataset.background = background) : delete cell.dataset.background;
+      }
+
+      if ((cell.dataset.color || '') !== color) {
+        cell.style.color = color;
+        color ? (cell.dataset.color = color) : delete cell.dataset.color;
       }
 
       const shadow = worksheet ? this.#getBorderShadow(worksheet, column, row) : '';
