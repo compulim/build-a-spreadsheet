@@ -21,15 +21,15 @@ describe('Worksheet', () => {
   test('setValue and getValues', () => {
     const worksheet = new Worksheet();
 
-    assert.deepEqual(worksheet.getValues(), []);
+    assert.deepEqual(worksheet.getValues(0, 0, 0, 0), []);
 
     worksheet.setValue(0, 0, 'A1');
     worksheet.setValue(2, 1, 3);
     worksheet.setValue(1, 3, true);
 
     assert.equal(worksheet.getValue(2, 1), 3);
-    assert.equal(worksheet.getValue(49, 9999), '');
-    assert.deepEqual(worksheet.getValues(), [
+    assert.equal(worksheet.getValue(49, 9999), undefined);
+    assert.deepEqual(worksheet.getValues(0, 0, 3, 4), [
       ['A1', '', ''],
       ['', '', 3],
       ['', '', ''],
@@ -39,7 +39,111 @@ describe('Worksheet', () => {
     worksheet.setValue(1, 3, '');
     worksheet.setValue(2, 1, null);
 
-    assert.deepEqual(worksheet.getValues(), [['A1']]);
+    assert.deepEqual(worksheet.getValues(0, 0, 2, 2), [
+      ['A1', ''],
+      ['', '']
+    ]);
+    assert.deepEqual(worksheet.getValues(2, 1, 1, 1), [['']]);
+    assert.throws(() => worksheet.getValues(49, 0, 2, 1), RangeError);
+  });
+
+  test('setValues with empty values clears cells', () => {
+    const worksheet = new Worksheet();
+
+    worksheet.setValues([[1, 2], [3]]);
+    worksheet.setValues([['', null]], 0, 0);
+
+    assert.deepEqual(worksheet.getValues(0, 0, 2, 2), [
+      ['', ''],
+      [3, '']
+    ]);
+  });
+
+  test('strings are trimmed and blank strings clear the cell', () => {
+    const worksheet = new Worksheet();
+
+    worksheet.setValue(0, 0, '  hello \n');
+    assert.equal(worksheet.getValue(0, 0), 'hello');
+
+    worksheet.setValues([['   ', ' x ']]);
+    assert.equal(worksheet.getValue(0, 0), undefined);
+    assert.equal(worksheet.getValue(1, 0), 'x');
+
+    worksheet.setValue(1, 0, () => ' \t ');
+    assert.equal(worksheet.getValue(1, 0), undefined);
+    assert.equal(worksheet.toCSV(), '');
+  });
+
+  test('updater functions', () => {
+    const worksheet = new Worksheet();
+    const calls = [];
+
+    worksheet.setValue(0, 0, 1);
+    worksheet.setValue(0, 0, (value, x, y) => {
+      calls.push([value, x, y]);
+
+      return value + 1;
+    });
+    worksheet.setValue(1, 0, value => (value === undefined ? 'empty' : value));
+
+    assert.deepEqual(calls, [[1, 0, 0]]);
+    assert.deepEqual(worksheet.getValues(0, 0, 2, 1), [[2, 'empty']]);
+
+    worksheet.setValues((_, x, y) => x * 10 + y, 1, 1, 2, 2);
+    assert.deepEqual(worksheet.getValues(1, 1, 2, 2), [
+      [11, 21],
+      [12, 22]
+    ]);
+
+    worksheet.setValues(() => '', 0, 0, 50, 10_000);
+    assert.equal(worksheet.toCSV(), '');
+    assert.throws(() => worksheet.setValues(() => 1, 0, 0), RangeError);
+  });
+
+  test('column widths', () => {
+    const worksheet = new Worksheet();
+    const events = [];
+
+    worksheet.addEventListener('columnwidthchange', event => events.push(event.x));
+
+    assert.equal(worksheet.getColumnWidth(0), 100);
+
+    worksheet.setColumnWidth(2, 150);
+    worksheet.setColumnWidth(2, 150);
+
+    assert.equal(worksheet.getColumnWidth(2), 150);
+    assert.deepEqual(events, [2]);
+    assert.throws(() => worksheet.setColumnWidth(50, 10), RangeError);
+  });
+
+  test('undo and redo', async () => {
+    const tick = () => new Promise(resolve => setTimeout(resolve));
+    const worksheet = new Worksheet();
+
+    assert.equal(worksheet.undo(), false);
+    assert.equal(worksheet.redo(), false);
+
+    worksheet.setValue(0, 0, 'a');
+    await tick();
+    worksheet.setValues([['b', 'c']]);
+    await tick();
+
+    assert.equal(worksheet.canUndo, true);
+    assert.equal(worksheet.undo(), true);
+    assert.deepEqual(worksheet.getValues(0, 0, 2, 1), [['a', '']]);
+    assert.equal(worksheet.undo(), true);
+    assert.deepEqual(worksheet.getValues(0, 0, 2, 1), [['', '']]);
+    assert.equal(worksheet.undo(), false);
+
+    assert.equal(worksheet.redo(), true);
+    assert.equal(worksheet.redo(), true);
+    assert.equal(worksheet.redo(), false);
+    assert.deepEqual(worksheet.getValues(0, 0, 2, 1), [['b', 'c']]);
+
+    worksheet.undo();
+    assert.equal(worksheet.canRedo, true);
+    worksheet.setValue(1, 0, 2);
+    assert.equal(worksheet.canRedo, false);
   });
 
   test('setValue validates input', () => {
@@ -70,22 +174,22 @@ describe('Worksheet', () => {
     assert.ok(events[0] instanceof CellChangeEvent);
     assert.equal(events[0].type, 'cellchange');
     assert.deepEqual(
-      events.map(({ column, row, value, previousValue, worksheet }) => ({
-        column,
-        row,
+      events.map(({ x, y, value, previousValue, worksheet }) => ({
+        x,
+        y,
         value,
         previousValue,
         worksheet
       })),
       [
-        { column: 1, row: 2, value: 'x', previousValue: '', worksheet },
-        { column: 1, row: 2, value: 1, previousValue: 'x', worksheet }
+        { x: 1, y: 2, value: 'x', previousValue: '', worksheet },
+        { x: 1, y: 2, value: 1, previousValue: 'x', worksheet }
       ]
     );
   });
 
   test('CSV round trip', () => {
-    const worksheet = new Worksheet('Data');
+    const worksheet = new Worksheet();
 
     worksheet.setValue(0, 0, 'Name, "quoted"');
     worksheet.setValue(1, 0, 42);
@@ -94,29 +198,19 @@ describe('Worksheet', () => {
     const csv = worksheet.toCSV();
 
     assert.equal(csv, '"Name, ""quoted""",42,\r\n,,FALSE\r\n');
-    assert.deepEqual(Worksheet.fromCSV(csv).getValues(), worksheet.getValues());
+    assert.deepEqual(Worksheet.fromCSV(csv).getValues(0, 0, 6, 6), worksheet.getValues(0, 0, 6, 6));
+    assert.equal(Worksheet.fromCSV(csv).canUndo, false);
 
-    const other = new Worksheet();
-
-    other.setValue(5, 5, 'gone');
-    other.loadCSV(csv);
-
-    assert.deepEqual(other.getValues(), worksheet.getValues());
   });
 
   test('CSV larger than worksheet is clipped', () => {
     const csv = Array.from({ length: 10_005 }, () => new Array(55).fill(1).join(',')).join('\n');
-    const values = Worksheet.fromCSV(csv).getValues();
+    const worksheet = Worksheet.fromCSV(csv);
 
-    assert.equal(values.length, 10_000);
-    assert.equal(values[0].length, 50);
+    assert.equal(worksheet.getValue(49, 9999), 1);
+    assert.equal(worksheet.toCSV().split('\r\n').length - 1, 10_000);
   });
 
-  test('invalid names', () => {
-    assert.throws(() => new Worksheet(''), TypeError);
-    assert.throws(() => new Worksheet('a/b'), TypeError);
-    assert.throws(() => new Worksheet('x'.repeat(32)), TypeError);
-  });
 });
 
 describe('Workbook', () => {
@@ -126,7 +220,7 @@ describe('Workbook', () => {
     const events = [];
 
     assert.ok(workbook instanceof EventTarget);
-    assert.equal(worksheet.name, 'Sheet1');
+    assert.equal(workbook.getWorksheetName(worksheet), 'Sheet1');
 
     workbook.addEventListener('cellchange', event => events.push(event));
     worksheet.setValue(0, 0, 'hello');
@@ -149,7 +243,7 @@ describe('Workbook', () => {
     }
 
     assert.equal(workbook.worksheets.length, 50);
-    assert.equal(new Set(workbook.worksheets.map(({ name }) => name)).size, 50);
+    assert.equal(new Set(workbook.worksheets.map(worksheet => workbook.getWorksheetName(worksheet))).size, 50);
     assert.throws(() => workbook.addWorksheet(), RangeError);
 
     workbook.removeWorksheet(0);
@@ -165,9 +259,12 @@ describe('Workbook', () => {
 
     workbook.addEventListener('worksheetrename', event => events.push(event));
 
-    assert.throws(() => (sheet2.name = 'SHEET1'), TypeError);
+    assert.throws(() => workbook.renameWorksheet(sheet2, 'SHEET1'), TypeError);
+    assert.throws(() => workbook.renameWorksheet(sheet2, 'a/b'), TypeError);
+    assert.throws(() => workbook.addWorksheet(''), TypeError);
+    assert.throws(() => workbook.addWorksheet('x'.repeat(32)), TypeError);
 
-    sheet1.name = 'Data';
+    workbook.renameWorksheet(sheet1, 'Data');
 
     assert.equal(workbook.getWorksheet('data'), sheet1);
     assert.equal(events.length, 1);
@@ -188,12 +285,12 @@ describe('Workbook', () => {
     const loaded = await Workbook.fromZip(zip);
 
     assert.deepEqual(
-      loaded.worksheets.map(({ name }) => name),
+      loaded.worksheets.map(worksheet => loaded.getWorksheetName(worksheet)),
       ['First', '第二', 'Empty']
     );
-    assert.deepEqual(loaded.worksheets[0].getValues(), first.getValues());
-    assert.deepEqual(loaded.worksheets[1].getValues(), second.getValues());
-    assert.deepEqual(loaded.worksheets[2].getValues(), []);
+    assert.equal(loaded.worksheets[0].toCSV(), first.toCSV());
+    assert.equal(loaded.worksheets[1].getValue(49, 9999), true);
+    assert.equal(loaded.worksheets[2].toCSV(), '');
   });
 
   test('fromZip ignores non-CSV files and folders', async () => {
@@ -207,10 +304,10 @@ describe('Workbook', () => {
     const workbook = await Workbook.fromZip(zip);
 
     assert.deepEqual(
-      workbook.worksheets.map(({ name }) => name),
+      workbook.worksheets.map(worksheet => workbook.getWorksheetName(worksheet)),
       ['Sales']
     );
-    assert.deepEqual(workbook.worksheets[0].getValues(), [[1, 2]]);
+    assert.deepEqual(workbook.worksheets[0].getValues(0, 0, 3, 1), [[1, 2, '']]);
   });
 });
 
@@ -233,15 +330,15 @@ describe('Worksheet borders', () => {
 
       worksheet.setRangeBorder(range, side);
 
-      for (let row = 1; row <= 2; row++) {
-        for (let column = 1; column <= 2; column++) {
+      for (let y = 1; y <= 2; y++) {
+        for (let x = 1; x <= 2; x++) {
           const expected =
-            (side === 'left' && column === 1) ||
-            (side === 'right' && column === 2) ||
-            (side === 'top' && row === 1) ||
-            (side === 'bottom' && row === 2);
+            (side === 'left' && x === 1) ||
+            (side === 'right' && x === 2) ||
+            (side === 'top' && y === 1) ||
+            (side === 'bottom' && y === 2);
 
-          assert.deepEqual(worksheet.getBorder(column, row), { ...none, [side]: expected });
+          assert.deepEqual(worksheet.getBorder(x, y), { ...none, [side]: expected });
         }
       }
     });

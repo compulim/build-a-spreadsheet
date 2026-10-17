@@ -39,17 +39,20 @@ import { Worksheet } from './src/workbook/Worksheet.js';
 const workbook = new Workbook(); // EventTarget
 const sheet = workbook.addWorksheet('Data'); // Worksheet, also an EventTarget
 
-workbook.addEventListener('cellchange', ({ worksheet, column, row, value, previousValue }) => {
-  console.log(worksheet.name, column, row, previousValue, '→', value);
+workbook.addEventListener('cellchange', ({ worksheet, x, y, value, previousValue }) => {
+  console.log(workbook.getWorksheetName(worksheet), x, y, previousValue, '→', value);
 });
 
-sheet.setValue(0, 0, 'Name'); // setValue(column: number, row: number, value: boolean | number | string)
+sheet.setValue(0, 0, 'Name'); // setValue(x: number, y: number, value: boolean | number | string), zero-based
 sheet.setValue(1, 0, 42);
 sheet.setValue(2, 0, true);
-sheet.getValues(); // [['Name', 42, true]] — from A1 to the last used cell, empty cells are ''
+sheet.getValues(0, 0, 3, 1); // [['Name', 42, true]] — getValues(x, y, width, height), empty cells are ''
+sheet.setValues([['', '']], 1, 0); // Clears B1:C1
+sheet.undo(); // true, B1:C1 restored; returns false when there is nothing to undo
+sheet.setColumnWidth(0, 150);
 
 sheet.toCSV(); // 'Name,42,TRUE\r\n'
-Worksheet.fromCSV('a,1\r\n', 'Imported');
+workbook.addWorksheet('Imported', Worksheet.fromCSV('a,1\r\n'));
 
 const zip = await workbook.toZip(); // Uint8Array, one "<sheet name>.csv" per worksheet
 const loaded = await Workbook.fromZip(zip);
@@ -57,12 +60,15 @@ const loaded = await Workbook.fromZip(zip);
 
 | Member | Description |
 | --- | --- |
-| `Worksheet#setValue(column, row, value)` | Sets a cell (zero-based). `''`, `null` or `undefined` clears it. Throws `RangeError` / `TypeError` on invalid input. |
-| `Worksheet#getValue(column, row)` | Returns a cell value, `''` if empty. |
-| `Worksheet#getValues()` | Returns a 2D array (`values[row][column]`) from A1 to the last used cell. |
-| `Worksheet#setValues(values, column?, row?)` | Sets a block of values. Values outside of the sheet are ignored. |
-| `Worksheet#toCSV()` / `Worksheet#loadCSV(text)` / `Worksheet.fromCSV(text, name?)` | CSV serialization. |
-| `Workbook#addWorksheet(nameOrWorksheet?, index?)` / `Workbook#removeWorksheet(worksheetOrIndex)` | Manage up to 50 sheets. |
+| `Worksheet#setValue(x, y, valueOrUpdater)` | Sets a cell (zero-based), or updates it with `(value, x, y) => nextValue`. Strings are trimmed. Blank strings, `null` or `undefined` clear it. Throws `RangeError` / `TypeError` on invalid input. |
+| `Worksheet#getValue(x, y)` | Returns a cell value, `undefined` if empty. |
+| `Worksheet#getValues(x, y, width, height)` | Returns a 2D array (`values[y][x]`) of a range. |
+| `Worksheet#setValues(values, x?, y?)` / `Worksheet#setValues(updater, x, y, width, height)` | Sets a block of values (use `''` to clear), or updates every cell of a range with `(value, x, y) => nextValue`. Values outside of the sheet are ignored. |
+| `Worksheet#getColumnWidth(x)` / `Worksheet#setColumnWidth(x, width)` | Column widths in pixels, dispatches `columnwidthchange`. |
+| `Worksheet#undo()` / `Worksheet#redo()` | Undo/redo cell changes, returns `false` at the end of the stack. Synchronous changes are grouped. |
+| `Worksheet#toCSV()` / `Worksheet.fromCSV(text)` | CSV serialization. |
+| `Workbook#addWorksheet(name?, worksheet?, index?)` / `Workbook#removeWorksheet(worksheetOrIndex)` | Manage up to 50 sheets. |
+| `Workbook#getWorksheetName(worksheet)` / `Workbook#renameWorksheet(worksheet, name)` | Sheet names are owned by the workbook. |
 | `Workbook#worksheets` / `Workbook#getWorksheet(nameOrIndex)` | Access sheets. |
 | `Workbook#toZip()` / `Workbook.fromZip(data)` | ZIP of CSV files. |
 | `cellchange` event | Dispatched by `Worksheet` and re-dispatched by `Workbook` (`CellChangeEvent`). |
