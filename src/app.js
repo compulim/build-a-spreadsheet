@@ -166,6 +166,7 @@ function setWorkbook(nextWorkbook) {
     workbook.removeEventListener('worksheetremove', renderTabs);
     workbook.removeEventListener('worksheetrename', renderTabs);
     workbook.removeEventListener('cellchange', updateUndoButtons);
+    workbook.removeEventListener('cellchange', updateFormattingButtons);
   }
 
   workbook = nextWorkbook;
@@ -173,6 +174,7 @@ function setWorkbook(nextWorkbook) {
   workbook.addEventListener('worksheetremove', renderTabs);
   workbook.addEventListener('worksheetrename', renderTabs);
   workbook.addEventListener('cellchange', updateUndoButtons);
+  workbook.addEventListener('cellchange', updateFormattingButtons);
 
   // Expose for scripting from the browser console, e.g. `app.workbook.worksheets[0].setValue(0, 0, 'Hello')`.
   Object.assign(globalThis, { app: { workbook, grid } });
@@ -194,13 +196,17 @@ function updateSelectionInfo() {
 function updateFormattingButtons() {
   const { column, row } = grid.activeCell;
   const formatting = grid.worksheet?.getFormatting(column, row);
+  // Without explicit alignment, numbers are aligned right, booleans center and text left.
+  const valueType = typeof grid.worksheet?.getValue(column, row);
+  const effectiveAlign =
+    formatting?.align || (valueType === 'number' ? 'right' : valueType === 'boolean' ? 'center' : 'left');
 
   for (const { style, button } of styleButtons) {
     button.setAttribute('aria-pressed', String(!!formatting?.[style]));
   }
 
   for (const { align, button } of alignButtons) {
-    button.setAttribute('aria-pressed', String((formatting?.align || 'left') === align));
+    button.setAttribute('aria-pressed', String(effectiveAlign === align));
   }
 }
 
