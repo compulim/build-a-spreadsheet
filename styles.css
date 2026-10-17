@@ -205,6 +205,18 @@ body {
   font-style: italic;
 }
 
+/*
+ * Fluorescent marker: the background of an inline box spans the font ascent to descent, so the lower half starts at the
+ * center of the font and ends below the baseline. Padding extends it sideways, negative margin keeps the text in place.
+ */
+.grid__cell-text--marker {
+  background: linear-gradient(to bottom, transparent 50%, var(--marker-color) 50%);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  margin: 0 -0.2em;
+  padding: 0 0.2em;
+}
+
 .toolbar .toolbar__highlight-button,
 .toolbar .toolbar__highlight-button:hover {
   background: var(--highlight-background, #fff);

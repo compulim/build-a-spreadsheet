@@ -19,6 +19,8 @@ const CELL_HEIGHT = 24;
 const FONT_SIZE = 13;
 const PADDING = 4;
 const BORDER_WIDTH = 3;
+/** Width of a thin space (U+2009), which pads the marker by 20% of the font size on each side. */
+const MARKER_EXTEND = FONT_SIZE * 0.2;
 
 /** @param {string} text */
 function escapeXML(text) {
@@ -70,6 +72,8 @@ export function cellsToSVG(rows, { columnWidths = [], getBorder = () => undefine
   const width = columnLefts[columnCount] + 1 + margin * 2;
   const height = rowCount * CELL_HEIGHT + 1 + margin * 2;
   const parts = [];
+  /** Filter ID of each marker color. */
+  const markerIds = new Map();
 
   rows.forEach((row, rowIndex) => {
     for (let columnIndex = 0; columnIndex < columnCount; columnIndex++) {
@@ -85,7 +89,7 @@ export function cellsToSVG(rows, { columnWidths = [], getBorder = () => undefine
         formatting?.align || (typeof value === 'number' ? 'right' : typeof value === 'boolean' ? 'center' : 'left');
 
       parts.push(
-        `<rect x="${x}" y="${y}" width="${cellWidth}" height="${CELL_HEIGHT}" fill="${escapeXML(highlight?.background || '#fff')}" stroke="#c0c0c0"/>`
+        `<rect x="${x}" y="${y}" width="${cellWidth}" height="${CELL_HEIGHT}" fill="#fff" stroke="#c0c0c0"/>`
       );
 
       if (text) {
@@ -106,7 +110,31 @@ export function cellsToSVG(rows, { columnWidths = [], getBorder = () => undefine
           .join('');
 
         parts.push(
-          `<clipPath id="${clipId}"><rect x="${x}" y="${y}" width="${cellWidth}" height="${CELL_HEIGHT}"/></clipPath>`,
+          `<clipPath id="${clipId}"><rect x="${x}" y="${y}" width="${cellWidth}" height="${CELL_HEIGHT}"/></clipPath>`
+        );
+
+        if (highlight?.background) {
+          // Fluorescent marker: a transparent copy of the text padded with thin spaces (0.2em) on both sides, filled
+          // with the lower half of its bounding box (center of the font to below the baseline) by the filter.
+          let markerId = markerIds.get(highlight.background);
+
+          if (!markerId) {
+            markerId = `m${markerIds.size}`;
+            markerIds.set(highlight.background, markerId);
+            parts.push(
+              `<filter id="${markerId}" x="0" y="0.5" width="1" height="0.5"><feFlood flood-color="${escapeXML(highlight.background)}"/></filter>`
+            );
+          }
+
+          const markerX = align === 'right' ? textX + MARKER_EXTEND : align === 'center' ? textX : textX - MARKER_EXTEND;
+          const markerAttributes = attributes.replace(/ (?:text-decoration|fill)="[^"]*"/g, '');
+
+          parts.push(
+            `<g clip-path="url(#${clipId})"><text filter="url(#${markerId})" x="${markerX}" y="${y + CELL_HEIGHT / 2}" dominant-baseline="central" fill="none"${markerAttributes}>\u2009${escapeXML(text)}\u2009</text></g>`
+          );
+        }
+
+        parts.push(
           `<text clip-path="url(#${clipId})" x="${textX}" y="${y + CELL_HEIGHT / 2}" dominant-baseline="central"${attributes}>${escapeXML(text)}</text>`
         );
       }

@@ -629,6 +629,7 @@ export class SpreadsheetGrid extends EventTarget {
       const cell = createElement('div', 'grid__cell');
 
       cell.setAttribute('role', 'gridcell');
+      cell.append(createElement('span', 'grid__cell-text'));
       cell.style.width = `${this.getColumnWidth(column)}px`;
       this.#initLockableColumn(cell, column);
       cells.push(cell);
@@ -811,8 +812,11 @@ export class SpreadsheetGrid extends EventTarget {
       const type = typeof value;
       const text = formatValue(value);
 
-      if (cell.textContent !== text) {
-        cell.textContent = text;
+      // Text is in an inner element, so the highlight marker only covers the text, not the whole cell.
+      const content = /** @type {HTMLElement} */ (cell.firstElementChild);
+
+      if (content.textContent !== text) {
+        content.textContent = text;
       }
 
       if (cell.dataset.type !== type) {
@@ -842,7 +846,8 @@ export class SpreadsheetGrid extends EventTarget {
 
       // Compare with the last set value, as the browser normalizes colors.
       if ((cell.dataset.background || '') !== background) {
-        cell.style.backgroundColor = background;
+        background ? content.style.setProperty('--marker-color', background) : content.style.removeProperty('--marker-color');
+        content.classList.toggle('grid__cell-text--marker', !!background);
         background ? (cell.dataset.background = background) : delete cell.dataset.background;
       }
 
