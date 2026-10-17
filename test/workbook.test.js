@@ -353,7 +353,8 @@ describe('Worksheet borders', () => {
 
     assert.deepEqual(worksheet.getBorder(1, 1), { ...none, top: true, left: true });
     assert.deepEqual(worksheet.getBorder(2, 2), { ...none, bottom: true, right: true });
-    assert.equal(count, 4);
+    // One event per stored edge (left/top) changed: 4 on the left/top edges, 4 on the right/bottom neighbors.
+    assert.equal(count, 8);
 
     worksheet.setRangeBorder(range, 'all');
     assert.deepEqual(worksheet.getBorder(1, 2), { top: true, right: true, bottom: true, left: true });
@@ -362,5 +363,21 @@ describe('Worksheet borders', () => {
     worksheet.setRangeBorder(range, 'none');
     assert.deepEqual(worksheet.getBorder(1, 2), none);
     assert.deepEqual(worksheet.getBorder(0, 1), none);
+  });
+
+  test('right and bottom are shared with the next cell, and skipped on the last column and row', () => {
+    const worksheet = new Worksheet();
+    const lastX = worksheet.columnCount - 1;
+    const lastY = worksheet.rowCount - 1;
+
+    worksheet.setBorder(0, 0, { right: true, bottom: true });
+    assert.deepEqual(worksheet.getBorder(1, 0), { ...none, left: true });
+    assert.deepEqual(worksheet.getBorder(0, 1), { ...none, top: true });
+
+    worksheet.setBorder(1, 0, { left: false });
+    assert.deepEqual(worksheet.getBorder(0, 0), { ...none, bottom: true });
+
+    worksheet.setBorder(lastX, lastY, { right: true, bottom: true });
+    assert.deepEqual(worksheet.getBorder(lastX, lastY), none);
   });
 });

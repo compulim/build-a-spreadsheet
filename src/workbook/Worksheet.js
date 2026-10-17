@@ -9,9 +9,6 @@ import { COLUMN_COUNT, COLUMN_WIDTH, ROW_COUNT } from './constants.js';
 /** @typedef {CellValue | null | undefined} CellInput */
 /** @typedef {(value: CellValue | undefined, x: number, y: number) => CellInput} CellUpdater */
 
-/** @type {readonly (keyof CellBorder)[]} */
-const BORDER_SIDES = ['top', 'right', 'bottom', 'left'];
-
 /**
  * A single worksheet of 50 columns by 10,000 rows (by default). Values are stored sparsely.
  * All coordinates (`x` for column, `y` for row) are zero-based.
@@ -26,7 +23,11 @@ export class Worksheet extends EventTarget {
   /** @type {(CellValue[] | undefined)[]} */
   #rows = [];
 
-  /** Borders of cells, keyed by `y * columnCount + x`. @type {Map<number, CellBorder>} */
+  /**
+   * Left and top borders of cells, keyed by `y * columnCount + x`. The right and bottom borders of a cell are the left
+   * border of the cell on the right and the top border of the cell below.
+   * @type {Map<number, { top: boolean; left: boolean }>}
+   */
   #borders = new Map();
 
   /** @type {number[]} */
@@ -336,31 +337,51 @@ export class Worksheet extends EventTarget {
   getBorder(x, y) {
     this.#assertCell(x, y);
 
-    return { top: false, right: false, bottom: false, left: false, ...this.#borders.get(y * this.columnCount + x) };
+    const own = this.#borders.get(y * this.columnCount + x);
+
+    return {
+      top: !!own?.top,
+      right: x + 1 < this.columnCount && !!this.#borders.get(y * this.columnCount + x + 1)?.left,
+      bottom: y + 1 < this.rowCount && !!this.#borders.get((y + 1) * this.columnCount + x)?.top,
+      left: !!own?.left
+    };
   }
 
   /**
-   * Sets some or all borders of a cell. Dispatches `borderchange` (with `x` and `y`) if changed.
+   * Sets some or all borders of a cell. The right and bottom borders are stored as the left border of the cell on the
+   * right and the top border of the cell below, and are ignored on the last column and row.
+   * Dispatches `borderchange` (with `x` and `y` of the cell storing the edge) for each stored edge changed.
    *
    * @param {number} x
    * @param {number} y
    * @param {Partial<CellBorder>} border
    */
   setBorder(x, y, border) {
-    const previous = this.getBorder(x, y);
-    const next = { ...previous };
+    this.#assertCell(x, y);
 
-    for (const side of BORDER_SIDES) {
-      side in border && (next[side] = !!border[side]);
-    }
+    'top' in border && this.#setStoredEdge(x, y, 'top', !!border.top);
+    'left' in border && this.#setStoredEdge(x, y, 'left', !!border.left);
+    'right' in border && x + 1 < this.columnCount && this.#setStoredEdge(x + 1, y, 'left', !!border.right);
+    'bottom' in border && y + 1 < this.rowCount && this.#setStoredEdge(x, y + 1, 'top', !!border.bottom);
+  }
 
-    if (BORDER_SIDES.every(side => next[side] === previous[side])) {
+  /**
+   * @param {number} x
+   * @param {number} y
+   * @param {'left' | 'top'} side
+   * @param {boolean} value
+   */
+  #setStoredEdge(x, y, side, value) {
+    const key = y * this.columnCount + x;
+    const previous = this.#borders.get(key) || { top: false, left: false };
+
+    if (previous[side] === value) {
       return;
     }
 
-    const key = y * this.columnCount + x;
+    const next = { ...previous, [side]: value };
 
-    BORDER_SIDES.some(side => next[side]) ? this.#borders.set(key, next) : this.#borders.delete(key);
+    next.top || next.left ? this.#borders.set(key, next) : this.#borders.delete(key);
 
     this.dispatchEvent(Object.assign(new Event('borderchange'), { x, y }));
   }
@@ -402,19 +423,6 @@ export class Worksheet extends EventTarget {
 
           this.setBorder(x, y, border);
         }
-      }
-    }
-
-    // Edges shared with adjacent cells outside of the range are also part of the surrounding border.
-    if (preset === 'none') {
-      for (let y = top; y <= bottom; y++) {
-        left > 0 && this.setBorder(left - 1, y, { right: false });
-        right < this.columnCount - 1 && this.setBorder(right + 1, y, { left: false });
-      }
-
-      for (let x = left; x <= right; x++) {
-        top > 0 && this.setBorder(x, top - 1, { bottom: false });
-        bottom < this.rowCount - 1 && this.setBorder(x, bottom + 1, { top: false });
       }
     }
   }
