@@ -857,10 +857,10 @@ export class SpreadsheetGrid extends EventTarget {
     for (let column = 0; column < this.#lockedColumnCount; column++) {
       const left = `${this.rowHeaderWidth + this.#columnOffset(column)}px`;
 
-      this.#columnHeaders[column].style.left = left;
+      this.#columnHeaders[column].style.setProperty('--sticky-left', left);
 
       for (const { cells } of [...this.#pool, ...this.#frozenRows]) {
-        cells[column].style.left = left;
+        cells[column].style.setProperty('--sticky-left', left);
       }
     }
 
@@ -877,7 +877,8 @@ export class SpreadsheetGrid extends EventTarget {
   #initLockableColumn(element, column) {
     if (column < this.#lockedColumnCount) {
       element.classList.add('grid__lockable');
-      element.style.left = `${this.rowHeaderWidth + this.#columnOffset(column)}px`;
+      // Only applied while locked, otherwise it would offset relatively positioned cells (e.g. with borders).
+      element.style.setProperty('--sticky-left', `${this.rowHeaderWidth + this.#columnOffset(column)}px`);
     }
   }
 
