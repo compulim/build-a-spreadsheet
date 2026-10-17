@@ -487,12 +487,28 @@ export class SpreadsheetGrid extends EventTarget {
 
   /** @returns {CellRange} */
   get selection() {
-    return {
-      left: Math.min(this.#anchor.column, this.#focus.column),
-      top: Math.min(this.#anchor.row, this.#focus.row),
-      right: Math.max(this.#anchor.column, this.#focus.column),
-      bottom: Math.max(this.#anchor.row, this.#focus.row)
-    };
+    const top = Math.min(this.#anchor.row, this.#focus.row);
+    const bottom = Math.max(this.#anchor.row, this.#focus.row);
+    let left = Math.min(this.#anchor.column, this.#focus.column);
+    let right = Math.max(this.#anchor.column, this.#focus.column);
+
+    // The selection covers all merged cells partially selected. Expanding may cover more merged cells in other rows,
+    // so it repeats until nothing changes.
+    for (let changed = !!this.#worksheet; changed; ) {
+      changed = false;
+
+      for (let row = top; row <= bottom; row++) {
+        for (const { x, width } of this.#worksheet?.getMerges(row) || []) {
+          if (x <= right && x + width - 1 >= left && (x < left || x + width - 1 > right)) {
+            left = Math.min(left, x);
+            right = Math.max(right, x + width - 1);
+            changed = true;
+          }
+        }
+      }
+    }
+
+    return { left, top, right, bottom };
   }
 
   /**
@@ -1034,19 +1050,10 @@ export class SpreadsheetGrid extends EventTarget {
 
   #updateSelection() {
     const { rowHeight, rowHeaderWidth } = this;
-    const { top, bottom } = this.selection;
-    let { left, right } = this.selection;
+    const { left, top, right, bottom } = this.selection;
     const rangeStyle = this.#rangeOverlay.style;
     const activeStyle = this.#activeOverlay.style;
     const anchorEnd = this.#mergeEndColumn(this.#anchor);
-
-    // The highlighted range covers merged cells partially selected.
-    if (this.#worksheet) {
-      for (let row = top; row <= bottom; row++) {
-        left = Math.min(left, this.#toMergeStart({ column: left, row }).column);
-        right = Math.max(right, this.#mergeEndColumn({ column: right, row }));
-      }
-    }
 
     rangeStyle.left = `${rowHeaderWidth + this.#columnOffset(left)}px`;
     rangeStyle.top = `${top * rowHeight}px`;
