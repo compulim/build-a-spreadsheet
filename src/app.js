@@ -489,7 +489,10 @@ printButton.addEventListener('click', async () => {
       columnWidths.push(worksheet.getColumnWidth(column));
     }
 
-    download(await cellsToPNG(rows, { columnWidths, getBorder }), `${workbook.getWorksheetName(worksheet)}.png`);
+    const getFormatting = (/** @type {number} */ column, /** @type {number} */ row) =>
+      worksheet.getFormatting(left + column, top + row);
+
+    download(await cellsToPNG(rows, { columnWidths, getBorder, getFormatting }), `${workbook.getWorksheetName(worksheet)}.png`);
   } catch (error) {
     alert(`Failed to print selected cells: ${/** @type {Error} */ (error).message}`);
   }

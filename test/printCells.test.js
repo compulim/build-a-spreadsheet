@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { cellsToSVG } from '../src/printCells.js';
+import { getHighlight } from '../src/highlights.js';
 
 test('cellsToSVG sizes the SVG to the cells and escapes text', () => {
   const { svg, width, height } = cellsToSVG([
@@ -33,4 +34,20 @@ test('cellsToSVG draws borders set on neighbors outside of the cells', () => {
   const { svg } = cellsToSVG([['a']], { getBorder: (column, row) => (column === -1 && row === 0 ? { right: true } : undefined) });
 
   assert.ok(svg.includes('<line x1="1.5" y1="1.5" x2="1.5" y2="25.5"'));
+});
+
+test('cellsToSVG renders formatting', () => {
+  const { svg } = cellsToSVG([['a', 1, true]], {
+    getFormatting: column =>
+      column === 0
+        ? { bold: true, italic: true, underline: true, strikethrough: true, align: 'center', highlight: 'green' }
+        : column === 1
+          ? { align: 'left', highlight: 'red-text' }
+          : undefined
+  });
+
+  assert.ok(svg.includes(`fill="${getHighlight('green').background}"`));
+  assert.ok(svg.includes('text-anchor="middle" font-weight="bold" font-style="italic" text-decoration="underline line-through"'));
+  assert.ok(svg.includes(`x="104.5" y="12.5" dominant-baseline="central" fill="${getHighlight('red-text').color}">1</text>`));
+  assert.ok(svg.includes('text-anchor="middle">TRUE</text>'));
 });
