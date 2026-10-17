@@ -1,3 +1,4 @@
+import { calculate } from './calculator.js';
 import { formatValue, inferValue, parseTSV, stringifyTSV } from './csv.js';
 import { getHighlight } from './highlights.js';
 import { formatDisplayValue } from './numberFormats.js';
@@ -1428,7 +1429,14 @@ export class SpreadsheetGrid extends EventTarget {
 
     if (this.#worksheet && this.isEditable(column, row)) {
       // Leading apostrophe forces the value to be text, same as Excel.
-      this.#worksheet.setValue(column, row, text.startsWith("'") ? text.slice(1) : inferValue(text));
+      // Leading "=" evaluates a simple arithmetic formula and stores only the result; invalid formulas are kept as text.
+      const result = text.startsWith('=') ? calculate(text.slice(1)) : undefined;
+
+      this.#worksheet.setValue(
+        column,
+        row,
+        text.startsWith("'") ? text.slice(1) : result ?? inferValue(text)
+      );
     }
   }
 
