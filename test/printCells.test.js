@@ -53,3 +53,15 @@ test('cellsToSVG renders formatting', () => {
   assert.ok(svg.includes(`x="104.5" y="12.5" dominant-baseline="central" fill="${getHighlight('red-text').color}">1</text>`));
   assert.ok(svg.includes('text-anchor="middle">TRUE</text>'));
 });
+
+test('cellsToSVG draws merged cells as a single cell without inner borders', () => {
+  const { svg } = cellsToSVG([['merged', '', 'c']], {
+    getBorder: () => ({ top: true, right: true, bottom: true, left: true }),
+    getColumnSpan: column => (column === 0 ? 2 : column === 1 ? 0 : 1)
+  });
+
+  assert.equal((svg.match(/<rect [^/]*fill/g) || []).length, 2);
+  assert.ok(svg.includes('width="200" height="24" fill="#fff"'));
+  assert.ok(!svg.includes('<line x1="101.5" y1="1.5" x2="101.5"'));
+  assert.ok(svg.includes('<line x1="201.5" y1="1.5" x2="201.5"'));
+});
