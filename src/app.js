@@ -287,6 +287,7 @@ function undoOrRedo(action) {
     changes.push(/** @type {import('./workbook/private/CellChangeEvent.js').CellChangeEvent} */ (event));
 
   worksheet.addEventListener('cellchange', handleCellChange);
+  worksheet.addEventListener('formattingchange', handleCellChange);
 
   try {
     if (!worksheet[action]()) {
@@ -302,6 +303,7 @@ function undoOrRedo(action) {
     }
   } finally {
     worksheet.removeEventListener('cellchange', handleCellChange);
+    worksheet.removeEventListener('formattingchange', handleCellChange);
     updateUndoButtons();
     updateFormattingButtons();
   }
