@@ -267,10 +267,25 @@ addSheetButton.addEventListener('click', () => {
 });
 
 borderSelect.addEventListener('change', () => {
-  const preset = /** @type {import('./workbook/Worksheet.js').BorderPreset} */ (borderSelect.value);
+  const preset = borderSelect.value;
+  const worksheet = grid.worksheet;
 
   borderSelect.value = '';
-  grid.worksheet?.setRangeBorder(grid.selection, preset);
+
+  if (worksheet) {
+    const { left, top, right, bottom } = grid.selection;
+    const range = { x: left, y: top, width: right - left + 1, height: bottom - top + 1 };
+
+    if (preset === 'outside') {
+      worksheet.setRangeBorder(range, 'surround');
+    } else if (preset === 'all' || preset === 'none') {
+      worksheet.setRangeBorder(range, 'surround', preset === 'all');
+      worksheet.setRangeBorder(range, 'inside', preset === 'all');
+    } else {
+      worksheet.setRangeBorder(range, /** @type {import('./workbook/Worksheet.js').BorderEdges} */ (preset));
+    }
+  }
+
   grid.focus();
 });
 

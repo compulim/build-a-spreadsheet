@@ -321,7 +321,7 @@ test('getColumnName', () => {
 });
 
 describe('Worksheet borders', () => {
-  const range = { left: 1, top: 1, right: 2, bottom: 2 };
+  const range = { x: 1, y: 1, width: 2, height: 2 };
   const none = { top: false, right: false, bottom: false, left: false };
 
   for (const side of /** @type {const} */ (['left', 'right', 'top', 'bottom'])) {
@@ -344,25 +344,41 @@ describe('Worksheet borders', () => {
     });
   }
 
-  test('outside, all and none', () => {
+  test('surround, inside and unset', () => {
     const worksheet = new Worksheet();
     let count = 0;
 
     worksheet.addEventListener('borderchange', () => count++);
-    worksheet.setRangeBorder(range, 'outside');
+    worksheet.setRangeBorder(range, 'surround');
 
     assert.deepEqual(worksheet.getBorder(1, 1), { ...none, top: true, left: true });
     assert.deepEqual(worksheet.getBorder(2, 2), { ...none, bottom: true, right: true });
     // One event per stored edge (left/top) changed: 4 on the left/top edges, 4 on the right/bottom neighbors.
     assert.equal(count, 8);
 
-    worksheet.setRangeBorder(range, 'all');
+    worksheet.setRangeBorder(range, 'inside');
     assert.deepEqual(worksheet.getBorder(1, 2), { top: true, right: true, bottom: true, left: true });
 
-    worksheet.setBorder(0, 1, { right: true });
-    worksheet.setRangeBorder(range, 'none');
-    assert.deepEqual(worksheet.getBorder(1, 2), none);
+    worksheet.setRangeBorder(range, 'surround', false);
+    assert.deepEqual(worksheet.getBorder(1, 1), { ...none, right: true, bottom: true });
     assert.deepEqual(worksheet.getBorder(0, 1), none);
+
+    worksheet.setRangeBorder(range, 'inside', false);
+    assert.deepEqual(worksheet.getBorder(1, 2), none);
+  });
+
+  test('whole column and whole row', () => {
+    const worksheet = new Worksheet();
+
+    worksheet.setRangeBorder({ x: 2 }, 'left');
+    worksheet.setRangeBorder({ x: 2 }, 'right');
+    assert.deepEqual(worksheet.getBorder(2, 0), { ...none, left: true, right: true });
+    assert.deepEqual(worksheet.getBorder(2, worksheet.rowCount - 1), { ...none, left: true, right: true });
+
+    worksheet.setRangeBorder({ y: 4 }, 'top');
+    worksheet.setRangeBorder({ y: 4 }, 'bottom');
+    assert.deepEqual(worksheet.getBorder(0, 4), { ...none, top: true, bottom: true });
+    assert.deepEqual(worksheet.getBorder(worksheet.columnCount - 1, 4), { ...none, top: true, bottom: true });
   });
 
   test('right and bottom are shared with the next cell, and skipped on the last column and row', () => {

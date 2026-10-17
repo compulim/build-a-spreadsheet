@@ -4,7 +4,7 @@ import { COLUMN_COUNT, COLUMN_WIDTH, ROW_COUNT } from './constants.js';
 
 /** @typedef {boolean | number | string} CellValue */
 /** @typedef {{ top: boolean; right: boolean; bottom: boolean; left: boolean }} CellBorder */
-/** @typedef {'left' | 'right' | 'top' | 'bottom' | 'outside' | 'all' | 'none'} BorderPreset */
+/** @typedef {'left' | 'right' | 'top' | 'bottom' | 'surround' | 'inside'} BorderEdges */
 /** @typedef {{ x: number; y: number; value: CellValue; previousValue: CellValue }} CellChange */
 /** @typedef {CellValue | null | undefined} CellInput */
 /** @typedef {(value: CellValue | undefined, x: number, y: number) => CellInput} CellUpdater */
@@ -387,42 +387,49 @@ export class Worksheet extends EventTarget {
   }
 
   /**
-   * Sets borders of a range:
+   * Sets or unsets borders of a range:
    *
    * - `'left'`: left of the leftmost cells.
    * - `'right'`: right of the rightmost cells.
    * - `'top'`: top of the topmost cells.
    * - `'bottom'`: bottom of the bottommost cells.
-   * - `'outside'`: surrounds the range.
-   * - `'all'`: surrounds the range and every cell inside it.
-   * - `'none'`: removes the surrounding and inside borders.
+   * - `'surround'`: all four sides of the range.
+   * - `'inside'`: between cells inside the range.
    *
-   * @param {{ left: number; top: number; right: number; bottom: number }} range
-   * @param {BorderPreset} preset
+   * Omit `x` (and `width`) to span whole rows, omit `y` (and `height`) to span whole columns. `width` and `height`
+   * default to 1 when `x` or `y` is set. For example, `{ x: 2 }` is column C and `{ y: 4 }` is row 5.
+   *
+   * @param {{ x?: number; y?: number; width?: number; height?: number }} range
+   * @param {BorderEdges} edges
+   * @param {boolean} [value] `false` to unset the borders.
    */
-  setRangeBorder({ left, top, right, bottom }, preset) {
+  setRangeBorder(range, edges, value = true) {
+    const left = range.x ?? 0;
+    const top = range.y ?? 0;
+    const right = left + (range.width ?? (range.x === undefined ? this.columnCount : 1)) - 1;
+    const bottom = top + (range.height ?? (range.y === undefined ? this.rowCount : 1)) - 1;
+
     this.#assertCell(left, top);
     this.#assertCell(right, bottom);
 
-    const outside = preset === 'outside';
-
     for (let y = top; y <= bottom; y++) {
       for (let x = left; x <= right; x++) {
-        if (preset === 'all' || preset === 'none') {
-          const set = preset === 'all';
+        /** @type {Partial<CellBorder>} */
+        const border = {};
 
-          this.setBorder(x, y, { top: set, right: set, bottom: set, left: set });
+        if (edges === 'inside') {
+          x > left && (border.left = value);
+          y > top && (border.top = value);
         } else {
-          /** @type {Partial<CellBorder>} */
-          const border = {};
+          const surround = edges === 'surround';
 
-          (outside || preset === 'left') && x === left && (border.left = true);
-          (outside || preset === 'right') && x === right && (border.right = true);
-          (outside || preset === 'top') && y === top && (border.top = true);
-          (outside || preset === 'bottom') && y === bottom && (border.bottom = true);
-
-          this.setBorder(x, y, border);
+          (surround || edges === 'left') && x === left && (border.left = value);
+          (surround || edges === 'right') && x === right && (border.right = value);
+          (surround || edges === 'top') && y === top && (border.top = value);
+          (surround || edges === 'bottom') && y === bottom && (border.bottom = value);
         }
+
+        this.setBorder(x, y, border);
       }
     }
   }
