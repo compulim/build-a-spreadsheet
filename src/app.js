@@ -279,7 +279,7 @@ borderSelect.addEventListener('change', () => {
     if (preset === 'all' || preset === 'none') {
       worksheet.setBorder(range, new Set(['outside', 'inside']), preset === 'all');
     } else {
-      worksheet.setBorder(range, /** @type {import('./workbook/Worksheet.js').BorderEdges} */ (preset));
+      worksheet.setBorder(range, new Set([/** @type {import('./workbook/Worksheet.js').BorderEdges} */ (preset)]));
     }
   }
 

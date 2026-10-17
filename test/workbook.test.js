@@ -328,7 +328,7 @@ describe('Worksheet borders', () => {
     test(side, () => {
       const worksheet = new Worksheet();
 
-      worksheet.setBorder(range, side);
+      worksheet.setBorder(range, new Set([side]));
 
       for (let y = 1; y <= 2; y++) {
         for (let x = 1; x <= 2; x++) {
@@ -349,21 +349,21 @@ describe('Worksheet borders', () => {
     let count = 0;
 
     worksheet.addEventListener('borderchange', () => count++);
-    worksheet.setBorder(range, 'outside');
+    worksheet.setBorder(range, new Set(['outside']));
 
     assert.deepEqual(worksheet.getBorder(1, 1), { ...none, top: true, left: true });
     assert.deepEqual(worksheet.getBorder(2, 2), { ...none, bottom: true, right: true });
     // One event per stored edge (left/top) changed: 4 on the left/top edges, 4 on the right/bottom neighbors.
     assert.equal(count, 8);
 
-    worksheet.setBorder(range, 'inside');
+    worksheet.setBorder(range, new Set(['inside']));
     assert.deepEqual(worksheet.getBorder(1, 2), { top: true, right: true, bottom: true, left: true });
 
-    worksheet.setBorder(range, 'outside', false);
+    worksheet.setBorder(range, new Set(['outside']), false);
     assert.deepEqual(worksheet.getBorder(1, 1), { ...none, right: true, bottom: true });
     assert.deepEqual(worksheet.getBorder(0, 1), none);
 
-    worksheet.setBorder(range, 'inside', false);
+    worksheet.setBorder(range, new Set(['inside']), false);
     assert.deepEqual(worksheet.getBorder(1, 2), none);
   });
 
@@ -382,13 +382,13 @@ describe('Worksheet borders', () => {
   test('whole column and whole row', () => {
     const worksheet = new Worksheet();
 
-    worksheet.setBorder({ x: 2 }, 'left');
-    worksheet.setBorder({ x: 2 }, 'right');
+    worksheet.setBorder({ x: 2 }, new Set(['left']));
+    worksheet.setBorder({ x: 2 }, new Set(['right']));
     assert.deepEqual(worksheet.getBorder(2, 0), { ...none, left: true, right: true });
     assert.deepEqual(worksheet.getBorder(2, worksheet.rowCount - 1), { ...none, left: true, right: true });
 
-    worksheet.setBorder({ y: 4 }, 'top');
-    worksheet.setBorder({ y: 4 }, 'bottom');
+    worksheet.setBorder({ y: 4 }, new Set(['top']));
+    worksheet.setBorder({ y: 4 }, new Set(['bottom']));
     assert.deepEqual(worksheet.getBorder(0, 4), { ...none, top: true, bottom: true });
     assert.deepEqual(worksheet.getBorder(worksheet.columnCount - 1, 4), { ...none, top: true, bottom: true });
   });
@@ -398,16 +398,14 @@ describe('Worksheet borders', () => {
     const lastX = worksheet.columnCount - 1;
     const lastY = worksheet.rowCount - 1;
 
-    worksheet.setBorder({ x: 0, y: 0 }, 'right');
-    worksheet.setBorder({ x: 0, y: 0 }, 'bottom');
+    worksheet.setBorder({ x: 0, y: 0 }, new Set(['right', 'bottom']));
     assert.deepEqual(worksheet.getBorder(1, 0), { ...none, left: true });
     assert.deepEqual(worksheet.getBorder(0, 1), { ...none, top: true });
 
-    worksheet.setBorder({ x: 1, y: 0 }, 'left', false);
+    worksheet.setBorder({ x: 1, y: 0 }, new Set(['left']), false);
     assert.deepEqual(worksheet.getBorder(0, 0), { ...none, bottom: true });
 
-    worksheet.setBorder({ x: lastX, y: lastY }, 'right');
-    worksheet.setBorder({ x: lastX, y: lastY }, 'bottom');
+    worksheet.setBorder({ x: lastX, y: lastY }, new Set(['right', 'bottom']));
     assert.deepEqual(worksheet.getBorder(lastX, lastY), none);
   });
 });

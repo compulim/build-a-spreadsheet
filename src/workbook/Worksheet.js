@@ -385,11 +385,11 @@ export class Worksheet extends EventTarget {
    * cell below, and are ignored on the last column and row.
    * Dispatches `borderchange` (with `x` and `y` of the cell storing the edge) for each stored edge changed.
    *
-   * `edges` can be a single edge or an iterable (e.g. `Set`) of edges to apply together, for example
-   * `new Set(['top', 'left'])`. `'outside'` is a shortcut of `'left'`, `'right'`, `'top'` and `'bottom'`.
+   * `edges` is a `Set` of edges to apply together, for example `new Set(['top', 'left'])`. `'outside'` is a shortcut
+   * of `'left'`, `'right'`, `'top'` and `'bottom'`.
    *
    * @param {{ x?: number; y?: number; width?: number; height?: number }} range
-   * @param {BorderEdges | Iterable<BorderEdges>} edges
+   * @param {ReadonlySet<BorderEdges>} edges
    * @param {boolean} [value] `false` to unset the borders.
    */
   setBorder(range, edges, value = true) {
@@ -401,7 +401,7 @@ export class Worksheet extends EventTarget {
     this.#assertCell(left, top);
     this.#assertCell(right, bottom);
 
-    const set = new Set(typeof edges === 'string' ? [edges] : edges);
+    const set = new Set(edges);
 
     if (set.delete('outside')) {
       set.add('left').add('right').add('top').add('bottom');
