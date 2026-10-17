@@ -98,6 +98,27 @@ function createElement(tagName, className) {
 }
 
 /**
+ * Returns formattings embedded by this app in clipboard HTML, or `undefined` if the HTML is not from this app.
+ *
+ * @param {string} html
+ * @returns {Partial<import('./workbook/Worksheet.js').CellFormatting>[][] | undefined}
+ */
+function parseClipboardFormattings(html) {
+  if (!html) {
+    return;
+  }
+
+  try {
+    const json = new DOMParser().parseFromString(html, 'text/html').querySelector('table[data-formattings]')?.getAttribute('data-formattings');
+    const formattings = json && JSON.parse(json);
+
+    return Array.isArray(formattings) && formattings.every(Array.isArray) ? formattings : undefined;
+  } catch {
+    return;
+  }
+}
+
+/**
  * @param {string} text
  * @returns {string}
  */
@@ -1507,12 +1528,15 @@ export class SpreadsheetGrid extends EventTarget {
     event.preventDefault();
 
     const values = this.#getSelectedValues();
+    const { left, top, right, bottom } = this.selection;
+    // Formatting (excluding borders) is embedded in the HTML flavor only, so plain text editors get plain values.
+    const formattings = this.#worksheet.getFormattings(left, top, right - left + 1, bottom - top + 1);
 
     // Excel and Excel Web App understand both plain text (tab-separated) and HTML tables.
     event.clipboardData.setData('text/plain', `${stringifyTSV(values)}\r\n`);
     event.clipboardData.setData(
       'text/html',
-      `<table>${values
+      `<table data-formattings="${escapeHTML(JSON.stringify(formattings))}">${values
         .map(
           row =>
             `<tr>${row
@@ -1546,6 +1570,7 @@ export class SpreadsheetGrid extends EventTarget {
     }
 
     let values = parseTSV(text);
+    const formattings = parseClipboardFormattings(event.clipboardData.getData('text/html'));
 
     if (!values.length) {
       values = [['']];
@@ -1572,6 +1597,12 @@ export class SpreadsheetGrid extends EventTarget {
 
         if (this.isEditable(column, row)) {
           worksheet.setValue(column, row, rowValues[columnOffset % dataColumns] ?? '');
+
+          if (formattings) {
+            const formattingRow = formattings[rowOffset % dataRows];
+
+            worksheet.setFormatting(column, row, formattingRow?.[columnOffset % (formattingRow?.length || 1)]);
+          }
         } else {
           skipped = true;
         }
