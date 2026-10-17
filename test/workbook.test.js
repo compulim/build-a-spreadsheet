@@ -427,7 +427,8 @@ test('Worksheet formatting', () => {
     underline: false,
     strikethrough: false,
     align: undefined,
-    highlight: undefined
+    highlight: undefined,
+    format: undefined
   });
 
   worksheet.setFormattings([[{ align: 'left' }]], 0, 2);
@@ -442,7 +443,8 @@ test('Worksheet formatting', () => {
     underline: true,
     strikethrough: false,
     align: 'center',
-    highlight: undefined
+    highlight: undefined,
+    format: undefined
   });
   assert.deepStrictEqual(events, [[1, 1]]);
 
@@ -469,6 +471,12 @@ test('Worksheet formatting', () => {
   worksheet.setFormattings(formatting => ({ ...formatting, highlight: undefined }), 0, 0, 1, 1);
   assert.strictEqual(worksheet.getFormattings(0, 0, 1, 1)[0][0].highlight, undefined);
   assert.throws(() => worksheet.setFormattings([[{ highlight: 1 }]], 0, 0), TypeError);
+
+  worksheet.setFormattings([[{ format: 'currency' }]], 0, 0);
+  assert.strictEqual(worksheet.getFormattings(0, 0, 1, 1)[0][0].format, 'currency');
+  worksheet.setFormattings(formatting => ({ ...formatting, format: undefined }), 0, 0, 1, 1);
+  assert.strictEqual(worksheet.getFormattings(0, 0, 1, 1)[0][0].format, undefined);
+  assert.throws(() => worksheet.setFormattings([[{ format: 'scientific' }]], 0, 0), TypeError);
 });
 
 test('Worksheet formatting is not kept on empty cells', () => {

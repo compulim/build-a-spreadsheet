@@ -1,5 +1,6 @@
 import { formatValue, inferValue, parseTSV, stringifyTSV } from './csv.js';
 import { getHighlight } from './highlights.js';
+import { formatDisplayValue } from './numberFormats.js';
 import { getColumnName } from './workbook/getColumnName.js';
 
 /**
@@ -775,8 +776,16 @@ export class SpreadsheetGrid extends EventTarget {
     let width = context.measureText(getColumnName(column)).width;
 
     if (this.#worksheet) {
-      for (const [value] of this.#worksheet.getValues(column, 0, 1, this.rowCount)) {
-        const text = formatValue(value);
+      const formattings = this.#worksheet.getFormattings(column, 0, 1, this.rowCount);
+      const values = this.#worksheet.getValues(column, 0, 1, this.rowCount);
+
+      for (let row = 0; row < values.length; row++) {
+        const value = values[row][0];
+        const format = formattings[row][0].format;
+        const { text: formatted } = formatDisplayValue(value, format);
+        // Includes decorations added by CSS: currency sign (with a gap) and parentheses, or percent sign.
+        const text =
+          typeof value === 'number' && format === 'currency' ? `$ (${formatted})` : typeof value === 'number' && format === 'percent' ? `${formatted}%` : formatted;
 
         if (text) {
           for (const line of text.split('\n')) {
@@ -831,7 +840,10 @@ export class SpreadsheetGrid extends EventTarget {
       const cell = cells[column];
       const value = worksheet ? worksheet.getValue(column, row) : '';
       const type = typeof value;
-      const text = formatValue(value);
+      const formatting = worksheet?.getFormattings(column, row, 1, 1)[0][0];
+      // Number formats only apply to numbers, decorations (e.g. currency sign) are added by CSS.
+      const format = (type === 'number' && formatting?.format) || '';
+      const { negative, text } = formatDisplayValue(value, formatting?.format);
 
       // Text is in an inner element, so the highlight marker only covers the text, not the whole cell.
       const content = /** @type {HTMLElement} */ (cell.firstElementChild);
@@ -844,7 +856,12 @@ export class SpreadsheetGrid extends EventTarget {
         cell.dataset.type = type;
       }
 
-      const formatting = worksheet?.getFormattings(column, row, 1, 1)[0][0];
+      if ((cell.dataset.format || '') !== format) {
+        format ? (cell.dataset.format = format) : delete cell.dataset.format;
+      }
+
+      cell.classList.toggle('grid__cell--negative', negative);
+
       const decorations = [formatting?.underline && 'underline', formatting?.strikethrough && 'line-through']
         .filter(Boolean)
         .join(' ');
