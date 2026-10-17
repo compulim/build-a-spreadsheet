@@ -478,6 +478,8 @@ borderSelect.addEventListener('change', () => {
     } else {
       worksheet.setBorder(range, new Set([/** @type {import('./workbook/Worksheet.js').BorderEdges} */ (preset)]));
     }
+
+    updateUndoButtons();
   }
 
   grid.focus();

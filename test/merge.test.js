@@ -112,3 +112,22 @@ test('CSV keeps merged content in the first cell', () => {
 
   assert.equal(worksheet.toCSV().split(/\r?\n/)[1], ',a b c,,,e');
 });
+
+test('setBorder is undoable', async () => {
+  const worksheet = new Worksheet();
+  const range = { x: 1, y: 1, width: 2, height: 2 };
+
+  worksheet.setBorder(range, new Set(['outside', 'inside']));
+  await Promise.resolve();
+  worksheet.setBorder(range, new Set(['inside']), false);
+  await Promise.resolve();
+
+  assert.equal(worksheet.getBorder(2, 1).left, false);
+  worksheet.undo();
+  assert.equal(worksheet.getBorder(2, 1).left, true);
+  worksheet.undo();
+  assert.deepEqual(worksheet.getBorder(1, 1), { top: false, right: false, bottom: false, left: false });
+  assert.equal(worksheet.undo(), false);
+  worksheet.redo();
+  assert.deepEqual(worksheet.getBorder(1, 1), { top: true, right: true, bottom: true, left: true });
+});

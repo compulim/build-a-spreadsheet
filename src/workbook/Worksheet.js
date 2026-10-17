@@ -364,7 +364,7 @@ export class Worksheet extends EventTarget {
     try {
       for (const change of isUndo ? [...changes].reverse() : changes) {
         if ('edge' in change) {
-          this.#setStoredEdge(change.x, change.y, change.edge, isUndo ? change.previousBorder : change.border, true);
+          this.#setStoredEdge(change.x, change.y, change.edge, isUndo ? change.previousBorder : change.border);
         } else if ('merge' in change) {
           this.#setMerge(change.x, change.y, isUndo ? change.previousMerge : change.merge);
         } else if ('formatting' in change) {
@@ -405,9 +405,8 @@ export class Worksheet extends EventTarget {
    * @param {number} y
    * @param {'left' | 'top'} side
    * @param {boolean} value
-   * @param {boolean} [record] Records the change for undo.
    */
-  #setStoredEdge(x, y, side, value, record = false) {
+  #setStoredEdge(x, y, side, value) {
     const key = y * this.columnCount + x;
     const previous = this.#borders.get(key) || { top: false, left: false };
 
@@ -419,13 +418,13 @@ export class Worksheet extends EventTarget {
 
     next.top || next.left ? this.#borders.set(key, next) : this.#borders.delete(key);
 
-    record && !this.#applyingHistory && this.#record({ x, y, edge: side, border: value, previousBorder: previous[side] });
+    this.#applyingHistory || this.#record({ x, y, edge: side, border: value, previousBorder: previous[side] });
 
     this.dispatchEvent(Object.assign(new Event('borderchange'), { x, y }));
   }
 
   /**
-   * Sets or unsets borders of a range:
+   * Sets or unsets borders of a range. Undoable:
    *
    * - `'left'`: left of the leftmost cells.
    * - `'right'`: right of the rightmost cells.
@@ -758,7 +757,7 @@ export class Worksheet extends EventTarget {
 
     for (let column = left + 1; column <= right; column++) {
       this.setValue(column, y, '');
-      this.#setStoredEdge(column, y, 'left', false, true);
+      this.#setStoredEdge(column, y, 'left', false);
     }
 
     this.#setMerge(left, y, right - left + 1);
