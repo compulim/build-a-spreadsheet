@@ -277,9 +277,9 @@ borderSelect.addEventListener('change', () => {
     const range = { x: left, y: top, width: right - left + 1, height: bottom - top + 1 };
 
     if (preset === 'outside') {
-      worksheet.setRangeBorder(range, 'surround');
+      worksheet.setRangeBorder(range, 'outside');
     } else if (preset === 'all' || preset === 'none') {
-      worksheet.setRangeBorder(range, 'surround', preset === 'all');
+      worksheet.setRangeBorder(range, 'outside', preset === 'all');
       worksheet.setRangeBorder(range, 'inside', preset === 'all');
     } else {
       worksheet.setRangeBorder(range, /** @type {import('./workbook/Worksheet.js').BorderEdges} */ (preset));

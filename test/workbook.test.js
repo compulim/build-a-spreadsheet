@@ -344,12 +344,12 @@ describe('Worksheet borders', () => {
     });
   }
 
-  test('surround, inside and unset', () => {
+  test('outside, inside and unset', () => {
     const worksheet = new Worksheet();
     let count = 0;
 
     worksheet.addEventListener('borderchange', () => count++);
-    worksheet.setRangeBorder(range, 'surround');
+    worksheet.setRangeBorder(range, 'outside');
 
     assert.deepEqual(worksheet.getBorder(1, 1), { ...none, top: true, left: true });
     assert.deepEqual(worksheet.getBorder(2, 2), { ...none, bottom: true, right: true });
@@ -359,7 +359,7 @@ describe('Worksheet borders', () => {
     worksheet.setRangeBorder(range, 'inside');
     assert.deepEqual(worksheet.getBorder(1, 2), { top: true, right: true, bottom: true, left: true });
 
-    worksheet.setRangeBorder(range, 'surround', false);
+    worksheet.setRangeBorder(range, 'outside', false);
     assert.deepEqual(worksheet.getBorder(1, 1), { ...none, right: true, bottom: true });
     assert.deepEqual(worksheet.getBorder(0, 1), none);
 

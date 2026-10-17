@@ -4,7 +4,7 @@ import { COLUMN_COUNT, COLUMN_WIDTH, ROW_COUNT } from './constants.js';
 
 /** @typedef {boolean | number | string} CellValue */
 /** @typedef {{ top: boolean; right: boolean; bottom: boolean; left: boolean }} CellBorder */
-/** @typedef {'left' | 'right' | 'top' | 'bottom' | 'surround' | 'inside'} BorderEdges */
+/** @typedef {'left' | 'right' | 'top' | 'bottom' | 'outside' | 'inside'} BorderEdges */
 /** @typedef {{ x: number; y: number; value: CellValue; previousValue: CellValue }} CellChange */
 /** @typedef {CellValue | null | undefined} CellInput */
 /** @typedef {(value: CellValue | undefined, x: number, y: number) => CellInput} CellUpdater */
@@ -393,7 +393,7 @@ export class Worksheet extends EventTarget {
    * - `'right'`: right of the rightmost cells.
    * - `'top'`: top of the topmost cells.
    * - `'bottom'`: bottom of the bottommost cells.
-   * - `'surround'`: all four sides of the range.
+   * - `'outside'`: all four sides of the range.
    * - `'inside'`: between cells inside the range.
    *
    * Omit `x` (and `width`) to span whole rows, omit `y` (and `height`) to span whole columns. `width` and `height`
@@ -421,12 +421,12 @@ export class Worksheet extends EventTarget {
           x > left && (border.left = value);
           y > top && (border.top = value);
         } else {
-          const surround = edges === 'surround';
+          const outside = edges === 'outside';
 
-          (surround || edges === 'left') && x === left && (border.left = value);
-          (surround || edges === 'right') && x === right && (border.right = value);
-          (surround || edges === 'top') && y === top && (border.top = value);
-          (surround || edges === 'bottom') && y === bottom && (border.bottom = value);
+          (outside || edges === 'left') && x === left && (border.left = value);
+          (outside || edges === 'right') && x === right && (border.right = value);
+          (outside || edges === 'top') && y === top && (border.top = value);
+          (outside || edges === 'bottom') && y === bottom && (border.bottom = value);
         }
 
         this.setBorder(x, y, border);
