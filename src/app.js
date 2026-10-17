@@ -1,5 +1,6 @@
 import { SpreadsheetGrid } from './grid.js';
 import { formatValue } from './csv.js';
+import { HIGHLIGHTS } from './highlights.js';
 import { cellsToPNG } from './printCells.js';
 import { MAX_WORKSHEETS } from './workbook/constants.js';
 import { getColumnName } from './workbook/getColumnName.js';
@@ -34,6 +35,21 @@ const alignButtons = /** @type {const} */ (['left', 'center', 'right']).map(alig
   align,
   button: /** @type {HTMLButtonElement} */ (document.getElementById(`align-${align}-button`))
 }));
+const highlightButtons = HIGHLIGHTS.map(({ name, label, background, color }) => {
+  const button = document.createElement('button');
+
+  button.type = 'button';
+  button.className = 'toolbar__highlight-button';
+  button.title = label;
+  button.textContent = 'A';
+  button.setAttribute('aria-label', label);
+  button.setAttribute('aria-pressed', 'false');
+  background && button.style.setProperty('--highlight-background', background);
+  color && button.style.setProperty('--highlight-color', color);
+  unformatButton.before(button);
+
+  return { name, button };
+});
 const nameBox = /** @type {HTMLOutputElement} */ (document.getElementById('name-box'));
 const valueBox = /** @type {HTMLOutputElement} */ (document.getElementById('value-box'));
 const status = /** @type {HTMLOutputElement} */ (document.getElementById('status'));
@@ -204,6 +220,10 @@ function updateFormattingButtons() {
   for (const { align, button } of alignButtons) {
     button.setAttribute('aria-pressed', String(formatting?.align === align));
   }
+
+  for (const { name, button } of highlightButtons) {
+    button.setAttribute('aria-pressed', String(formatting?.highlight === name));
+  }
 }
 
 /** @param {import('./workbook/Worksheet.js').FormattingUpdater} updater */
@@ -235,6 +255,15 @@ for (const { align, button } of alignButtons) {
     const nextAlign = button.getAttribute('aria-pressed') === 'true' ? undefined : align;
 
     formatSelection(formatting => ({ ...formatting, align: nextAlign }));
+  });
+}
+
+for (const { name, button } of highlightButtons) {
+  button.addEventListener('click', () => {
+    // Only one highlight at a time, clicking a pushed highlight button unpushes it.
+    const nextHighlight = button.getAttribute('aria-pressed') === 'true' ? undefined : name;
+
+    formatSelection(formatting => ({ ...formatting, highlight: nextHighlight }));
   });
 }
 
@@ -460,7 +489,10 @@ printButton.addEventListener('click', async () => {
       columnWidths.push(worksheet.getColumnWidth(column));
     }
 
-    download(await cellsToPNG(rows, { columnWidths, getBorder }), `${workbook.getWorksheetName(worksheet)}.png`);
+    const getFormatting = (/** @type {number} */ column, /** @type {number} */ row) =>
+      worksheet.getFormatting(left + column, top + row);
+
+    download(await cellsToPNG(rows, { columnWidths, getBorder, getFormatting }), `${workbook.getWorksheetName(worksheet)}.png`);
   } catch (error) {
     alert(`Failed to print selected cells: ${/** @type {Error} */ (error).message}`);
   }

@@ -205,6 +205,17 @@ body {
   font-style: italic;
 }
 
+.toolbar .toolbar__highlight-button,
+.toolbar .toolbar__highlight-button:hover {
+  background: var(--highlight-background, #fff);
+  color: var(--highlight-color, inherit);
+  font-weight: bold;
+}
+
+.toolbar .toolbar__highlight-button[aria-pressed='true'] {
+  outline: 2px solid #c42b1c;
+}
+
 .grid__cell[data-align='left'] {
   text-align: left;
 }
