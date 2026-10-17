@@ -348,24 +348,6 @@ export class Worksheet extends EventTarget {
   }
 
   /**
-   * Sets some or all borders of a cell. The right and bottom borders are stored as the left border of the cell on the
-   * right and the top border of the cell below, and are ignored on the last column and row.
-   * Dispatches `borderchange` (with `x` and `y` of the cell storing the edge) for each stored edge changed.
-   *
-   * @param {number} x
-   * @param {number} y
-   * @param {Partial<CellBorder>} border
-   */
-  setBorder(x, y, border) {
-    this.#assertCell(x, y);
-
-    'top' in border && this.#setStoredEdge(x, y, 'top', !!border.top);
-    'left' in border && this.#setStoredEdge(x, y, 'left', !!border.left);
-    'right' in border && x + 1 < this.columnCount && this.#setStoredEdge(x + 1, y, 'left', !!border.right);
-    'bottom' in border && y + 1 < this.rowCount && this.#setStoredEdge(x, y + 1, 'top', !!border.bottom);
-  }
-
-  /**
    * @param {number} x
    * @param {number} y
    * @param {'left' | 'top'} side
@@ -399,11 +381,18 @@ export class Worksheet extends EventTarget {
    * Omit `x` (and `width`) to span whole rows, omit `y` (and `height`) to span whole columns. `width` and `height`
    * default to 1 when `x` or `y` is set. For example, `{ x: 2 }` is column C and `{ y: 4 }` is row 5.
    *
+   * The right and bottom borders are stored as the left border of the cell on the right and the top border of the
+   * cell below, and are ignored on the last column and row.
+   * Dispatches `borderchange` (with `x` and `y` of the cell storing the edge) for each stored edge changed.
+   *
+   * `edges` is a `Set` of edges to apply together, for example `new Set(['top', 'left'])`. `'outside'` is a shortcut
+   * of `'left'`, `'right'`, `'top'` and `'bottom'`.
+   *
    * @param {{ x?: number; y?: number; width?: number; height?: number }} range
-   * @param {BorderEdges} edges
+   * @param {ReadonlySet<BorderEdges>} edges
    * @param {boolean} [value] `false` to unset the borders.
    */
-  setRangeBorder(range, edges, value = true) {
+  setBorder(range, edges, value = true) {
     const left = range.x ?? 0;
     const top = range.y ?? 0;
     const right = left + (range.width ?? (range.x === undefined ? this.columnCount : 1)) - 1;
@@ -412,24 +401,23 @@ export class Worksheet extends EventTarget {
     this.#assertCell(left, top);
     this.#assertCell(right, bottom);
 
+    const set = new Set(edges);
+
+    if (set.delete('outside')) {
+      set.add('left').add('right').add('top').add('bottom');
+    }
+
     for (let y = top; y <= bottom; y++) {
       for (let x = left; x <= right; x++) {
-        /** @type {Partial<CellBorder>} */
-        const border = {};
-
-        if (edges === 'inside') {
-          x > left && (border.left = value);
-          y > top && (border.top = value);
-        } else {
-          const outside = edges === 'outside';
-
-          (outside || edges === 'left') && x === left && (border.left = value);
-          (outside || edges === 'right') && x === right && (border.right = value);
-          (outside || edges === 'top') && y === top && (border.top = value);
-          (outside || edges === 'bottom') && y === bottom && (border.bottom = value);
+        if (set.has('inside')) {
+          x > left && this.#setStoredEdge(x, y, 'left', value);
+          y > top && this.#setStoredEdge(x, y, 'top', value);
         }
 
-        this.setBorder(x, y, border);
+        set.has('left') && x === left && this.#setStoredEdge(x, y, 'left', value);
+        set.has('top') && y === top && this.#setStoredEdge(x, y, 'top', value);
+        set.has('right') && x === right && x + 1 < this.columnCount && this.#setStoredEdge(x + 1, y, 'left', value);
+        set.has('bottom') && y === bottom && y + 1 < this.rowCount && this.#setStoredEdge(x, y + 1, 'top', value);
       }
     }
   }
