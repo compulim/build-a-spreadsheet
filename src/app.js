@@ -230,7 +230,12 @@ for (const { style, button } of styleButtons) {
 }
 
 for (const { align, button } of alignButtons) {
-  button.addEventListener('click', () => formatSelection(formatting => ({ ...formatting, align })));
+  button.addEventListener('click', () => {
+    // Clicking a pushed align button unpushes it, back to the default (type-based) alignment.
+    const nextAlign = button.getAttribute('aria-pressed') === 'true' ? undefined : align;
+
+    formatSelection(formatting => ({ ...formatting, align: nextAlign }));
+  });
 }
 
 /** @type {Record<string, HTMLButtonElement>} */
