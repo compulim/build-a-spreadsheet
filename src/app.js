@@ -213,6 +213,7 @@ function formatSelection(updater) {
 
     worksheet.setFormattings(updater, left, top, right - left + 1, bottom - top + 1);
     updateFormattingButtons();
+    updateUndoButtons();
   }
 
   grid.focus();
@@ -295,6 +296,7 @@ function undoOrRedo(action) {
   } finally {
     worksheet.removeEventListener('cellchange', handleCellChange);
     updateUndoButtons();
+    updateFormattingButtons();
   }
 
   grid.focus();

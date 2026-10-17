@@ -5,7 +5,9 @@ import { COLUMN_COUNT, COLUMN_WIDTH, ROW_COUNT } from './constants.js';
 /** @typedef {boolean | number | string} CellValue */
 /** @typedef {{ top: boolean; right: boolean; bottom: boolean; left: boolean }} CellBorder */
 /** @typedef {'left' | 'right' | 'top' | 'bottom' | 'outside' | 'inside'} BorderEdges */
-/** @typedef {{ x: number; y: number; value: CellValue; previousValue: CellValue }} CellChange */
+/** @typedef {{ x: number; y: number; value: CellValue; previousValue: CellValue }} CellValueChange */
+/** @typedef {{ x: number; y: number; formatting: CellFormatting; previousFormatting: CellFormatting }} CellFormattingChange */
+/** @typedef {CellValueChange | CellFormattingChange} CellChange */
 /** @typedef {CellValue | null | undefined} CellInput */
 /** @typedef {(value: CellValue | undefined, x: number, y: number) => CellInput} CellUpdater */
 /** @typedef {'left' | 'center' | 'right'} CellAlign */
@@ -33,7 +35,7 @@ const DEFAULT_FORMATTING = Object.freeze({
  * whenever the border of a cell changes, `formattingchange` (with `x` and `y`) whenever the formatting of a cell changes,
  * and `columnwidthchange` (with `x`) whenever the width of a column changes.
  *
- * Keeps an undo history of cell changes. Changes made synchronously in the same task (e.g. a paste) are grouped into a
+ * Keeps an undo history of cell value and formatting changes. Changes made synchronously in the same task (e.g. a paste) are grouped into a
  * single undo step.
  */
 export class Worksheet extends EventTarget {
@@ -166,6 +168,9 @@ export class Worksheet extends EventTarget {
     }
 
     if (value === '') {
+      // Empty cells never keep formatting. Removed (and recorded) before the value, so undo restores the value first.
+      this.setFormatting(x, y, null);
+
       if (cells) {
         delete cells[x];
 
@@ -178,11 +183,6 @@ export class Worksheet extends EventTarget {
     }
 
     this.#applyingHistory || this.#record({ x, y, value, previousValue });
-
-    // Empty cells never keep formatting.
-    if (value === '' && this.#formattings.delete(y * this.columnCount + x)) {
-      this.dispatchEvent(Object.assign(new Event('formattingchange'), { x, y }));
-    }
 
     this.dispatchEvent(new CellChangeEvent('cellchange', { x, y, value, previousValue, worksheet: this }));
   }
@@ -311,7 +311,7 @@ export class Worksheet extends EventTarget {
   }
 
   /**
-   * Reverts the last group of cell changes.
+   * Reverts the last group of cell value and formatting changes.
    *
    * @returns {boolean} `false` if there is nothing to undo.
    */
@@ -320,7 +320,7 @@ export class Worksheet extends EventTarget {
   }
 
   /**
-   * Re-applies the last undone group of cell changes.
+   * Re-applies the last undone group of cell value and formatting changes.
    *
    * @returns {boolean} `false` if there is nothing to redo.
    */
@@ -345,8 +345,12 @@ export class Worksheet extends EventTarget {
     this.#applyingHistory = true;
 
     try {
-      for (const { x, y, value, previousValue } of isUndo ? [...changes].reverse() : changes) {
-        this.setValue(x, y, isUndo ? previousValue : value);
+      for (const change of isUndo ? [...changes].reverse() : changes) {
+        if ('formatting' in change) {
+          this.setFormatting(change.x, change.y, isUndo ? change.previousFormatting : change.formatting);
+        } else {
+          this.setValue(change.x, change.y, isUndo ? change.previousValue : change.value);
+        }
       }
     } finally {
       this.#applyingHistory = false;
@@ -517,6 +521,8 @@ export class Worksheet extends EventTarget {
     }
 
     isEqual(formatting, DEFAULT_FORMATTING) ? this.#formattings.delete(key) : this.#formattings.set(key, formatting);
+
+    this.#applyingHistory || this.#record({ x, y, formatting, previousFormatting: { ...previous } });
 
     this.dispatchEvent(Object.assign(new Event('formattingchange'), { x, y }));
   }

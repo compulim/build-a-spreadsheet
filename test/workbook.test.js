@@ -480,3 +480,36 @@ test('Worksheet formatting is not kept on empty cells', () => {
   worksheet.setValue(0, 0, 'b');
   assert.strictEqual(worksheet.getFormatting(0, 0).bold, false);
 });
+
+test('Worksheet undo/redo formatting', async () => {
+  const nextTask = () => new Promise(resolve => setTimeout(resolve));
+  const worksheet = new Worksheet({ columnCount: 3, rowCount: 3 });
+
+  worksheet.setValue(0, 0, 'ABC');
+  await nextTask();
+  worksheet.setFormatting(0, 0, { bold: true });
+  await nextTask();
+
+  assert.strictEqual(worksheet.undo(), true);
+  assert.strictEqual(worksheet.getValue(0, 0), 'ABC');
+  assert.strictEqual(worksheet.getFormatting(0, 0).bold, false);
+
+  assert.strictEqual(worksheet.undo(), true);
+  assert.strictEqual(worksheet.getValue(0, 0), undefined);
+
+  worksheet.redo();
+  worksheet.redo();
+  assert.strictEqual(worksheet.getFormatting(0, 0).bold, true);
+  await nextTask();
+
+  // Deleting a formatted value, then undo, restores both value and formatting.
+  worksheet.setValue(0, 0, '');
+  await nextTask();
+  assert.strictEqual(worksheet.getFormatting(0, 0).bold, false);
+  worksheet.undo();
+  assert.strictEqual(worksheet.getValue(0, 0), 'ABC');
+  assert.strictEqual(worksheet.getFormatting(0, 0).bold, true);
+  worksheet.redo();
+  assert.strictEqual(worksheet.getValue(0, 0), undefined);
+  assert.strictEqual(worksheet.getFormatting(0, 0).bold, false);
+});
