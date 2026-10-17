@@ -844,7 +844,7 @@ export class SpreadsheetGrid extends EventTarget {
         cell.dataset.type = type;
       }
 
-      const formatting = worksheet?.getFormatting(column, row);
+      const formatting = worksheet?.getFormattings(column, row, 1, 1)[0][0];
       const decorations = [formatting?.underline && 'underline', formatting?.strikethrough && 'line-through']
         .filter(Boolean)
         .join(' ');
@@ -1601,7 +1601,7 @@ export class SpreadsheetGrid extends EventTarget {
           if (formattings) {
             const formattingRow = formattings[rowOffset % dataRows];
 
-            worksheet.setFormatting(column, row, formattingRow?.[columnOffset % (formattingRow?.length || 1)]);
+            worksheet.setFormattings([[formattingRow?.[columnOffset % (formattingRow?.length || 1)]]], column, row);
           }
         } else {
           skipped = true;

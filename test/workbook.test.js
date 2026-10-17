@@ -421,7 +421,7 @@ test('Worksheet formatting', () => {
   ]);
   worksheet.addEventListener('formattingchange', ({ x, y }) => events.push([x, y]));
 
-  assert.deepStrictEqual(worksheet.getFormatting(0, 0), {
+  assert.deepStrictEqual(worksheet.getFormattings(0, 0, 1, 1)[0][0], {
     bold: false,
     italic: false,
     underline: false,
@@ -430,13 +430,13 @@ test('Worksheet formatting', () => {
     highlight: undefined
   });
 
-  worksheet.setFormatting(0, 2, { align: 'left' });
-  assert.strictEqual(worksheet.getFormatting(0, 2).align, 'left');
-  worksheet.setFormatting(0, 2, null);
+  worksheet.setFormattings([[{ align: 'left' }]], 0, 2);
+  assert.strictEqual(worksheet.getFormattings(0, 2, 1, 1)[0][0].align, 'left');
+  worksheet.setFormattings([[null]], 0, 2);
   events.length = 0;
 
-  worksheet.setFormatting(1, 1, { bold: true, underline: true, align: 'center' });
-  assert.deepStrictEqual(worksheet.getFormatting(1, 1), {
+  worksheet.setFormattings([[{ bold: true, underline: true, align: 'center' }]], 1, 1);
+  assert.deepStrictEqual(worksheet.getFormattings(1, 1, 1, 1)[0][0], {
     bold: true,
     italic: false,
     underline: true,
@@ -446,7 +446,7 @@ test('Worksheet formatting', () => {
   });
   assert.deepStrictEqual(events, [[1, 1]]);
 
-  worksheet.setFormatting(1, 1, formatting => ({ ...formatting, bold: true }));
+  worksheet.setFormattings(formatting => ({ ...formatting, bold: true }), 1, 1, 1, 1);
   assert.strictEqual(events.length, 1);
 
   worksheet.setFormattings(formatting => ({ ...formatting, italic: true }), 0, 0, 2, 2);
@@ -459,16 +459,16 @@ test('Worksheet formatting', () => {
   );
 
   worksheet.setFormattings([[null, { strikethrough: true, align: 'right' }]], 1, 1);
-  assert.deepStrictEqual(worksheet.getFormatting(1, 1).bold, false);
-  assert.deepStrictEqual(worksheet.getFormatting(2, 1).align, 'right');
+  assert.deepStrictEqual(worksheet.getFormattings(1, 1, 1, 1)[0][0].bold, false);
+  assert.deepStrictEqual(worksheet.getFormattings(2, 1, 1, 1)[0][0].align, 'right');
 
-  assert.throws(() => worksheet.setFormatting(0, 0, { align: 'justify' }), TypeError);
+  assert.throws(() => worksheet.setFormattings([[{ align: 'justify' }]], 0, 0), TypeError);
 
-  worksheet.setFormatting(0, 0, { highlight: 'green' });
-  assert.strictEqual(worksheet.getFormatting(0, 0).highlight, 'green');
-  worksheet.setFormatting(0, 0, formatting => ({ ...formatting, highlight: undefined }));
-  assert.strictEqual(worksheet.getFormatting(0, 0).highlight, undefined);
-  assert.throws(() => worksheet.setFormatting(0, 0, { highlight: 1 }), TypeError);
+  worksheet.setFormattings([[{ highlight: 'green' }]], 0, 0);
+  assert.strictEqual(worksheet.getFormattings(0, 0, 1, 1)[0][0].highlight, 'green');
+  worksheet.setFormattings(formatting => ({ ...formatting, highlight: undefined }), 0, 0, 1, 1);
+  assert.strictEqual(worksheet.getFormattings(0, 0, 1, 1)[0][0].highlight, undefined);
+  assert.throws(() => worksheet.setFormattings([[{ highlight: 1 }]], 0, 0), TypeError);
 });
 
 test('Worksheet formatting is not kept on empty cells', () => {
@@ -476,8 +476,8 @@ test('Worksheet formatting is not kept on empty cells', () => {
 
   worksheet.setValue(0, 0, 'a');
   worksheet.setFormattings(() => ({ bold: true }), 0, 0, 2, 1);
-  assert.strictEqual(worksheet.getFormatting(0, 0).bold, true);
-  assert.strictEqual(worksheet.getFormatting(1, 0).bold, false);
+  assert.strictEqual(worksheet.getFormattings(0, 0, 1, 1)[0][0].bold, true);
+  assert.strictEqual(worksheet.getFormattings(1, 0, 1, 1)[0][0].bold, false);
 
   const events = [];
 
@@ -486,7 +486,7 @@ test('Worksheet formatting is not kept on empty cells', () => {
   assert.deepStrictEqual(events, [[0, 0]]);
 
   worksheet.setValue(0, 0, 'b');
-  assert.strictEqual(worksheet.getFormatting(0, 0).bold, false);
+  assert.strictEqual(worksheet.getFormattings(0, 0, 1, 1)[0][0].bold, false);
 });
 
 test('Worksheet undo/redo formatting', async () => {
@@ -495,29 +495,29 @@ test('Worksheet undo/redo formatting', async () => {
 
   worksheet.setValue(0, 0, 'ABC');
   await nextTask();
-  worksheet.setFormatting(0, 0, { bold: true });
+  worksheet.setFormattings([[{ bold: true }]], 0, 0);
   await nextTask();
 
   assert.strictEqual(worksheet.undo(), true);
   assert.strictEqual(worksheet.getValue(0, 0), 'ABC');
-  assert.strictEqual(worksheet.getFormatting(0, 0).bold, false);
+  assert.strictEqual(worksheet.getFormattings(0, 0, 1, 1)[0][0].bold, false);
 
   assert.strictEqual(worksheet.undo(), true);
   assert.strictEqual(worksheet.getValue(0, 0), undefined);
 
   worksheet.redo();
   worksheet.redo();
-  assert.strictEqual(worksheet.getFormatting(0, 0).bold, true);
+  assert.strictEqual(worksheet.getFormattings(0, 0, 1, 1)[0][0].bold, true);
   await nextTask();
 
   // Deleting a formatted value, then undo, restores both value and formatting.
   worksheet.setValue(0, 0, '');
   await nextTask();
-  assert.strictEqual(worksheet.getFormatting(0, 0).bold, false);
+  assert.strictEqual(worksheet.getFormattings(0, 0, 1, 1)[0][0].bold, false);
   worksheet.undo();
   assert.strictEqual(worksheet.getValue(0, 0), 'ABC');
-  assert.strictEqual(worksheet.getFormatting(0, 0).bold, true);
+  assert.strictEqual(worksheet.getFormattings(0, 0, 1, 1)[0][0].bold, true);
   worksheet.redo();
   assert.strictEqual(worksheet.getValue(0, 0), undefined);
-  assert.strictEqual(worksheet.getFormatting(0, 0).bold, false);
+  assert.strictEqual(worksheet.getFormattings(0, 0, 1, 1)[0][0].bold, false);
 });

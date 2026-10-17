@@ -215,7 +215,7 @@ function updateSelectionInfo() {
 
 function updateFormattingButtons() {
   const { column, row } = grid.activeCell;
-  const formatting = grid.worksheet?.getFormatting(column, row);
+  const formatting = grid.worksheet?.getFormattings(column, row, 1, 1)[0][0];
 
   for (const { style, button } of styleButtons) {
     button.setAttribute('aria-pressed', String(!!formatting?.[style]));
@@ -493,8 +493,8 @@ printButton.addEventListener('click', async () => {
       columnWidths.push(worksheet.getColumnWidth(column));
     }
 
-    const getFormatting = (/** @type {number} */ column, /** @type {number} */ row) =>
-      worksheet.getFormatting(left + column, top + row);
+    const formattings = worksheet.getFormattings(left, top, right - left + 1, bottom - top + 1);
+    const getFormatting = (/** @type {number} */ column, /** @type {number} */ row) => formattings[row]?.[column];
 
     download(await cellsToPNG(rows, { columnWidths, getBorder, getFormatting }), `${workbook.getWorksheetName(worksheet)}.png`);
   } catch (error) {

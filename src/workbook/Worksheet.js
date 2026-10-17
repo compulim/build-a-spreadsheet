@@ -171,7 +171,7 @@ export class Worksheet extends EventTarget {
 
     if (value === '') {
       // Empty cells never keep formatting. Removed (and recorded) before the value, so undo restores the value first.
-      this.setFormatting(x, y, null);
+      this.#setFormatting(x, y, null);
 
       if (cells) {
         delete cells[x];
@@ -349,7 +349,7 @@ export class Worksheet extends EventTarget {
     try {
       for (const change of isUndo ? [...changes].reverse() : changes) {
         if ('formatting' in change) {
-          this.setFormatting(change.x, change.y, isUndo ? change.previousFormatting : change.formatting);
+          this.#setFormatting(change.x, change.y, isUndo ? change.previousFormatting : change.formatting);
         } else {
           this.setValue(change.x, change.y, isUndo ? change.previousValue : change.value);
         }
@@ -457,19 +457,6 @@ export class Worksheet extends EventTarget {
   }
 
   /**
-   * Returns the formatting of a cell. Unformatted cells return the default formatting (no styles, `align` of `undefined`).
-   *
-   * @param {number} x
-   * @param {number} y
-   * @returns {CellFormatting}
-   */
-  getFormatting(x, y) {
-    this.#assertCell(x, y);
-
-    return { ...(this.#formattings.get(y * this.columnCount + x) || DEFAULT_FORMATTING) };
-  }
-
-  /**
    * Sets the formatting of a cell. Missing properties are set to default. Setting `null`, `undefined` or the default
    * formatting removes the formatting. Empty cells cannot be formatted and are left as-is. Dispatches
    * `formattingchange` (with `x` and `y`) if changed.
@@ -478,9 +465,7 @@ export class Worksheet extends EventTarget {
    * @param {number} y
    * @param {FormattingInput | FormattingUpdater} formattingOrUpdater A formatting, or a function `(formatting, x, y) => nextFormatting`.
    */
-  setFormatting(x, y, formattingOrUpdater) {
-    this.#assertCell(x, y);
-
+  #setFormatting(x, y, formattingOrUpdater) {
     if ((this.#rows[y]?.[x] ?? '') === '') {
       return;
     }
@@ -538,7 +523,8 @@ export class Worksheet extends EventTarget {
   }
 
   /**
-   * Returns formattings of a range as a 2D array (`formattings[y][x]`).
+   * Returns formattings of a range as a 2D array (`formattings[y][x]`). Unformatted cells return the default
+   * formatting (no styles, `align` of `undefined`).
    *
    * @param {number} x
    * @param {number} y
@@ -565,7 +551,9 @@ export class Worksheet extends EventTarget {
       const row = [];
 
       for (let columnOffset = 0; columnOffset < width; columnOffset++) {
-        row.push(this.getFormatting(x + columnOffset, y + rowOffset));
+        row.push({
+          ...(this.#formattings.get((y + rowOffset) * this.columnCount + x + columnOffset) || DEFAULT_FORMATTING)
+        });
       }
 
       formattings.push(row);
@@ -600,7 +588,7 @@ export class Worksheet extends EventTarget {
 
       for (let cellY = y; cellY < bottom; cellY++) {
         for (let cellX = x; cellX < right; cellX++) {
-          this.setFormatting(cellX, cellY, formattingsOrUpdater);
+          this.#setFormatting(cellX, cellY, formattingsOrUpdater);
         }
       }
 
@@ -615,7 +603,7 @@ export class Worksheet extends EventTarget {
       const columnCount = Math.min(row.length, this.columnCount - x);
 
       for (let columnOffset = 0; columnOffset < columnCount; columnOffset++) {
-        this.setFormatting(x + columnOffset, y + rowOffset, row[columnOffset]);
+        this.#setFormatting(x + columnOffset, y + rowOffset, row[columnOffset]);
       }
     }
   }
