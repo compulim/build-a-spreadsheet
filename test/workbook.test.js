@@ -386,14 +386,16 @@ describe('Worksheet borders', () => {
     const lastX = worksheet.columnCount - 1;
     const lastY = worksheet.rowCount - 1;
 
-    worksheet.setBorder(0, 0, { right: true, bottom: true });
+    worksheet.setRangeBorder({ x: 0, y: 0 }, 'right');
+    worksheet.setRangeBorder({ x: 0, y: 0 }, 'bottom');
     assert.deepEqual(worksheet.getBorder(1, 0), { ...none, left: true });
     assert.deepEqual(worksheet.getBorder(0, 1), { ...none, top: true });
 
-    worksheet.setBorder(1, 0, { left: false });
+    worksheet.setRangeBorder({ x: 1, y: 0 }, 'left', false);
     assert.deepEqual(worksheet.getBorder(0, 0), { ...none, bottom: true });
 
-    worksheet.setBorder(lastX, lastY, { right: true, bottom: true });
+    worksheet.setRangeBorder({ x: lastX, y: lastY }, 'right');
+    worksheet.setRangeBorder({ x: lastX, y: lastY }, 'bottom');
     assert.deepEqual(worksheet.getBorder(lastX, lastY), none);
   });
 });
