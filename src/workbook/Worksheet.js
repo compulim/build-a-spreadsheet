@@ -1,12 +1,13 @@
 import { parseCSV, stringifyCSV } from '../csv.js';
 import { CellChangeEvent } from './private/CellChangeEvent.js';
 import { COLUMN_COUNT, COLUMN_WIDTH, ROW_COUNT } from './constants.js';
-import { owners } from './private/owners.js';
 
 /** @typedef {boolean | number | string} CellValue */
 /** @typedef {{ top: boolean; right: boolean; bottom: boolean; left: boolean }} CellBorder */
 /** @typedef {'left' | 'right' | 'top' | 'bottom' | 'outside' | 'all' | 'none'} BorderPreset */
 /** @typedef {{ x: number; y: number; value: CellValue; previousValue: CellValue }} CellChange */
+/** @typedef {CellValue | null | undefined} CellInput */
+/** @typedef {(value: CellValue | undefined, x: number, y: number) => CellInput} CellUpdater */
 
 /** @type {readonly (keyof CellBorder)[]} */
 const BORDER_SIDES = ['top', 'right', 'bottom', 'left'];
@@ -50,11 +51,6 @@ export class Worksheet extends EventTarget {
     /** @readonly */ this.rowCount = rowCount;
 
     this.#columnWidths = new Array(columnCount).fill(columnWidth);
-  }
-
-  /** The workbook this worksheet belongs to, if any. */
-  get workbook() {
-    return owners.get(this);
   }
 
   /**
@@ -102,16 +98,16 @@ export class Worksheet extends EventTarget {
   }
 
   /**
-   * Returns the value of a cell, empty cells return `''`.
+   * Returns the value of a cell, empty cells return `undefined`.
    *
    * @param {number} x
    * @param {number} y
-   * @returns {CellValue}
+   * @returns {CellValue | undefined}
    */
   getValue(x, y) {
     this.#assertCell(x, y);
 
-    return this.#rows[y]?.[x] ?? '';
+    return this.#rows[y]?.[x];
   }
 
   /**
@@ -119,10 +115,12 @@ export class Worksheet extends EventTarget {
    *
    * @param {number} x
    * @param {number} y
-   * @param {CellValue | null | undefined} value
+   * @param {CellInput | CellUpdater} valueOrUpdater A value, or a function `(value, x, y) => nextValue`.
    */
-  setValue(x, y, value) {
+  setValue(x, y, valueOrUpdater) {
     this.#assertCell(x, y);
+
+    let value = typeof valueOrUpdater === 'function' ? valueOrUpdater(this.#rows[y]?.[x], x, y) : valueOrUpdater;
 
     if (value === null || value === undefined) {
       value = '';
@@ -227,23 +225,45 @@ export class Worksheet extends EventTarget {
   }
 
   /**
-   * Sets values from a 2D array (`values[y][x]`), starting at the given cell.
-   * Values outside of the worksheet are ignored.
+   * Sets values from a 2D array (`values[y][x]`), starting at the given cell. Values outside of the worksheet are ignored.
    *
-   * @param {(CellValue | null | undefined)[][]} values
+   * Alternatively, sets every cell of a range with an updater function `(value, x, y) => nextValue`, e.g.
+   * `setValues(() => '', x, y, width, height)` clears the range.
+   *
+   * @param {CellInput[][] | CellUpdater} valuesOrUpdater
    * @param {number} [x=0]
    * @param {number} [y=0]
+   * @param {number} [width] Required with an updater function.
+   * @param {number} [height] Required with an updater function.
    */
-  setValues(values, x = 0, y = 0) {
+  setValues(valuesOrUpdater, x = 0, y = 0, width, height) {
     this.#assertCell(x, y);
 
-    const height = Math.min(values.length, this.rowCount - y);
+    if (typeof valuesOrUpdater === 'function') {
+      if (!Number.isInteger(width) || !Number.isInteger(height) || width < 0 || height < 0) {
+        throw new RangeError('Width and height must be non-negative integers.');
+      }
 
-    for (let rowOffset = 0; rowOffset < height; rowOffset++) {
+      const right = Math.min(x + width, this.columnCount);
+      const bottom = Math.min(y + height, this.rowCount);
+
+      for (let cellY = y; cellY < bottom; cellY++) {
+        for (let cellX = x; cellX < right; cellX++) {
+          this.setValue(cellX, cellY, valuesOrUpdater);
+        }
+      }
+
+      return;
+    }
+
+    const values = valuesOrUpdater;
+    const rowCount = Math.min(values.length, this.rowCount - y);
+
+    for (let rowOffset = 0; rowOffset < rowCount; rowOffset++) {
       const rowValues = values[rowOffset] || [];
-      const width = Math.min(rowValues.length, this.columnCount - x);
+      const columnCount = Math.min(rowValues.length, this.columnCount - x);
 
-      for (let columnOffset = 0; columnOffset < width; columnOffset++) {
+      for (let columnOffset = 0; columnOffset < columnCount; columnOffset++) {
         this.setValue(x + columnOffset, y + rowOffset, rowValues[columnOffset]);
       }
     }
@@ -406,25 +426,6 @@ export class Worksheet extends EventTarget {
     const { width, height } = this.#getUsedSize();
 
     return stringifyCSV(this.getValues(0, 0, width, height));
-  }
-
-  /**
-   * Replaces the content of this worksheet with CSV. Values outside of the worksheet are ignored.
-   *
-   * @param {string} text
-   */
-  loadCSV(text) {
-    const { width, height } = this.#getUsedSize();
-    const values = parseCSV(text).slice(0, this.rowCount);
-
-    // Cells not covered by the CSV are cleared.
-    for (let y = 0; y < Math.max(height, values.length); y++) {
-      const rowValues = (values[y] ||= []);
-
-      rowValues.length = Math.min(this.columnCount, Math.max(width, rowValues.length));
-    }
-
-    this.setValues(values);
   }
 
   /**

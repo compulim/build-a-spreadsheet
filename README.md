@@ -60,13 +60,13 @@ const loaded = await Workbook.fromZip(zip);
 
 | Member | Description |
 | --- | --- |
-| `Worksheet#setValue(x, y, value)` | Sets a cell (zero-based). `''`, `null` or `undefined` clears it. Throws `RangeError` / `TypeError` on invalid input. |
-| `Worksheet#getValue(x, y)` | Returns a cell value, `''` if empty. |
+| `Worksheet#setValue(x, y, valueOrUpdater)` | Sets a cell (zero-based), or updates it with `(value, x, y) => nextValue`. `''`, `null` or `undefined` clears it. Throws `RangeError` / `TypeError` on invalid input. |
+| `Worksheet#getValue(x, y)` | Returns a cell value, `undefined` if empty. |
 | `Worksheet#getValues(x, y, width, height)` | Returns a 2D array (`values[y][x]`) of a range. |
-| `Worksheet#setValues(values, x?, y?)` | Sets a block of values, use `''` to clear. Values outside of the sheet are ignored. |
+| `Worksheet#setValues(values, x?, y?)` / `Worksheet#setValues(updater, x, y, width, height)` | Sets a block of values (use `''` to clear), or updates every cell of a range with `(value, x, y) => nextValue`. Values outside of the sheet are ignored. |
 | `Worksheet#getColumnWidth(x)` / `Worksheet#setColumnWidth(x, width)` | Column widths in pixels, dispatches `columnwidthchange`. |
 | `Worksheet#undo()` / `Worksheet#redo()` | Undo/redo cell changes, returns `false` at the end of the stack. Synchronous changes are grouped. |
-| `Worksheet#toCSV()` / `Worksheet#loadCSV(text)` / `Worksheet.fromCSV(text)` | CSV serialization. |
+| `Worksheet#toCSV()` / `Worksheet.fromCSV(text)` | CSV serialization. |
 | `Workbook#addWorksheet(name?, worksheet?, index?)` / `Workbook#removeWorksheet(worksheetOrIndex)` | Manage up to 50 sheets. |
 | `Workbook#getWorksheetName(worksheet)` / `Workbook#renameWorksheet(worksheet, name)` | Sheet names are owned by the workbook. |
 | `Workbook#worksheets` / `Workbook#getWorksheet(nameOrIndex)` | Access sheets. |

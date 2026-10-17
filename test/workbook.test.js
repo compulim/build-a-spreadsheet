@@ -28,7 +28,7 @@ describe('Worksheet', () => {
     worksheet.setValue(1, 3, true);
 
     assert.equal(worksheet.getValue(2, 1), 3);
-    assert.equal(worksheet.getValue(49, 9999), '');
+    assert.equal(worksheet.getValue(49, 9999), undefined);
     assert.deepEqual(worksheet.getValues(0, 0, 3, 4), [
       ['A1', '', ''],
       ['', '', 3],
@@ -57,6 +57,32 @@ describe('Worksheet', () => {
       ['', ''],
       [3, '']
     ]);
+  });
+
+  test('updater functions', () => {
+    const worksheet = new Worksheet();
+    const calls = [];
+
+    worksheet.setValue(0, 0, 1);
+    worksheet.setValue(0, 0, (value, x, y) => {
+      calls.push([value, x, y]);
+
+      return value + 1;
+    });
+    worksheet.setValue(1, 0, value => (value === undefined ? 'empty' : value));
+
+    assert.deepEqual(calls, [[1, 0, 0]]);
+    assert.deepEqual(worksheet.getValues(0, 0, 2, 1), [[2, 'empty']]);
+
+    worksheet.setValues((_, x, y) => x * 10 + y, 1, 1, 2, 2);
+    assert.deepEqual(worksheet.getValues(1, 1, 2, 2), [
+      [11, 21],
+      [12, 22]
+    ]);
+
+    worksheet.setValues(() => '', 0, 0, 50, 10_000);
+    assert.equal(worksheet.toCSV(), '');
+    assert.throws(() => worksheet.setValues(() => 1, 0, 0), RangeError);
   });
 
   test('column widths', () => {
@@ -160,13 +186,6 @@ describe('Worksheet', () => {
     assert.deepEqual(Worksheet.fromCSV(csv).getValues(0, 0, 6, 6), worksheet.getValues(0, 0, 6, 6));
     assert.equal(Worksheet.fromCSV(csv).canUndo, false);
 
-    const other = new Worksheet();
-
-    other.setValue(5, 5, 'gone');
-    other.loadCSV(csv);
-
-    assert.deepEqual(other.getValues(0, 0, 6, 6), worksheet.getValues(0, 0, 6, 6));
-    assert.equal(other.toCSV(), csv);
   });
 
   test('CSV larger than worksheet is clipped', () => {

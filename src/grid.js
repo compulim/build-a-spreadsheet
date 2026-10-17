@@ -1444,7 +1444,7 @@ export class SpreadsheetGrid extends EventTarget {
         const rowValues = [];
 
         for (let column = left; column <= right; column++) {
-          rowValues.push(worksheet.getValue(column, row));
+          rowValues.push(worksheet.getValue(column, row) ?? '');
         }
 
         values.push(rowValues);
