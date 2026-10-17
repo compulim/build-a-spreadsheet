@@ -25,6 +25,15 @@ const undoButton = /** @type {HTMLButtonElement} */ (document.getElementById('un
 const redoButton = /** @type {HTMLButtonElement} */ (document.getElementById('redo-button'));
 const borderSelect = /** @type {HTMLSelectElement} */ (document.getElementById('border-select'));
 const lockButton = /** @type {HTMLButtonElement} */ (document.getElementById('lock-button'));
+const unformatButton = /** @type {HTMLButtonElement} */ (document.getElementById('unformat-button'));
+const styleButtons = /** @type {const} */ (['bold', 'italic', 'underline', 'strikethrough']).map(style => ({
+  style,
+  button: /** @type {HTMLButtonElement} */ (document.getElementById(`${style}-button`))
+}));
+const alignButtons = /** @type {const} */ (['left', 'center', 'right']).map(align => ({
+  align,
+  button: /** @type {HTMLButtonElement} */ (document.getElementById(`align-${align}-button`))
+}));
 const nameBox = /** @type {HTMLOutputElement} */ (document.getElementById('name-box'));
 const valueBox = /** @type {HTMLOutputElement} */ (document.getElementById('value-box'));
 const status = /** @type {HTMLOutputElement} */ (document.getElementById('status'));
@@ -112,6 +121,7 @@ function activateWorksheet(worksheet) {
   grid.setWorksheet(worksheet);
   renderTabs();
   updateUndoButtons();
+  updateFormattingButtons();
   grid.focus();
 }
 
@@ -178,7 +188,49 @@ function updateSelectionInfo() {
 
   nameBox.value = left === right && top === bottom ? topLeft : `${topLeft}:${getColumnName(right)}${bottom + 1}`;
   valueBox.value = grid.worksheet ? formatValue(grid.worksheet.getValue(column, row)) : '';
+  updateFormattingButtons();
 }
+
+function updateFormattingButtons() {
+  const { column, row } = grid.activeCell;
+  const formatting = grid.worksheet?.getFormatting(column, row);
+
+  for (const { style, button } of styleButtons) {
+    button.setAttribute('aria-pressed', String(!!formatting?.[style]));
+  }
+
+  for (const { align, button } of alignButtons) {
+    button.setAttribute('aria-pressed', String((formatting?.align || 'left') === align));
+  }
+}
+
+/** @param {import('./workbook/Worksheet.js').FormattingUpdater} updater */
+function formatSelection(updater) {
+  const worksheet = grid.worksheet;
+
+  if (worksheet) {
+    const { left, top, right, bottom } = grid.selection;
+
+    worksheet.setFormattings(updater, left, top, right - left + 1, bottom - top + 1);
+    updateFormattingButtons();
+  }
+
+  grid.focus();
+}
+
+for (const { style, button } of styleButtons) {
+  button.addEventListener('click', () => {
+    const value = button.getAttribute('aria-pressed') !== 'true';
+
+    formatSelection(formatting => ({ ...formatting, [style]: value }));
+  });
+}
+
+for (const { align, button } of alignButtons) {
+  button.addEventListener('click', () => formatSelection(formatting => ({ ...formatting, align })));
+}
+
+unformatButton.addEventListener('click', () => formatSelection(() => null));
 
 function updateUndoButtons() {
   undoButton.disabled = !grid.worksheet?.canUndo;

@@ -8,13 +8,27 @@ import { COLUMN_COUNT, COLUMN_WIDTH, ROW_COUNT } from './constants.js';
 /** @typedef {{ x: number; y: number; value: CellValue; previousValue: CellValue }} CellChange */
 /** @typedef {CellValue | null | undefined} CellInput */
 /** @typedef {(value: CellValue | undefined, x: number, y: number) => CellInput} CellUpdater */
+/** @typedef {'left' | 'center' | 'right'} CellAlign */
+/** @typedef {{ bold: boolean; italic: boolean; underline: boolean; strikethrough: boolean; align: CellAlign }} CellFormatting */
+/** @typedef {Partial<CellFormatting> | null | undefined} FormattingInput */
+/** @typedef {(formatting: CellFormatting, x: number, y: number) => FormattingInput} FormattingUpdater */
+
+/** @type {Readonly<CellFormatting>} */
+const DEFAULT_FORMATTING = Object.freeze({
+  bold: false,
+  italic: false,
+  underline: false,
+  strikethrough: false,
+  align: 'left'
+});
 
 /**
  * A single worksheet of 50 columns by 10,000 rows (by default). Values are stored sparsely.
  * All coordinates (`x` for column, `y` for row) are zero-based.
  *
  * Dispatches `cellchange` (`CellChangeEvent`) whenever the value of a cell changes, `borderchange` (with `x` and `y`)
- * whenever the border of a cell changes, and `columnwidthchange` (with `x`) whenever the width of a column changes.
+ * whenever the border of a cell changes, `formattingchange` (with `x` and `y`) whenever the formatting of a cell changes,
+ * and `columnwidthchange` (with `x`) whenever the width of a column changes.
  *
  * Keeps an undo history of cell changes. Changes made synchronously in the same task (e.g. a paste) are grouped into a
  * single undo step.
@@ -29,6 +43,12 @@ export class Worksheet extends EventTarget {
    * @type {Map<number, { top: boolean; left: boolean }>}
    */
   #borders = new Map();
+
+  /**
+   * Formatting of cells, keyed by `y * columnCount + x`. Unformatted cells are not stored.
+   * @type {Map<number, CellFormatting>}
+   */
+  #formattings = new Map();
 
   /** @type {number[]} */
   #columnWidths;
@@ -418,6 +438,155 @@ export class Worksheet extends EventTarget {
         set.has('top') && y === top && this.#setStoredEdge(x, y, 'top', value);
         set.has('right') && x === right && x + 1 < this.columnCount && this.#setStoredEdge(x + 1, y, 'left', value);
         set.has('bottom') && y === bottom && y + 1 < this.rowCount && this.#setStoredEdge(x, y + 1, 'top', value);
+      }
+    }
+  }
+
+  /**
+   * Returns the formatting of a cell. Unformatted cells return the default formatting (no styles, aligned left).
+   *
+   * @param {number} x
+   * @param {number} y
+   * @returns {CellFormatting}
+   */
+  getFormatting(x, y) {
+    this.#assertCell(x, y);
+
+    return { ...(this.#formattings.get(y * this.columnCount + x) || DEFAULT_FORMATTING) };
+  }
+
+  /**
+   * Sets the formatting of a cell. Missing properties are set to default. Setting `null`, `undefined` or the default
+   * formatting removes the formatting. Dispatches `formattingchange` (with `x` and `y`) if changed.
+   *
+   * @param {number} x
+   * @param {number} y
+   * @param {FormattingInput | FormattingUpdater} formattingOrUpdater A formatting, or a function `(formatting, x, y) => nextFormatting`.
+   */
+  setFormatting(x, y, formattingOrUpdater) {
+    this.#assertCell(x, y);
+
+    const key = y * this.columnCount + x;
+    const input =
+      typeof formattingOrUpdater === 'function'
+        ? formattingOrUpdater({ ...(this.#formattings.get(key) || DEFAULT_FORMATTING) }, x, y)
+        : formattingOrUpdater;
+
+    if (input !== null && input !== undefined && typeof input !== 'object') {
+      throw new TypeError('Formatting must be an object.');
+    }
+
+    const align = input?.align ?? 'left';
+
+    if (align !== 'left' && align !== 'center' && align !== 'right') {
+      throw new TypeError('Align must be "left", "center" or "right".');
+    }
+
+    /** @type {CellFormatting} */
+    const formatting = {
+      bold: !!input?.bold,
+      italic: !!input?.italic,
+      underline: !!input?.underline,
+      strikethrough: !!input?.strikethrough,
+      align
+    };
+
+    const previous = this.#formattings.get(key) || DEFAULT_FORMATTING;
+    const isEqual = (/** @type {CellFormatting} */ a, /** @type {CellFormatting} */ b) =>
+      a.bold === b.bold &&
+      a.italic === b.italic &&
+      a.underline === b.underline &&
+      a.strikethrough === b.strikethrough &&
+      a.align === b.align;
+
+    if (isEqual(previous, formatting)) {
+      return;
+    }
+
+    isEqual(formatting, DEFAULT_FORMATTING) ? this.#formattings.delete(key) : this.#formattings.set(key, formatting);
+
+    this.dispatchEvent(Object.assign(new Event('formattingchange'), { x, y }));
+  }
+
+  /**
+   * Returns formattings of a range as a 2D array (`formattings[y][x]`).
+   *
+   * @param {number} x
+   * @param {number} y
+   * @param {number} width
+   * @param {number} height
+   * @returns {CellFormatting[][]}
+   */
+  getFormattings(x, y, width, height) {
+    if (!Number.isInteger(width) || !Number.isInteger(height) || width < 0 || height < 0) {
+      throw new RangeError('Width and height must be non-negative integers.');
+    }
+
+    if (!width || !height) {
+      return [];
+    }
+
+    this.#assertCell(x, y);
+    this.#assertCell(x + width - 1, y + height - 1);
+
+    /** @type {CellFormatting[][]} */
+    const formattings = [];
+
+    for (let rowOffset = 0; rowOffset < height; rowOffset++) {
+      const row = [];
+
+      for (let columnOffset = 0; columnOffset < width; columnOffset++) {
+        row.push(this.getFormatting(x + columnOffset, y + rowOffset));
+      }
+
+      formattings.push(row);
+    }
+
+    return formattings;
+  }
+
+  /**
+   * Sets formattings from a 2D array (`formattings[y][x]`), starting at the given cell. Formattings outside of the
+   * worksheet are ignored.
+   *
+   * Alternatively, sets every cell of a range with an updater function `(formatting, x, y) => nextFormatting`, e.g.
+   * `setFormattings(() => null, x, y, width, height)` removes formatting of the range.
+   *
+   * @param {FormattingInput[][] | FormattingUpdater} formattingsOrUpdater
+   * @param {number} [x=0]
+   * @param {number} [y=0]
+   * @param {number} [width] Required with an updater function.
+   * @param {number} [height] Required with an updater function.
+   */
+  setFormattings(formattingsOrUpdater, x = 0, y = 0, width, height) {
+    this.#assertCell(x, y);
+
+    if (typeof formattingsOrUpdater === 'function') {
+      if (!Number.isInteger(width) || !Number.isInteger(height) || width < 0 || height < 0) {
+        throw new RangeError('Width and height must be non-negative integers.');
+      }
+
+      const right = Math.min(x + width, this.columnCount);
+      const bottom = Math.min(y + height, this.rowCount);
+
+      for (let cellY = y; cellY < bottom; cellY++) {
+        for (let cellX = x; cellX < right; cellX++) {
+          this.setFormatting(cellX, cellY, formattingsOrUpdater);
+        }
+      }
+
+      return;
+    }
+
+    const formattings = formattingsOrUpdater;
+    const rowCount = Math.min(formattings.length, this.rowCount - y);
+
+    for (let rowOffset = 0; rowOffset < rowCount; rowOffset++) {
+      const row = formattings[rowOffset] || [];
+      const columnCount = Math.min(row.length, this.columnCount - x);
+
+      for (let columnOffset = 0; columnOffset < columnCount; columnOffset++) {
+        this.setFormatting(x + columnOffset, y + rowOffset, row[columnOffset]);
       }
     }
   }
