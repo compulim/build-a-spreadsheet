@@ -390,9 +390,16 @@ function undoOrRedo(action) {
   const changes = [];
   const handleCellChange = (/** @type {Event} */ event) =>
     changes.push(/** @type {import('./workbook/private/CellChangeEvent.js').CellChangeEvent} */ (event));
+  // All cells of a merged cell are involved, not only the cells with content.
+  const handleMergeChange = (/** @type {Event} */ event) => {
+    const { x, y, width, height } = /** @type {Event & { x: number; y: number; width: number; height: number }} */ (event);
+
+    changes.push({ x, y }, { x: x + width - 1, y: y + height - 1 });
+  };
 
   worksheet.addEventListener('cellchange', handleCellChange);
   worksheet.addEventListener('formattingchange', handleCellChange);
+  worksheet.addEventListener('mergechange', handleMergeChange);
 
   try {
     if (!worksheet[action]()) {
@@ -409,6 +416,7 @@ function undoOrRedo(action) {
   } finally {
     worksheet.removeEventListener('cellchange', handleCellChange);
     worksheet.removeEventListener('formattingchange', handleCellChange);
+    worksheet.removeEventListener('mergechange', handleMergeChange);
     updateUndoButtons();
     updateFormattingButtons();
   }
