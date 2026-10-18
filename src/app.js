@@ -358,6 +358,9 @@ mergeButton.addEventListener('click', () => {
       worksheet
         .getMerges(left, top, right - left + 1, bottom - top + 1)
         .forEach(({ x, y }) => worksheet.unmergeCells(x, y));
+
+      // Keeps all cells of the unmerged cells selected, the selection may be only the merged cell itself.
+      grid.select({ column: left, row: top }, { column: right, row: bottom });
     } else {
       worksheet.mergeCells(left, top, right - left + 1, bottom - top + 1);
     }
