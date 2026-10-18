@@ -901,7 +901,7 @@ export class SpreadsheetGrid extends EventTarget {
   /** @param {{ cells: HTMLElement[]; row: number }} slot */
   #renderRowContent({ cells, row }) {
     const worksheet = this.#worksheet;
-    const merges = worksheet ? worksheet.getMerges(row) : [];
+    const merges = (worksheet?.getMerges() || []).filter(({ y }) => y === row).sort((a, b) => a.x - b.x);
     let mergeIndex = 0;
 
     for (let column = 0; column < cells.length; column++) {

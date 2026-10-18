@@ -12,7 +12,7 @@ test('mergeCells concatenates values into the first cell and keeps its formattin
   assert.deepEqual(worksheet.getValues(1, 1, 3, 1), [['a 1 TRUE', '', '']]);
   assert.equal(worksheet.getFormattings(1, 1, 1, 1)[0][0].bold, true);
   assert.deepEqual(worksheet.getMerge(2, 1), { x: 1, y: 1, width: 3 });
-  assert.deepEqual(worksheet.getMerges(1), [{ x: 1, y: 1, width: 3 }]);
+  assert.deepEqual(worksheet.getMerges(), [{ x: 1, y: 1, width: 3 }]);
   assert.equal(worksheet.getMerge(4, 1), undefined);
   assert.equal(worksheet.getMerge(1, 2), undefined);
 });
@@ -57,10 +57,10 @@ test('overlapping merges are combined', () => {
   worksheet.mergeCells(0, 0, 2);
   worksheet.mergeCells(1, 0, 3);
 
-  assert.deepEqual(worksheet.getMerges(0), [{ x: 0, y: 0, width: 4 }]);
+  assert.deepEqual(worksheet.getMerges(), [{ x: 0, y: 0, width: 4 }]);
 });
 
-test('getMerges without a row returns all merges', () => {
+test('getMerges returns all merges', () => {
   const worksheet = new Worksheet();
 
   worksheet.mergeCells(1, 1, 2);
