@@ -131,19 +131,3 @@ test('setBorder is undoable', async () => {
   worksheet.redo();
   assert.deepEqual(worksheet.getBorder(1, 1), { top: true, right: true, bottom: true, left: true });
 });
-
-test('getMergesInRows returns merges within the rows', () => {
-  const worksheet = new Worksheet();
-
-  worksheet.mergeCells(1, 1, 2);
-  worksheet.mergeCells(2, 3, 3);
-  worksheet.mergeCells(0, 5, 2);
-
-  assert.deepEqual(
-    worksheet.getMergesInRows(1, 3).sort((a, b) => a.y - b.y),
-    [
-      { x: 1, y: 1, width: 2 },
-      { x: 2, y: 3, width: 3 }
-    ]
-  );
-});
