@@ -662,42 +662,17 @@ export class Worksheet extends EventTarget {
   }
 
   /**
-   * Returns all merged cells of a row, from left to right.
+   * Returns all merged cells of the worksheet, in no particular order. Cost is proportional to the number of merged
+   * cells, not to the size of the worksheet.
    *
-   * @param {number} y
    * @returns {CellMerge[]}
    */
-  getMerges(y) {
-    this.#assertCell(0, y);
-
-    /** @type {CellMerge[]} */
-    const merges = [];
-
-    for (let x = 0; x < this.columnCount; x++) {
-      const width = this.#merges.get(y * this.columnCount + x);
-
-      width && merges.push({ x, y, width });
-    }
-
-    return merges;
-  }
-
-  /**
-   * Returns all merged cells within rows `top` to `bottom` (inclusive), in no particular order. Cost is proportional
-   * to the number of merged cells in the worksheet, not to the size of the range.
-   *
-   * @param {number} top
-   * @param {number} bottom
-   * @returns {CellMerge[]}
-   */
-  getMergesInRows(top, bottom) {
+  getMerges() {
     /** @type {CellMerge[]} */
     const merges = [];
 
     for (const [key, width] of this.#merges) {
-      const y = Math.floor(key / this.columnCount);
-
-      y >= top && y <= bottom && merges.push({ x: key % this.columnCount, y, width });
+      merges.push({ x: key % this.columnCount, y: Math.floor(key / this.columnCount), width });
     }
 
     return merges;

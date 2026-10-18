@@ -254,10 +254,10 @@ function isSelectionMerged() {
   /** Number of selected cells covered by merged cells, per row. @type {Map<number, number>} */
   const covered = new Map();
 
-  for (const { x, y, width } of worksheet.getMergesInRows(top, bottom)) {
+  for (const { x, y, width } of worksheet.getMerges()) {
     const count = Math.min(x + width - 1, right) - Math.max(x, left) + 1;
 
-    count > 0 && covered.set(y, (covered.get(y) || 0) + count);
+    y >= top && y <= bottom && count > 0 && covered.set(y, (covered.get(y) || 0) + count);
   }
 
   // Merged cells never overlap, so all cells are merged if every row is fully covered.
@@ -354,8 +354,10 @@ mergeButton.addEventListener('click', () => {
     let skipped = false;
 
     // Cells are merged horizontally only, each selected row separately.
+    const allMerges = worksheet.getMerges();
+
     for (let row = top; row <= bottom; row++) {
-      const merges = worksheet.getMerges(row).filter(({ x, width }) => x <= right && x + width - 1 >= left);
+      const merges = allMerges.filter(({ x, y, width }) => y === row && x <= right && x + width - 1 >= left);
       const start = Math.min(left, ...merges.map(({ x }) => x));
       const end = Math.max(right, ...merges.map(({ x, width }) => x + width - 1));
 
@@ -574,8 +576,10 @@ printButton.addEventListener('click', async () => {
     /** Column spans of merged cells (clipped to the selection), keyed by `row,column`, 0 for covered cells. @type {Map<string, number>} */
     const spans = new Map();
 
+    const merges = worksheet.getMerges().filter(({ y }) => y >= top && y <= bottom);
+
     for (let row = top; row <= bottom; row++) {
-      for (const merge of worksheet.getMerges(row)) {
+      for (const merge of merges.filter(({ y }) => y === row)) {
         const start = Math.max(merge.x, left);
         const end = Math.min(merge.x + merge.width - 1, right);
 
