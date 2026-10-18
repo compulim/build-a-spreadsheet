@@ -11,10 +11,10 @@ test('mergeCells concatenates values into the first cell and keeps its formattin
 
   assert.deepEqual(worksheet.getValues(1, 1, 3, 1), [['a 1 TRUE', '', '']]);
   assert.equal(worksheet.getFormattings(1, 1, 1, 1)[0][0].bold, true);
-  assert.deepEqual(worksheet.getMerge(2, 1), { x: 1, y: 1, width: 3, height: 1 });
+  assert.deepEqual(worksheet.getMerges(2, 1, 1, 1), [{ x: 1, y: 1, width: 3, height: 1 }]);
   assert.deepEqual(worksheet.getMerges(), [{ x: 1, y: 1, width: 3, height: 1 }]);
-  assert.equal(worksheet.getMerge(4, 1), undefined);
-  assert.equal(worksheet.getMerge(1, 2), undefined);
+  assert.deepEqual(worksheet.getMerges(4, 1, 1, 1), []);
+  assert.deepEqual(worksheet.getMerges(1, 2, 1, 1), []);
 });
 
 test('a single value keeps its type', () => {
@@ -33,7 +33,7 @@ test('unmergeCells keeps content in the first cell', () => {
   worksheet.mergeCells(0, 0, 2);
   worksheet.unmergeCells(1, 0);
 
-  assert.equal(worksheet.getMerge(0, 0), undefined);
+  assert.deepEqual(worksheet.getMerges(0, 0, 1, 1), []);
   assert.deepEqual(worksheet.getValues(0, 0, 2, 1), [['a b', '']]);
 });
 
@@ -83,11 +83,11 @@ test('merge is undoable', async () => {
   worksheet.mergeCells(0, 0, 2);
   worksheet.undo();
 
-  assert.equal(worksheet.getMerge(0, 0), undefined);
+  assert.deepEqual(worksheet.getMerges(0, 0, 1, 1), []);
   assert.deepEqual(worksheet.getValues(0, 0, 2, 1), [['a', 'b']]);
 
   worksheet.redo();
-  assert.deepEqual(worksheet.getMerge(1, 0), { x: 0, y: 0, width: 2, height: 1 });
+  assert.deepEqual(worksheet.getMerges(1, 0, 1, 1), [{ x: 0, y: 0, width: 2, height: 1 }]);
 });
 
 test('merge uses the formatting of the first non-empty cell', () => {
@@ -114,7 +114,7 @@ test('undo of merge restores inner borders', async () => {
 
   assert.equal(worksheet.getBorder(2, 1).left, true);
   assert.equal(worksheet.getBorder(3, 1).left, true);
-  assert.equal(worksheet.getMerge(1, 1), undefined);
+  assert.deepEqual(worksheet.getMerges(1, 1, 1, 1), []);
   worksheet.redo();
   assert.equal(worksheet.getBorder(2, 1).left, false);
 });
@@ -154,8 +154,8 @@ test('mergeCells merges vertically', () => {
   worksheet.mergeCells(1, 1, 1, 3);
 
   assert.deepEqual(worksheet.getValues(1, 1, 1, 3), [['a b c'], [''], ['']]);
-  assert.deepEqual(worksheet.getMerge(1, 3), { x: 1, y: 1, width: 1, height: 3 });
-  assert.equal(worksheet.getMerge(1, 4), undefined);
+  assert.deepEqual(worksheet.getMerges(1, 3, 1, 1), [{ x: 1, y: 1, width: 1, height: 3 }]);
+  assert.deepEqual(worksheet.getMerges(1, 4, 1, 1), []);
 });
 
 test('mergeCells merges a rectangle and removes inner borders', () => {
@@ -173,7 +173,7 @@ test('mergeCells merges a rectangle and removes inner borders', () => {
     ['a b c d', ''],
     ['', '']
   ]);
-  assert.deepEqual(worksheet.getMerge(1, 1), { x: 0, y: 0, width: 2, height: 2 });
+  assert.deepEqual(worksheet.getMerges(1, 1, 1, 1), [{ x: 0, y: 0, width: 2, height: 2 }]);
   assert.deepEqual(worksheet.getBorder(0, 0), { top: true, right: false, bottom: false, left: true });
   assert.deepEqual(worksheet.getBorder(1, 1), { top: false, right: true, bottom: true, left: false });
 

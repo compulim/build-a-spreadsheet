@@ -653,20 +653,6 @@ export class Worksheet extends EventTarget {
   }
 
   /**
-   * Returns the merged cell containing a cell, or `undefined` if the cell is not merged. Cost is proportional to the
-   * number of merged cells.
-   *
-   * @param {number} x
-   * @param {number} y
-   * @returns {CellMerge | undefined}
-   */
-  getMerge(x, y) {
-    this.#assertCell(x, y);
-
-    return this.getMerges(x, y, 1, 1)[0];
-  }
-
-  /**
    * Returns merged cells intersecting a range (the whole worksheet by default), in no particular order. Cost is
    * proportional to the number of merged cells, not to the size of the worksheet.
    *
@@ -702,7 +688,7 @@ export class Worksheet extends EventTarget {
    * @param {'left' | 'top'} side
    */
   #isInsideMerge(x, y, side) {
-    const merge = this.getMerge(x, y);
+    const merge = this.getMerges(x, y, 1, 1)[0];
 
     return !!merge && (side === 'left' ? merge.x !== x : merge.y !== y);
   }
@@ -825,7 +811,9 @@ export class Worksheet extends EventTarget {
    * @param {number} y
    */
   unmergeCells(x, y) {
-    const merge = this.getMerge(x, y);
+    this.#assertCell(x, y);
+
+    const merge = this.getMerges(x, y, 1, 1)[0];
 
     merge && this.#setMerge(merge.x, merge.y, undefined);
   }

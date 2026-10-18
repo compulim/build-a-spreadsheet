@@ -331,7 +331,7 @@ export class SpreadsheetGrid extends EventTarget {
   /** @param {Event} event */
   #handleCellChange = event => {
     const { x, y: row } = /** @type {import('./workbook/private/CellChangeEvent.js').CellChangeEvent} */ (event);
-    const merge = row < this.#firstRow ? this.#worksheet?.getMerge(x, row) : undefined;
+    const merge = row < this.#firstRow ? this.#worksheet?.getMerges(x, row, 1, 1)[0] : undefined;
 
     // Only re-render if the changed cell is currently rendered (or a merged cell extending into the rendered rows).
     // Multiple changes are batched into a single frame.
@@ -372,7 +372,7 @@ export class SpreadsheetGrid extends EventTarget {
    * @returns {CellPosition}
    */
   #toMergeStart(cell) {
-    const merge = this.#worksheet?.getMerge(cell.column, cell.row);
+    const merge = this.#worksheet?.getMerges(cell.column, cell.row, 1, 1)[0];
 
     return merge ? { column: merge.x, row: merge.y } : cell;
   }
@@ -384,7 +384,7 @@ export class SpreadsheetGrid extends EventTarget {
    * @returns {CellPosition}
    */
   #toMergeEnd(cell) {
-    const merge = this.#worksheet?.getMerge(cell.column, cell.row);
+    const merge = this.#worksheet?.getMerges(cell.column, cell.row, 1, 1)[0];
 
     return merge ? { column: merge.x + merge.width - 1, row: merge.y + merge.height - 1 } : cell;
   }
@@ -845,7 +845,7 @@ export class SpreadsheetGrid extends EventTarget {
       const values = this.#worksheet.getValues(column, 0, 1, this.rowCount);
 
       for (let row = 0; row < values.length; row++) {
-        const merge = this.#worksheet.getMerge(column, row);
+        const merge = this.#worksheet.getMerges(column, row, 1, 1)[0];
 
         // Content of a merged cell is in its top-left cell, and spans all merged columns.
         if (merge && row !== merge.y) {
