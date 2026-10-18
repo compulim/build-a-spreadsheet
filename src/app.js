@@ -254,12 +254,10 @@ function isSelectionMerged() {
   /** Number of selected cells covered by merged cells, per row. @type {Map<number, number>} */
   const covered = new Map();
 
-  for (let row = top; row <= bottom; row++) {
-    for (const { x, y, width } of worksheet.getMerges(row)) {
-      const count = Math.min(x + width - 1, right) - Math.max(x, left) + 1;
+  for (const { x, y, width } of worksheet.getMerges()) {
+    const count = Math.min(x + width - 1, right) - Math.max(x, left) + 1;
 
-      count > 0 && covered.set(y, (covered.get(y) || 0) + count);
-    }
+    y >= top && y <= bottom && count > 0 && covered.set(y, (covered.get(y) || 0) + count);
   }
 
   // Merged cells never overlap, so all cells are merged if every row is fully covered.

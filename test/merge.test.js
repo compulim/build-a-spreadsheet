@@ -60,6 +60,21 @@ test('overlapping merges are combined', () => {
   assert.deepEqual(worksheet.getMerges(0), [{ x: 0, y: 0, width: 4 }]);
 });
 
+test('getMerges without a row returns all merges', () => {
+  const worksheet = new Worksheet();
+
+  worksheet.mergeCells(1, 1, 2);
+  worksheet.mergeCells(2, 3, 3);
+
+  assert.deepEqual(
+    worksheet.getMerges().sort((a, b) => a.y - b.y),
+    [
+      { x: 1, y: 1, width: 2 },
+      { x: 2, y: 3, width: 3 }
+    ]
+  );
+});
+
 test('merge is undoable', async () => {
   const worksheet = new Worksheet();
 

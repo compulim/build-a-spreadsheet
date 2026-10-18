@@ -494,12 +494,7 @@ export class SpreadsheetGrid extends EventTarget {
 
     // The selection covers all merged cells partially selected. Expanding may cover more merged cells in other rows,
     // so it repeats until nothing changes.
-    /** @type {import('./workbook/Worksheet.js').CellMerge[]} */
-    const merges = [];
-
-    for (let row = top; this.#worksheet && row <= bottom; row++) {
-      merges.push(...this.#worksheet.getMerges(row));
-    }
+    const merges = (this.#worksheet?.getMerges() || []).filter(({ y }) => y >= top && y <= bottom);
 
     for (let changed = merges.length > 0; changed; ) {
       changed = false;
