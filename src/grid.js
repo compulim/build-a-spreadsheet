@@ -494,10 +494,21 @@ export class SpreadsheetGrid extends EventTarget {
 
   /** @returns {CellRange} */
   get selection() {
-    let top = Math.min(this.#anchor.row, this.#focus.row);
-    let bottom = Math.max(this.#anchor.row, this.#focus.row);
-    let left = Math.min(this.#anchor.column, this.#focus.column);
-    let right = Math.max(this.#anchor.column, this.#focus.column);
+    return this.#rangeOf(this.#anchor, this.#focus);
+  }
+
+  /**
+   * Returns the range between two cells, expanded to cover all merged cells partially in it.
+   *
+   * @param {CellPosition} anchor
+   * @param {CellPosition} focus
+   * @returns {CellRange}
+   */
+  #rangeOf(anchor, focus) {
+    let top = Math.min(anchor.row, focus.row);
+    let bottom = Math.max(anchor.row, focus.row);
+    let left = Math.min(anchor.column, focus.column);
+    let right = Math.max(anchor.column, focus.column);
 
     // The selection covers all merged cells partially selected. Expanding may cover more merged cells, so it repeats
     // until nothing changes.
@@ -1198,9 +1209,12 @@ export class SpreadsheetGrid extends EventTarget {
    * @param {boolean} extend
    */
   #move(deltaColumn, deltaRow, extend) {
-    // The focus may be inside a merged cell, so it moves from the merged cell as a whole, same as the active cell.
-    const from = extend ? this.#toMergeStart(this.#focus) : this.#anchor;
-    const preferred = extend ? this.#focus : this.#preferred;
+    if (extend) {
+      return this.select(this.#anchor, this.#extendFocus(deltaColumn, deltaRow));
+    }
+
+    const from = this.#anchor;
+    const preferred = this.#preferred;
     const end = this.#toMergeEnd(from);
     // Moving right or down skips the rest of a merged cell. Moving vertically out of a merged cell keeps the column
     // entered from, moving horizontally keeps the row entered from.
@@ -1216,9 +1230,57 @@ export class SpreadsheetGrid extends EventTarget {
         : deltaColumn && preferred.row >= from.row && preferred.row <= end.row
           ? preferred.row
           : from.row;
-    const to = this.#clamp({ column: column + deltaColumn, row: row + deltaRow });
 
-    extend ? this.select(this.#anchor, to) : this.select(to);
+    this.select(this.#clamp({ column: column + deltaColumn, row: row + deltaRow }));
+  }
+
+  /**
+   * Returns the new focus when extending the selection, which moves the edge of the selection on the focus side by
+   * one cell. As merged cells expand the selection, shrinking skips cells until the edge actually moves.
+   *
+   * @param {number} deltaColumn
+   * @param {number} deltaRow
+   * @returns {CellPosition}
+   */
+  #extendFocus(deltaColumn, deltaRow) {
+    const anchor = this.#anchor;
+    const anchorEnd = this.#toMergeEnd(anchor);
+    const range = this.selection;
+
+    /**
+     * @param {'column' | 'row'} axis
+     * @param {number} delta
+     */
+    const edge = (axis, delta) => {
+      const [low, high] = axis === 'column' ? ['left', 'right'] : ['top', 'bottom'];
+      const startEdge = range[low];
+      const endEdge = range[high];
+      // The side of the anchor the focus is on, or the direction of the move if the selection does not extend.
+      const side = endEdge > anchorEnd[axis] ? 1 : startEdge < anchor[axis] ? -1 : delta;
+      const current = side > 0 ? endEdge : startEdge;
+
+      if (!delta) {
+        return current;
+      }
+
+      if (delta === side) {
+        return current + delta;
+      }
+
+      const limit = side > 0 ? anchorEnd[axis] : anchor[axis];
+
+      for (let next = current + delta; next !== limit; next += delta) {
+        const nextRange = this.#rangeOf(anchor, axis === 'column' ? { ...this.#focus, column: next } : { ...this.#focus, row: next });
+
+        if (side > 0 ? nextRange[high] < endEdge : nextRange[low] > startEdge) {
+          return next;
+        }
+      }
+
+      return limit;
+    };
+
+    return this.#clamp({ column: edge('column', deltaColumn), row: edge('row', deltaRow) });
   }
 
   /**
