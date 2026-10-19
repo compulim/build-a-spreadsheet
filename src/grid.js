@@ -1198,21 +1198,22 @@ export class SpreadsheetGrid extends EventTarget {
    * @param {boolean} extend
    */
   #move(deltaColumn, deltaRow, extend) {
-    const from = extend ? this.#focus : this.#anchor;
-    const preferred = this.#preferred;
+    // The focus may be inside a merged cell, so it moves from the merged cell as a whole, same as the active cell.
+    const from = extend ? this.#toMergeStart(this.#focus) : this.#anchor;
+    const preferred = extend ? this.#focus : this.#preferred;
     const end = this.#toMergeEnd(from);
     // Moving right or down skips the rest of a merged cell. Moving vertically out of a merged cell keeps the column
     // entered from, moving horizontally keeps the row entered from.
     const column =
       deltaColumn > 0
         ? end.column
-        : !extend && deltaRow && preferred.column >= from.column && preferred.column <= end.column
+        : deltaRow && preferred.column >= from.column && preferred.column <= end.column
           ? preferred.column
           : from.column;
     const row =
       deltaRow > 0
         ? end.row
-        : !extend && deltaColumn && preferred.row >= from.row && preferred.row <= end.row
+        : deltaColumn && preferred.row >= from.row && preferred.row <= end.row
           ? preferred.row
           : from.row;
     const to = this.#clamp({ column: column + deltaColumn, row: row + deltaRow });
