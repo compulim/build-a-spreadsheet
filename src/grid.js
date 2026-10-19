@@ -1255,8 +1255,10 @@ export class SpreadsheetGrid extends EventTarget {
       const [low, high] = axis === 'column' ? ['left', 'right'] : ['top', 'bottom'];
       const startEdge = range[low];
       const endEdge = range[high];
-      // The side of the anchor the focus is on, or the direction of the move if the selection does not extend.
-      const side = endEdge > anchorEnd[axis] ? 1 : startEdge < anchor[axis] ? -1 : delta;
+      // The side of the anchor the focus is on, or the direction of the move if the focus is within the anchor. Merged
+      // cells may expand the selection beyond the anchor without the focus being on that side.
+      const focus = this.#focus[axis];
+      const side = focus > anchorEnd[axis] ? 1 : focus < anchor[axis] ? -1 : delta;
       const current = side > 0 ? endEdge : startEdge;
 
       if (!delta) {
