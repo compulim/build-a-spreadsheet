@@ -494,10 +494,21 @@ export class SpreadsheetGrid extends EventTarget {
 
   /** @returns {CellRange} */
   get selection() {
-    let top = Math.min(this.#anchor.row, this.#focus.row);
-    let bottom = Math.max(this.#anchor.row, this.#focus.row);
-    let left = Math.min(this.#anchor.column, this.#focus.column);
-    let right = Math.max(this.#anchor.column, this.#focus.column);
+    return this.#rangeOf(this.#anchor, this.#focus);
+  }
+
+  /**
+   * Returns the range between two cells, expanded to cover all merged cells partially in it.
+   *
+   * @param {CellPosition} anchor
+   * @param {CellPosition} focus
+   * @returns {CellRange}
+   */
+  #rangeOf(anchor, focus) {
+    let top = Math.min(anchor.row, focus.row);
+    let bottom = Math.max(anchor.row, focus.row);
+    let left = Math.min(anchor.column, focus.column);
+    let right = Math.max(anchor.column, focus.column);
 
     // The selection covers all merged cells partially selected. Expanding may cover more merged cells, so it repeats
     // until nothing changes.
@@ -1198,7 +1209,11 @@ export class SpreadsheetGrid extends EventTarget {
    * @param {boolean} extend
    */
   #move(deltaColumn, deltaRow, extend) {
-    const from = extend ? this.#focus : this.#anchor;
+    if (extend) {
+      return this.select(this.#anchor, this.#extendFocus(deltaColumn, deltaRow));
+    }
+
+    const from = this.#anchor;
     const preferred = this.#preferred;
     const end = this.#toMergeEnd(from);
     // Moving right or down skips the rest of a merged cell. Moving vertically out of a merged cell keeps the column
@@ -1206,18 +1221,51 @@ export class SpreadsheetGrid extends EventTarget {
     const column =
       deltaColumn > 0
         ? end.column
-        : !extend && deltaRow && preferred.column >= from.column && preferred.column <= end.column
+        : deltaRow && preferred.column >= from.column && preferred.column <= end.column
           ? preferred.column
           : from.column;
     const row =
       deltaRow > 0
         ? end.row
-        : !extend && deltaColumn && preferred.row >= from.row && preferred.row <= end.row
+        : deltaColumn && preferred.row >= from.row && preferred.row <= end.row
           ? preferred.row
           : from.row;
-    const to = this.#clamp({ column: column + deltaColumn, row: row + deltaRow });
 
-    extend ? this.select(this.#anchor, to) : this.select(to);
+    this.select(this.#clamp({ column: column + deltaColumn, row: row + deltaRow }));
+  }
+
+  /**
+   * Returns the new focus when extending the selection. The focus moves in the direction until the selection changes,
+   * skipping positions that select the same range because merged cells already cover them.
+   *
+   * @param {number} deltaColumn
+   * @param {number} deltaRow
+   * @returns {CellPosition}
+   */
+  #extendFocus(deltaColumn, deltaRow) {
+    const { selection } = this;
+    let focus = this.#focus;
+
+    for (;;) {
+      const next = { column: focus.column + deltaColumn, row: focus.row + deltaRow };
+
+      if (next.column < 0 || next.column >= this.columnCount || next.row < 0 || next.row >= this.rowCount) {
+        return this.#focus;
+      }
+
+      const range = this.#rangeOf(this.#anchor, next);
+
+      if (
+        range.left !== selection.left ||
+        range.right !== selection.right ||
+        range.top !== selection.top ||
+        range.bottom !== selection.bottom
+      ) {
+        return next;
+      }
+
+      focus = next;
+    }
   }
 
   /**
