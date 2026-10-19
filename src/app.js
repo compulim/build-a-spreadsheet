@@ -319,7 +319,8 @@ const formattingHotkeys = {
   u: styleButtons[2].button,
   l: alignButtons[0].button,
   e: alignButtons[1].button,
-  r: alignButtons[2].button
+  r: alignButtons[2].button,
+  m: mergeButton
 };
 
 gridContainer.addEventListener('keydown', event => {
