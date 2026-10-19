@@ -144,8 +144,8 @@ export class SpreadsheetGrid extends EventTarget {
 
   /** Active cell, where editing happens. @type {CellPosition} */
   #anchor = { column: 0, row: 0 };
-  /** Column the active cell was entered from, used when moving vertically out of a merged cell. */
-  #preferredColumn = 0;
+  /** Cell the active cell was entered from, used when moving out of a merged cell. @type {CellPosition} */
+  #preferred = { column: 0, row: 0 };
 
   /** The other end of the selected range. @type {CellPosition} */
   #focus = { column: 0, row: 0 };
@@ -529,7 +529,7 @@ export class SpreadsheetGrid extends EventTarget {
 
     this.#anchor = this.#toMergeStart(this.#clamp(anchor));
     this.#focus = this.#clamp(focus);
-    this.#preferredColumn = this.#clamp(anchor).column;
+    this.#preferred = this.#clamp(anchor);
 
     this.#updateSelection();
     this.scrollIntoView(this.#focus);
@@ -1199,17 +1199,22 @@ export class SpreadsheetGrid extends EventTarget {
    */
   #move(deltaColumn, deltaRow, extend) {
     const from = extend ? this.#focus : this.#anchor;
-    const preferredColumn = this.#preferredColumn;
+    const preferred = this.#preferred;
     const end = this.#toMergeEnd(from);
     // Moving right or down skips the rest of a merged cell. Moving vertically out of a merged cell keeps the column
-    // entered from.
+    // entered from, moving horizontally keeps the row entered from.
     const column =
       deltaColumn > 0
         ? end.column
-        : !extend && deltaRow && preferredColumn >= from.column && preferredColumn <= end.column
-          ? preferredColumn
+        : !extend && deltaRow && preferred.column >= from.column && preferred.column <= end.column
+          ? preferred.column
           : from.column;
-    const row = deltaRow > 0 ? end.row : from.row;
+    const row =
+      deltaRow > 0
+        ? end.row
+        : !extend && deltaColumn && preferred.row >= from.row && preferred.row <= end.row
+          ? preferred.row
+          : from.row;
     const to = this.#clamp({ column: column + deltaColumn, row: row + deltaRow });
 
     extend ? this.select(this.#anchor, to) : this.select(to);
