@@ -1235,54 +1235,37 @@ export class SpreadsheetGrid extends EventTarget {
   }
 
   /**
-   * Returns the new focus when extending the selection, which moves the edge of the selection on the focus side by
-   * one cell. As merged cells expand the selection, shrinking skips cells until the edge actually moves.
+   * Returns the new focus when extending the selection. The focus moves in the direction until the selection changes,
+   * skipping positions that select the same range because merged cells already cover them.
    *
    * @param {number} deltaColumn
    * @param {number} deltaRow
    * @returns {CellPosition}
    */
   #extendFocus(deltaColumn, deltaRow) {
-    const anchor = this.#anchor;
-    const anchorEnd = this.#toMergeEnd(anchor);
-    const range = this.selection;
+    const { selection } = this;
+    let focus = this.#focus;
 
-    /**
-     * @param {'column' | 'row'} axis
-     * @param {number} delta
-     */
-    const edge = (axis, delta) => {
-      const [low, high] = axis === 'column' ? ['left', 'right'] : ['top', 'bottom'];
-      const startEdge = range[low];
-      const endEdge = range[high];
-      // The side of the anchor the focus is on, or the direction of the move if the focus is within the anchor. Merged
-      // cells may expand the selection beyond the anchor without the focus being on that side.
-      const focus = this.#focus[axis];
-      const side = focus > anchorEnd[axis] ? 1 : focus < anchor[axis] ? -1 : delta;
-      const current = side > 0 ? endEdge : startEdge;
+    for (;;) {
+      const next = { column: focus.column + deltaColumn, row: focus.row + deltaRow };
 
-      if (!delta) {
-        return current;
+      if (next.column < 0 || next.column >= this.columnCount || next.row < 0 || next.row >= this.rowCount) {
+        return this.#focus;
       }
 
-      if (delta === side) {
-        return current + delta;
+      const range = this.#rangeOf(this.#anchor, next);
+
+      if (
+        range.left !== selection.left ||
+        range.right !== selection.right ||
+        range.top !== selection.top ||
+        range.bottom !== selection.bottom
+      ) {
+        return next;
       }
 
-      const limit = side > 0 ? anchorEnd[axis] : anchor[axis];
-
-      for (let next = current + delta; next !== limit; next += delta) {
-        const nextRange = this.#rangeOf(anchor, axis === 'column' ? { ...this.#focus, column: next } : { ...this.#focus, row: next });
-
-        if (side > 0 ? nextRange[high] < endEdge : nextRange[low] > startEdge) {
-          return next;
-        }
-      }
-
-      return limit;
-    };
-
-    return this.#clamp({ column: edge('column', deltaColumn), row: edge('row', deltaRow) });
+      focus = next;
+    }
   }
 
   /**
