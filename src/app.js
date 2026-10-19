@@ -251,17 +251,15 @@ function isSelectionMerged() {
 
   const { left, top, right, bottom } = grid.selection;
 
-  /** Number of selected cells covered by merged cells, per row. @type {Map<number, number>} */
-  const covered = new Map();
+  let covered = 0;
 
-  for (const { x, y, width } of worksheet.getMerges()) {
-    const count = Math.min(x + width - 1, right) - Math.max(x, left) + 1;
-
-    y >= top && y <= bottom && count > 0 && covered.set(y, (covered.get(y) || 0) + count);
+  for (const { x, y, width, height } of worksheet.getMerges(left, top, right - left + 1, bottom - top + 1)) {
+    covered +=
+      (Math.min(x + width - 1, right) - Math.max(x, left) + 1) * (Math.min(y + height - 1, bottom) - Math.max(y, top) + 1);
   }
 
-  // Merged cells never overlap, so all cells are merged if every row is fully covered.
-  return covered.size === bottom - top + 1 && [...covered.values()].every(count => count === right - left + 1);
+  // Merged cells never overlap, so all cells are merged if they cover the whole selection.
+  return covered === (right - left + 1) * (bottom - top + 1);
 }
 
 /** @param {import('./workbook/Worksheet.js').FormattingUpdater} updater */
@@ -353,21 +351,18 @@ mergeButton.addEventListener('click', () => {
     const unmerge = isSelectionMerged();
     let skipped = false;
 
-    // Cells are merged horizontally only, each selected row separately.
-    const allMerges = worksheet.getMerges();
+    // The selection always covers whole merged cells.
+    if (!grid.isEditable(left, top) || !grid.isEditable(right, bottom)) {
+      skipped = true;
+    } else if (unmerge) {
+      worksheet
+        .getMerges(left, top, right - left + 1, bottom - top + 1)
+        .forEach(({ x, y }) => worksheet.unmergeCells(x, y));
 
-    for (let row = top; row <= bottom; row++) {
-      const merges = allMerges.filter(({ x, y, width }) => y === row && x <= right && x + width - 1 >= left);
-      const start = Math.min(left, ...merges.map(({ x }) => x));
-      const end = Math.max(right, ...merges.map(({ x, width }) => x + width - 1));
-
-      if (!grid.isEditable(start, row) || !grid.isEditable(end, row)) {
-        skipped = true;
-      } else if (unmerge) {
-        merges.forEach(({ x }) => worksheet.unmergeCells(x, row));
-      } else if (end > start) {
-        worksheet.mergeCells(start, row, end - start + 1);
-      }
+      // Keeps all cells of the unmerged cells selected, the selection may be only the merged cell itself.
+      grid.select({ column: left, row: top }, { column: right, row: bottom });
+    } else {
+      worksheet.mergeCells(left, top, right - left + 1, bottom - top + 1);
     }
 
     skipped && showStatus('Some cells are locked and cannot be merged.');
@@ -395,9 +390,16 @@ function undoOrRedo(action) {
   const changes = [];
   const handleCellChange = (/** @type {Event} */ event) =>
     changes.push(/** @type {import('./workbook/private/CellChangeEvent.js').CellChangeEvent} */ (event));
+  // All cells of a merged cell are involved, not only the cells with content.
+  const handleMergeChange = (/** @type {Event} */ event) => {
+    const { x, y, width, height } = /** @type {Event & { x: number; y: number; width: number; height: number }} */ (event);
+
+    changes.push({ x, y }, { x: x + width - 1, y: y + height - 1 });
+  };
 
   worksheet.addEventListener('cellchange', handleCellChange);
   worksheet.addEventListener('formattingchange', handleCellChange);
+  worksheet.addEventListener('mergechange', handleMergeChange);
 
   try {
     if (!worksheet[action]()) {
@@ -414,6 +416,7 @@ function undoOrRedo(action) {
   } finally {
     worksheet.removeEventListener('cellchange', handleCellChange);
     worksheet.removeEventListener('formattingchange', handleCellChange);
+    worksheet.removeEventListener('mergechange', handleMergeChange);
     updateUndoButtons();
     updateFormattingButtons();
   }
@@ -573,34 +576,27 @@ printButton.addEventListener('click', async () => {
     }
 
     const formattings = worksheet.getFormattings(left, top, right - left + 1, bottom - top + 1);
-    /** Column spans of merged cells (clipped to the selection), keyed by `row,column`, 0 for covered cells. @type {Map<string, number>} */
+    /** Column and row spans of merged cells, keyed by `row,column`, 0 for cells not in the first column or row. @type {Map<string, { columns: number; rows: number }>} */
     const spans = new Map();
 
-    const merges = worksheet.getMerges().filter(({ y }) => y >= top && y <= bottom);
-
-    for (let row = top; row <= bottom; row++) {
-      for (const merge of merges.filter(({ y }) => y === row)) {
-        const start = Math.max(merge.x, left);
-        const end = Math.min(merge.x + merge.width - 1, right);
-
-        if (start > end) {
-          continue;
-        }
-
-        // The selection may start in the middle of a merged cell, whose content and formatting are in its first cell.
-        rows[row - top][start - left] = worksheet.getValue(merge.x, row) ?? '';
-        formattings[row - top][start - left] = worksheet.getFormattings(merge.x, row, 1, 1)[0][0];
-
-        for (let column = start; column <= end; column++) {
-          spans.set(`${row - top},${column - left}`, column === start ? end - start + 1 : 0);
+    // The selection always covers whole merged cells.
+    for (const merge of worksheet.getMerges(left, top, right - left + 1, bottom - top + 1)) {
+      for (let row = merge.y; row < merge.y + merge.height; row++) {
+        for (let column = merge.x; column < merge.x + merge.width; column++) {
+          spans.set(`${row - top},${column - left}`, {
+            columns: column === merge.x ? merge.width : 0,
+            rows: row === merge.y ? merge.height : 0
+          });
         }
       }
     }
 
-    const getColumnSpan = (/** @type {number} */ column, /** @type {number} */ row) => spans.get(`${row},${column}`) ?? 1;
+    const getColumnSpan = (/** @type {number} */ column, /** @type {number} */ row) =>
+      spans.get(`${row},${column}`)?.columns ?? 1;
+    const getRowSpan = (/** @type {number} */ column, /** @type {number} */ row) => spans.get(`${row},${column}`)?.rows ?? 1;
     const getFormatting = (/** @type {number} */ column, /** @type {number} */ row) => formattings[row]?.[column];
 
-    download(await cellsToPNG(rows, { columnWidths, getBorder, getColumnSpan, getFormatting }), `${workbook.getWorksheetName(worksheet)}.png`);
+    download(await cellsToPNG(rows, { columnWidths, getBorder, getColumnSpan, getFormatting, getRowSpan }), `${workbook.getWorksheetName(worksheet)}.png`);
   } catch (error) {
     alert(`Failed to print selected cells: ${/** @type {Error} */ (error).message}`);
   }

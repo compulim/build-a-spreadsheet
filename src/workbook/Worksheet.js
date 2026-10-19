@@ -7,8 +7,9 @@ import { COLUMN_COUNT, COLUMN_WIDTH, ROW_COUNT } from './constants.js';
 /** @typedef {'left' | 'right' | 'top' | 'bottom' | 'outside' | 'inside'} BorderEdges */
 /** @typedef {{ x: number; y: number; value: CellValue; previousValue: CellValue }} CellValueChange */
 /** @typedef {{ x: number; y: number; formatting: CellFormatting; previousFormatting: CellFormatting }} CellFormattingChange */
-/** @typedef {{ x: number; y: number; merge: number; previousMerge: number }} CellMergeChange */
-/** @typedef {{ x: number; y: number; width: number }} CellMerge */
+/** @typedef {{ width: number; height: number }} CellMergeSize */
+/** @typedef {{ x: number; y: number; merge: CellMergeSize | undefined; previousMerge: CellMergeSize | undefined }} CellMergeChange */
+/** @typedef {{ x: number; y: number; width: number; height: number }} CellMerge */
 /** @typedef {{ x: number; y: number; edge: 'left' | 'top'; border: boolean; previousBorder: boolean }} CellBorderChange */
 /** @typedef {CellValueChange | CellFormattingChange | CellMergeChange | CellBorderChange} CellChange */
 /** @typedef {CellValue | null | undefined} CellInput */
@@ -43,7 +44,8 @@ const DEFAULT_FORMATTING = Object.freeze({
  *
  * Dispatches `cellchange` (`CellChangeEvent`) whenever the value of a cell changes, `borderchange` (with `x` and `y`)
  * whenever the border of a cell changes, `formattingchange` (with `x` and `y`) whenever the formatting of a cell changes,
- * `columnwidthchange` (with `x`) whenever the width of a column changes, and `mergechange` (with `x`, `y` and `width`)
+ * `columnwidthchange` (with `x`) whenever the width of a column changes, and `mergechange` (with `x`, `y`, `width` and
+ * `height`)
  * whenever cells are merged or unmerged.
  *
  * Keeps an undo history of cell value and formatting changes. Changes made synchronously in the same task (e.g. a paste) are grouped into a
@@ -67,8 +69,9 @@ export class Worksheet extends EventTarget {
   #formattings = new Map();
 
   /**
-   * Horizontally merged cells, keyed by `y * columnCount + x` of the first cell, with the number of merged columns.
-   * @type {Map<number, number>}
+   * Merged cells, keyed by `y * columnCount + x` of the top-left cell, with the number of merged columns and rows.
+   * Merged cells never overlap.
+   * @type {Map<number, CellMergeSize>}
    */
   #merges = new Map();
 
@@ -466,18 +469,25 @@ export class Worksheet extends EventTarget {
       for (let x = left; x <= right; x++) {
         if (set.has('inside')) {
           // Merged cells have no inner borders.
-          x > left && !(value && this.#isInsideMerge(x, y)) && this.#setStoredEdge(x, y, 'left', value);
-          y > top && this.#setStoredEdge(x, y, 'top', value);
+          x > left && !(value && this.#isInsideMerge(x, y, 'left')) && this.#setStoredEdge(x, y, 'left', value);
+          y > top && !(value && this.#isInsideMerge(x, y, 'top')) && this.#setStoredEdge(x, y, 'top', value);
         }
 
-        set.has('left') && x === left && !(value && this.#isInsideMerge(x, y)) && this.#setStoredEdge(x, y, 'left', value);
-        set.has('top') && y === top && this.#setStoredEdge(x, y, 'top', value);
+        set.has('left') &&
+          x === left &&
+          !(value && this.#isInsideMerge(x, y, 'left')) &&
+          this.#setStoredEdge(x, y, 'left', value);
+        set.has('top') && y === top && !(value && this.#isInsideMerge(x, y, 'top')) && this.#setStoredEdge(x, y, 'top', value);
         set.has('right') &&
           x === right &&
           x + 1 < this.columnCount &&
-          !(value && this.#isInsideMerge(x + 1, y)) &&
+          !(value && this.#isInsideMerge(x + 1, y, 'left')) &&
           this.#setStoredEdge(x + 1, y, 'left', value);
-        set.has('bottom') && y === bottom && y + 1 < this.rowCount && this.#setStoredEdge(x, y + 1, 'top', value);
+        set.has('bottom') &&
+          y === bottom &&
+          y + 1 < this.rowCount &&
+          !(value && this.#isInsideMerge(x, y + 1, 'top')) &&
+          this.#setStoredEdge(x, y + 1, 'top', value);
       }
     }
   }
@@ -643,132 +653,169 @@ export class Worksheet extends EventTarget {
   }
 
   /**
-   * Returns the merged cell containing a cell, or `undefined` if the cell is not merged.
+   * Returns merged cells intersecting a range (the whole worksheet by default), in no particular order. Cost is
+   * proportional to the number of merged cells, not to the size of the worksheet.
    *
-   * @param {number} x
-   * @param {number} y
-   * @returns {CellMerge | undefined}
-   */
-  getMerge(x, y) {
-    this.#assertCell(x, y);
-
-    for (let column = x; column >= 0; column--) {
-      const width = this.#merges.get(y * this.columnCount + column);
-
-      if (width) {
-        return column + width > x ? { x: column, y, width } : undefined;
-      }
-    }
-  }
-
-  /**
-   * Returns all merged cells of the worksheet, in no particular order. Cost is proportional to the number of merged
-   * cells, not to the size of the worksheet.
-   *
+   * @param {number} [x]
+   * @param {number} [y]
+   * @param {number} [width]
+   * @param {number} [height]
    * @returns {CellMerge[]}
    */
-  getMerges() {
+  getMerges(x = 0, y = 0, width = this.columnCount - x, height = this.rowCount - y) {
     /** @type {CellMerge[]} */
     const merges = [];
 
-    for (const [key, width] of this.#merges) {
-      merges.push({ x: key % this.columnCount, y: Math.floor(key / this.columnCount), width });
+    for (const [key, size] of this.#merges) {
+      const left = key % this.columnCount;
+      const top = Math.floor(key / this.columnCount);
+
+      left < x + width &&
+        left + size.width > x &&
+        top < y + height &&
+        top + size.height > y &&
+        merges.push({ x: left, y: top, ...size });
     }
 
     return merges;
   }
 
   /**
+   * Returns `true` if the edge of a cell is inside a merged cell.
+   *
    * @param {number} x
    * @param {number} y
+   * @param {'left' | 'top'} side
    */
-  #isInsideMerge(x, y) {
-    const merge = this.getMerge(x, y);
+  #isInsideMerge(x, y, side) {
+    const merge = this.getMerges(x, y, 1, 1)[0];
 
-    return !!merge && merge.x !== x;
+    return !!merge && (side === 'left' ? merge.x !== x : merge.y !== y);
   }
 
   /**
    * @param {number} x
    * @param {number} y
-   * @param {number} width 0 to unmerge.
+   * @param {CellMergeSize | undefined} size `undefined` to unmerge.
    */
-  #setMerge(x, y, width) {
+  #setMerge(x, y, size) {
     const key = y * this.columnCount + x;
-    const previousMerge = this.#merges.get(key) || 0;
+    const previousMerge = this.#merges.get(key);
 
-    if (previousMerge === width) {
+    if (previousMerge?.width === size?.width && previousMerge?.height === size?.height) {
       return;
     }
 
-    width ? this.#merges.set(key, width) : this.#merges.delete(key);
+    if (size) {
+      this.#assertCell(x + size.width - 1, y + size.height - 1);
 
-    this.#applyingHistory || this.#record({ x, y, merge: width, previousMerge });
+      const overlap = this.getMerges(x, y, size.width, size.height).find(merge => merge.x !== x || merge.y !== y);
 
-    this.dispatchEvent(Object.assign(new Event('mergechange'), { x, y, width: width || previousMerge }));
+      if (overlap) {
+        throw new Error(`Merged cells must not overlap, the merged cell at (${overlap.x}, ${overlap.y}) overlaps.`);
+      }
+
+      this.#merges.set(key, { ...size });
+    } else {
+      this.#merges.delete(key);
+    }
+
+    this.#applyingHistory || this.#record({ x, y, merge: size && { ...size }, previousMerge });
+
+    this.dispatchEvent(Object.assign(new Event('mergechange'), { x, y, ...(size || previousMerge) }));
   }
 
   /**
-   * Merges cells of a row horizontally into a single cell. Merged cells overlapping the range are merged together.
+   * Merges a range of cells into a single cell. Merged cells overlapping the range are merged together.
    *
-   * Non-empty values are concatenated (separated by a space) into the first cell and other cells are cleared. The
-   * formatting of the first non-empty cell is used. Borders between the merged cells are removed. Undoable.
+   * Non-empty values are concatenated (row by row, separated by a space) into the top-left cell and other cells are
+   * cleared. The formatting of the first non-empty cell is used. Borders between the merged cells are removed. Undoable.
    *
    * @param {number} x
    * @param {number} y
    * @param {number} width
+   * @param {number} [height]
    */
-  mergeCells(x, y, width) {
+  mergeCells(x, y, width, height = 1) {
     if (!Number.isInteger(width) || width < 1) {
       throw new RangeError('Width must be a positive integer.');
+    } else if (!Number.isInteger(height) || height < 1) {
+      throw new RangeError('Height must be a positive integer.');
     }
 
     this.#assertCell(x, y);
-    this.#assertCell(x + width - 1, y);
+    this.#assertCell(x + width - 1, y + height - 1);
 
-    const left = this.getMerge(x, y)?.x ?? x;
-    const lastMerge = this.getMerge(x + width - 1, y);
-    const right = lastMerge ? lastMerge.x + lastMerge.width - 1 : x + width - 1;
+    let left = x;
+    let top = y;
+    let right = x + width - 1;
+    let bottom = y + height - 1;
 
-    if (left === right) {
+    // Expanding to cover a merged cell may partially cover more merged cells, so it repeats until nothing changes.
+    for (let changed = true; changed; ) {
+      changed = false;
+
+      for (const merge of this.getMerges(left, top, right - left + 1, bottom - top + 1)) {
+        if (merge.x < left || merge.y < top || merge.x + merge.width - 1 > right || merge.y + merge.height - 1 > bottom) {
+          left = Math.min(left, merge.x);
+          top = Math.min(top, merge.y);
+          right = Math.max(right, merge.x + merge.width - 1);
+          bottom = Math.max(bottom, merge.y + merge.height - 1);
+          changed = true;
+        }
+      }
+    }
+
+    if (left === right && top === bottom) {
       return;
     }
 
     /** @type {CellValue[]} */
     const values = [];
-    const [formatting] = this.getFormattings(left, y, right - left + 1, 1)[0].filter(
-      (_, index) => (this.#rows[y]?.[left + index] ?? '') !== ''
-    );
+    /** @type {CellFormatting | undefined} */
+    let formatting;
 
-    for (let column = left; column <= right; column++) {
-      this.#setMerge(column, y, 0);
-
-      const value = this.#rows[y]?.[column];
-
-      value !== undefined && values.push(value);
+    for (const merge of this.getMerges(left, top, right - left + 1, bottom - top + 1)) {
+      this.#setMerge(merge.x, merge.y, undefined);
     }
 
-    this.setValue(left, y, values.length > 1 ? values.map(formatValue).join(' ') : values[0] ?? '');
-    formatting && this.#setFormatting(left, y, formatting);
+    for (let row = top; row <= bottom; row++) {
+      for (let column = left; column <= right; column++) {
+        const value = this.#rows[row]?.[column];
 
-    for (let column = left + 1; column <= right; column++) {
-      this.setValue(column, y, '');
-      this.#setStoredEdge(column, y, 'left', false);
+        if (value !== undefined && value !== '') {
+          values.push(value);
+          formatting ||= this.getFormattings(column, row, 1, 1)[0][0];
+        }
+      }
     }
 
-    this.#setMerge(left, y, right - left + 1);
+    this.setValue(left, top, values.length > 1 ? values.map(formatValue).join(' ') : values[0] ?? '');
+    formatting && this.#setFormatting(left, top, formatting);
+
+    for (let row = top; row <= bottom; row++) {
+      for (let column = left; column <= right; column++) {
+        (column !== left || row !== top) && this.setValue(column, row, '');
+        column > left && this.#setStoredEdge(column, row, 'left', false);
+        row > top && this.#setStoredEdge(column, row, 'top', false);
+      }
+    }
+
+    this.#setMerge(left, top, { width: right - left + 1, height: bottom - top + 1 });
   }
 
   /**
-   * Unmerges the merged cell containing a cell. The content stays in the first cell. Undoable.
+   * Unmerges the merged cell containing a cell. The content stays in the top-left cell. Undoable.
    *
    * @param {number} x
    * @param {number} y
    */
   unmergeCells(x, y) {
-    const merge = this.getMerge(x, y);
+    this.#assertCell(x, y);
 
-    merge && this.#setMerge(merge.x, y, 0);
+    const merge = this.getMerges(x, y, 1, 1)[0];
+
+    merge && this.#setMerge(merge.x, merge.y, undefined);
   }
 
   /**

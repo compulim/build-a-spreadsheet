@@ -65,3 +65,15 @@ test('cellsToSVG draws merged cells as a single cell without inner borders', () 
   assert.ok(!svg.includes('<line x1="101.5" y1="1.5" x2="101.5"'));
   assert.ok(svg.includes('<line x1="201.5" y1="1.5" x2="201.5"'));
 });
+
+test('cellsToSVG draws vertically merged cells as a single cell without inner borders', () => {
+  const { svg } = cellsToSVG([['merged'], ['']], {
+    getBorder: () => ({ top: true, right: true, bottom: true, left: true }),
+    getRowSpan: (_, row) => (row === 0 ? 2 : 0)
+  });
+
+  assert.equal((svg.match(/<rect [^/]*fill/g) || []).length, 1);
+  assert.ok(svg.includes('width="100" height="48" fill="#fff"'));
+  assert.ok(!svg.includes('<line x1="1.5" y1="25.5" x2="101.5" y2="25.5"'));
+  assert.ok(svg.includes('<line x1="1.5" y1="49.5" x2="101.5" y2="49.5"'));
+});
