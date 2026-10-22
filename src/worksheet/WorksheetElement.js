@@ -184,12 +184,10 @@ export class WorksheetElement extends HTMLElement {
   #columnCount = 0;
   #rowCount = 0;
 
-  /** Active cell, where editing happens. @type {CellPosition} */
-  #anchor = { column: 0, row: 0 };
   /** Cell the active cell was entered from, used when moving out of a merged cell. @type {CellPosition} */
   #preferred = { column: 0, row: 0 };
 
-  /** The other end of the selected range. @type {CellPosition} */
+  /** Cell the selection was extended to (before expanding to merged cells). @type {CellPosition} */
   #focus = { column: 0, row: 0 };
 
   #locked = false;
@@ -297,7 +295,7 @@ export class WorksheetElement extends HTMLElement {
 
     this.#frozen.replaceChildren(...this.#frozenRows.map(({ element }) => element));
 
-    if (this.#locked && this.#editMode && !this.#isEditable(this.#anchor.column, this.#anchor.row)) {
+    if (this.#locked && this.#editMode && !this.#isEditable(this.#selectionObject.activeCell.column, this.#selectionObject.activeCell.row)) {
       this.#cancelEdit();
     }
 
@@ -449,7 +447,7 @@ export class WorksheetElement extends HTMLElement {
           this.#contentDirty = true;
         }
 
-        anchorChanged ||= row === this.#anchor.row && x === this.#anchor.column;
+        anchorChanged ||= row === this.#selectionObject.activeCell.row && x === this.#selectionObject.activeCell.column;
       } else {
         mergeChanged ||= change.type === 'merge';
         this.#contentDirty = true;
@@ -460,7 +458,7 @@ export class WorksheetElement extends HTMLElement {
     this.#scheduleRender();
 
     if (mergeChanged) {
-      this.#anchor = this.#toMergeStart(this.#anchor);
+      this.#setSelection(this.#selectionObject.activeCell, this.#focus);
       this.#updateSelection();
     }
 
@@ -529,7 +527,7 @@ export class WorksheetElement extends HTMLElement {
     this.classList.toggle('grid--locked', locked);
     locked && this.classList.remove('grid--resize-hover');
 
-    if (locked && this.#editMode && !this.#isEditable(this.#anchor.column, this.#anchor.row)) {
+    if (locked && this.#editMode && !this.#isEditable(this.#selectionObject.activeCell.column, this.#selectionObject.activeCell.row)) {
       this.#cancelEdit();
     }
   }
@@ -546,17 +544,31 @@ export class WorksheetElement extends HTMLElement {
     );
   }
 
-  /** @returns {CellRange} */
-  get #selectedRange() {
-    return this.#rangeOf(this.#anchor, this.#focus);
-  }
+  /**
+   * Current selection, the source of truth for the active cell and the selected range.
+   *
+   * @type {WorksheetSelection}
+   */
+  #selectionObject = new WorksheetSelection({ column: 0, row: 0 });
 
   /**
-   * Last `WorksheetSelection` returned or set, kept until the selection changes.
+   * Updates `#selectionObject` from an anchor and a focus. The anchor snaps to the start of its merged cell and the
+   * range expands to cover merged cells. Keeps the current instance if nothing changed.
    *
-   * @type {WorksheetSelection | undefined}
+   * @param {CellPosition} anchor
+   * @param {CellPosition} [focus]
    */
-  #selectionObject;
+  #setSelection(anchor, focus = anchor) {
+    const activeCell = this.#toMergeStart(this.#clamp(anchor));
+
+    this.#focus = this.#clamp(focus);
+
+    const range = this.#rangeOf(activeCell, this.#focus);
+
+    if (!isSameSelection(this.#selectionObject, activeCell, range)) {
+      this.#selectionObject = new WorksheetSelection(activeCell, range);
+    }
+  }
 
   /**
    * Returns the same instance until the selection changes.
@@ -564,12 +576,6 @@ export class WorksheetElement extends HTMLElement {
    * @returns {WorksheetSelection}
    */
   get selection() {
-    const range = this.#selectedRange;
-
-    if (!this.#selectionObject || !isSameSelection(this.#selectionObject, this.#anchor, range)) {
-      this.#selectionObject = new WorksheetSelection(this.#anchor, range);
-    }
-
     return this.#selectionObject;
   }
 
@@ -581,7 +587,10 @@ export class WorksheetElement extends HTMLElement {
    */
   set selection(selection) {
     this.#select(selection.activeCell, selection.focus);
-    this.#selectionObject = selection;
+
+    if (isSameSelection(this.#selectionObject, selection.activeCell, selection.range)) {
+      this.#selectionObject = selection;
+    }
   }
 
   /** Whether there are changes to undo. */
@@ -653,8 +662,7 @@ export class WorksheetElement extends HTMLElement {
   #select(anchor, focus = anchor) {
     this.#editMode && this.#commitEdit();
 
-    this.#anchor = this.#toMergeStart(this.#clamp(anchor));
-    this.#focus = this.#clamp(focus);
+    this.#setSelection(anchor, focus);
     this.#preferred = this.#clamp(anchor);
 
     this.#updateSelection();
@@ -1268,7 +1276,7 @@ export class WorksheetElement extends HTMLElement {
 
   /** @param {{ header: HTMLElement; row: number }} slot */
   #renderRowSelection({ header, row }) {
-    const { top, bottom } = this.#selectedRange;
+    const { top, bottom } = this.#selectionObject.range;
 
     header.classList.toggle('grid__row-header--selected', row >= top && row <= bottom);
   }
@@ -1276,22 +1284,22 @@ export class WorksheetElement extends HTMLElement {
   #updateSelection() {
     const rowHeight = this.#rowHeight;
     const rowHeaderWidth = this.#rowHeaderWidth;
-    const { left, top, right, bottom } = this.#selectedRange;
+    const { left, top, right, bottom } = this.#selectionObject.range;
     const rangeStyle = this.#rangeOverlay.style;
     const activeStyle = this.#activeOverlay.style;
-    const anchorEnd = this.#toMergeEnd(this.#anchor);
+    const anchorEnd = this.#toMergeEnd(this.#selectionObject.activeCell);
 
     rangeStyle.left = `${rowHeaderWidth + this.#columnOffset(left)}px`;
     rangeStyle.top = `${top * rowHeight}px`;
     rangeStyle.width = `${this.#columnOffset(right + 1) - this.#columnOffset(left)}px`;
     rangeStyle.height = `${(bottom - top + 1) * rowHeight}px`;
     this.#rangeOverlay.hidden =
-      left === this.#anchor.column && right === anchorEnd.column && top === this.#anchor.row && bottom === anchorEnd.row;
+      left === this.#selectionObject.activeCell.column && right === anchorEnd.column && top === this.#selectionObject.activeCell.row && bottom === anchorEnd.row;
 
-    activeStyle.left = `${rowHeaderWidth + this.#columnOffset(this.#anchor.column)}px`;
-    activeStyle.width = `${this.#columnOffset(anchorEnd.column + 1) - this.#columnOffset(this.#anchor.column)}px`;
-    activeStyle.top = `${this.#anchor.row * rowHeight}px`;
-    activeStyle.height = `${(anchorEnd.row - this.#anchor.row + 1) * rowHeight}px`;
+    activeStyle.left = `${rowHeaderWidth + this.#columnOffset(this.#selectionObject.activeCell.column)}px`;
+    activeStyle.width = `${this.#columnOffset(anchorEnd.column + 1) - this.#columnOffset(this.#selectionObject.activeCell.column)}px`;
+    activeStyle.top = `${this.#selectionObject.activeCell.row * rowHeight}px`;
+    activeStyle.height = `${(anchorEnd.row - this.#selectionObject.activeCell.row + 1) * rowHeight}px`;
 
     this.#columnHeaders.forEach((header, column) =>
       header.classList.toggle('grid__column-header--selected', column >= left && column <= right)
@@ -1399,10 +1407,10 @@ export class WorksheetElement extends HTMLElement {
    */
   #move(deltaColumn, deltaRow, extend) {
     if (extend) {
-      return this.#select(this.#anchor, this.#extendFocus(deltaColumn, deltaRow));
+      return this.#select(this.#selectionObject.activeCell, this.#extendFocus(deltaColumn, deltaRow));
     }
 
-    const from = this.#anchor;
+    const from = this.#selectionObject.activeCell;
     const preferred = this.#preferred;
     const end = this.#toMergeEnd(from);
     // Moving right or down skips the rest of a merged cell. Moving vertically out of a merged cell keeps the column
@@ -1432,7 +1440,7 @@ export class WorksheetElement extends HTMLElement {
    * @returns {CellPosition}
    */
   #extendFocus(deltaColumn, deltaRow) {
-    const selection = this.#selectedRange;
+    const selection = this.#selectionObject.range;
     let focus = this.#focus;
 
     for (;;) {
@@ -1442,7 +1450,7 @@ export class WorksheetElement extends HTMLElement {
         return this.#focus;
       }
 
-      const range = this.#rangeOf(this.#anchor, next);
+      const range = this.#rangeOf(this.#selectionObject.activeCell, next);
 
       if (
         range.left !== selection.left ||
@@ -1464,16 +1472,16 @@ export class WorksheetElement extends HTMLElement {
    * @param {number} deltaRow
    */
   #moveWithinSelection(deltaColumn, deltaRow) {
-    const { left, top, right, bottom } = this.#selectedRange;
+    const { left, top, right, bottom } = this.#selectionObject.range;
 
-    const end = this.#toMergeEnd(this.#anchor);
+    const end = this.#toMergeEnd(this.#selectionObject.activeCell);
 
     // A single (possibly merged) cell is selected.
-    if (left === this.#anchor.column && right === end.column && top === this.#anchor.row && bottom === end.row) {
+    if (left === this.#selectionObject.activeCell.column && right === end.column && top === this.#selectionObject.activeCell.row && bottom === end.row) {
       return this.#move(deltaColumn, deltaRow, false);
     }
 
-    let { column, row } = this.#anchor;
+    let { column, row } = this.#selectionObject.activeCell;
 
     // Moving right or down skips the rest of a merged cell.
     column = (deltaColumn > 0 ? end.column : column) + deltaColumn;
@@ -1494,7 +1502,7 @@ export class WorksheetElement extends HTMLElement {
     }
 
     this.#selectKeepingScroll({ column, row }, this.#focus);
-    this.#scrollIntoView(this.#anchor);
+    this.#scrollIntoView(this.#selectionObject.activeCell);
   }
 
   /** @param {KeyboardEvent} event */
@@ -1510,7 +1518,7 @@ export class WorksheetElement extends HTMLElement {
       1,
       Math.floor((this.clientHeight - this.#headerHeight - frozenHeight) / this.#rowHeight) - 1
     );
-    const { column, row } = shiftKey ? this.#focus : this.#anchor;
+    const { column, row } = shiftKey ? this.#focus : this.#selectionObject.activeCell;
 
     /** @type {[number, number] | undefined} */
     let delta;
@@ -1669,16 +1677,16 @@ export class WorksheetElement extends HTMLElement {
 
       this.#dragging = 'column';
       shiftKey
-        ? this.#selectKeepingScroll(this.#anchor, { column, row: this.#rowCount - 1 })
+        ? this.#selectKeepingScroll(this.#selectionObject.activeCell, { column, row: this.#rowCount - 1 })
         : this.#selectKeepingScroll({ column, row: 0 }, { column, row: this.#rowCount - 1 });
     } else if (target.closest('.grid__row-header')) {
       this.#dragging = 'row';
       shiftKey
-        ? this.#selectKeepingScroll(this.#anchor, { column: this.#columnCount - 1, row: cell.row })
+        ? this.#selectKeepingScroll(this.#selectionObject.activeCell, { column: this.#columnCount - 1, row: cell.row })
         : this.#selectKeepingScroll({ column: 0, row: cell.row }, { column: this.#columnCount - 1, row: cell.row });
     } else {
       this.#dragging = 'cell';
-      shiftKey ? this.#select(this.#anchor, cell) : this.#select(cell);
+      shiftKey ? this.#select(this.#selectionObject.activeCell, cell) : this.#select(cell);
     }
 
     this.setPointerCapture(event.pointerId);
@@ -1692,8 +1700,7 @@ export class WorksheetElement extends HTMLElement {
    */
   #selectKeepingScroll(anchor, focus) {
     this.#editMode && this.#commitEdit();
-    this.#anchor = this.#toMergeStart(this.#clamp(anchor));
-    this.#focus = this.#clamp(focus);
+    this.#setSelection(anchor, focus);
     this.#updateSelection();
   }
 
@@ -1716,11 +1723,11 @@ export class WorksheetElement extends HTMLElement {
     const cell = this.#cellFromPoint(event);
 
     if (this.#dragging === 'column') {
-      this.#selectKeepingScroll(this.#anchor, { column: cell.column, row: this.#rowCount - 1 });
+      this.#selectKeepingScroll(this.#selectionObject.activeCell, { column: cell.column, row: this.#rowCount - 1 });
     } else if (this.#dragging === 'row') {
-      this.#selectKeepingScroll(this.#anchor, { column: this.#columnCount - 1, row: cell.row });
+      this.#selectKeepingScroll(this.#selectionObject.activeCell, { column: this.#columnCount - 1, row: cell.row });
     } else if (cell.column !== this.#focus.column || cell.row !== this.#focus.row) {
-      this.#select(this.#anchor, cell);
+      this.#select(this.#selectionObject.activeCell, cell);
     }
   }
 
@@ -1783,7 +1790,7 @@ export class WorksheetElement extends HTMLElement {
    * @returns {number[]}
    */
   #columnsToResize(column) {
-    const { left, top, right, bottom } = this.#selectedRange;
+    const { left, top, right, bottom } = this.#selectionObject.range;
 
     if (top === 0 && bottom === this.#rowCount - 1 && column >= left && column <= right) {
       return Array.from({ length: right - left + 1 }, (_, index) => left + index);
@@ -1825,7 +1832,7 @@ export class WorksheetElement extends HTMLElement {
    * @returns {boolean} `false` if the cell is locked.
    */
   #startEdit(initialText) {
-    const { column, row } = this.#anchor;
+    const { column, row } = this.#selectionObject.activeCell;
 
     if (!this.#isEditable(column, row)) {
       this.dispatchEvent(new CustomEvent('lockedit', { detail: { column, row } }));
@@ -1833,7 +1840,7 @@ export class WorksheetElement extends HTMLElement {
       return false;
     }
 
-    this.#scrollIntoView(this.#anchor);
+    this.#scrollIntoView(this.#selectionObject.activeCell);
 
     const editor = this.#editor;
     const value = this.#worksheet.getValue(column, row);
@@ -1851,12 +1858,12 @@ export class WorksheetElement extends HTMLElement {
 
   /** Commits the editor value to the active cell. */
   #positionEditor() {
-    const { column, row } = this.#anchor;
+    const { column, row } = this.#selectionObject.activeCell;
     const style = this.#editor.style;
 
     style.left = `${this.#rowHeaderWidth + this.#columnOffset(column)}px`;
     style.top = `${row * this.#rowHeight}px`;
-    const end = this.#toMergeEnd(this.#anchor);
+    const end = this.#toMergeEnd(this.#selectionObject.activeCell);
 
     style.width = `${this.#columnOffset(end.column + 1) - this.#columnOffset(column)}px`;
     style.height = `${(end.row - row + 1) * this.#rowHeight}px`;
@@ -1867,7 +1874,7 @@ export class WorksheetElement extends HTMLElement {
       return;
     }
 
-    const { column, row } = this.#anchor;
+    const { column, row } = this.#selectionObject.activeCell;
     const text = this.#editor.value;
 
     this.#closeEditor();
@@ -1937,7 +1944,7 @@ export class WorksheetElement extends HTMLElement {
   #clearSelection() {
     const worksheet = this.#worksheet;
 
-    const { left, top, right, bottom } = this.#selectedRange;
+    const { left, top, right, bottom } = this.#selectionObject.range;
     let skipped = false;
 
     worksheet.edit(edit => {
@@ -1952,7 +1959,7 @@ export class WorksheetElement extends HTMLElement {
       }
     });
 
-    skipped && this.dispatchEvent(new CustomEvent('lockedit', { detail: this.#anchor }));
+    skipped && this.dispatchEvent(new CustomEvent('lockedit', { detail: this.#selectionObject.activeCell }));
   }
 
   // #endregion
@@ -1962,7 +1969,7 @@ export class WorksheetElement extends HTMLElement {
   /** @returns {CellValue[][]} */
   #getSelectedValues() {
     const worksheet = this.#worksheet;
-    const { left, top, right, bottom } = this.#selectedRange;
+    const { left, top, right, bottom } = this.#selectionObject.range;
 
     /** @type {CellValue[][]} */
     const values = [];
@@ -1994,7 +2001,7 @@ export class WorksheetElement extends HTMLElement {
     event.preventDefault();
 
     const values = this.#getSelectedValues();
-    const { left, top, right, bottom } = this.#selectedRange;
+    const { left, top, right, bottom } = this.#selectionObject.range;
     // Formatting (excluding borders) is embedded in the HTML flavor only, so plain text editors get plain values.
     const formattings = this.#worksheet.getFormattings(left, top, right - left + 1, bottom - top + 1);
 
@@ -2044,7 +2051,7 @@ export class WorksheetElement extends HTMLElement {
 
     const dataRows = values.length;
     const dataColumns = Math.max(...values.map(row => row.length));
-    const { left, top, right, bottom } = this.#selectedRange;
+    const { left, top, right, bottom } = this.#selectionObject.range;
     const selectedRows = bottom - top + 1;
     const selectedColumns = right - left + 1;
 
