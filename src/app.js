@@ -7,7 +7,7 @@ import { Workbook } from './workbook/Workbook.js';
 import { WorksheetElement } from './worksheet/WorksheetElement.js';
 import { WorksheetSelection } from './worksheet/WorksheetSelection.js';
 
-/** @typedef {import('./workbook/Worksheet.js').Worksheet} Worksheet */
+/** @typedef {import('./worksheet/Worksheet.js').Worksheet} Worksheet */
 
 /**
  * Number of leading rows and columns that become read-only, and frozen on screen, when the lock button is pressed.
@@ -318,7 +318,7 @@ function isSelectionMerged() {
   return covered === (right - left + 1) * (bottom - top + 1);
 }
 
-/** @param {import('./workbook/Worksheet.js').FormattingUpdater} updater */
+/** @param {import('./worksheet/Worksheet.js').FormattingUpdater} updater */
 function formatSelection(updater) {
   const worksheet = activeElement?.worksheet;
 
@@ -499,7 +499,7 @@ borderSelect.addEventListener('change', () => {
       if (preset === 'all' || preset === 'none') {
         edit.setBorder(range, new Set(['outside', 'inside']), preset === 'all');
       } else {
-        edit.setBorder(range, new Set([/** @type {import('./workbook/Worksheet.js').BorderEdges} */ (preset)]));
+        edit.setBorder(range, new Set([/** @type {import('./worksheet/Worksheet.js').BorderEdges} */ (preset)]));
       }
     });
 

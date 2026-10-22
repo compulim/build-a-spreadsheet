@@ -3,12 +3,12 @@ import { formatValue, inferValue, parseTSV, stringifyTSV } from '../csv.js';
 import { getHighlight } from '../highlights.js';
 import { formatDisplayValue } from '../numberFormats.js';
 import { getColumnName } from '../workbook/getColumnName.js';
-import { Worksheet } from '../workbook/Worksheet.js';
+import { Worksheet } from './Worksheet.js';
 import { WorksheetHistory } from './WorksheetHistory.js';
 import { WorksheetSelection } from './WorksheetSelection.js';
 
 /**
- * @typedef {import('../workbook/Worksheet.js').CellValue} CellValue
+ * @typedef {import('./Worksheet.js').CellValue} CellValue
  * @typedef {{ readonly column: number; readonly row: number }} CellPosition
  * @typedef {{ readonly left: number; readonly top: number; readonly right: number; readonly bottom: number }} CellRange
  */
@@ -104,7 +104,7 @@ function createElement(tagName, className) {
  * Returns formattings embedded by this app in clipboard HTML, or `undefined` if the HTML is not from this app.
  *
  * @param {string} html
- * @returns {Partial<import('../workbook/Worksheet.js').CellFormatting>[][] | undefined}
+ * @returns {Partial<import('./Worksheet.js').CellFormatting>[][] | undefined}
  */
 function parseClipboardFormattings(html) {
   if (!html) {

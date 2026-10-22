@@ -1,8 +1,8 @@
 import { formatValue } from './csv.js';
 import { getHighlight } from './highlights.js';
 
-/** @typedef {import('./workbook/Worksheet.js').CellBorder} CellBorder */
-/** @typedef {import('./workbook/Worksheet.js').CellFormatting} CellFormatting */
+/** @typedef {import('./worksheet/Worksheet.js').CellBorder} CellBorder */
+/** @typedef {import('./worksheet/Worksheet.js').CellFormatting} CellFormatting */
 /** @typedef {(column: number, row: number) => Partial<CellFormatting> | undefined} GetFormatting */
 /** @typedef {(column: number, row: number) => number} GetColumnSpan */
 /** @typedef {(column: number, row: number) => number} GetRowSpan */

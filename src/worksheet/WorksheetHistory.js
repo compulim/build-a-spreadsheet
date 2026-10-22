@@ -1,5 +1,5 @@
-/** @typedef {import('../workbook/Worksheet.js').Worksheet} Worksheet */
-/** @typedef {import('../workbook/Worksheet.js').CellChange} CellChange */
+/** @typedef {import('./Worksheet.js').Worksheet} Worksheet */
+/** @typedef {import('./Worksheet.js').CellChange} CellChange */
 /** @typedef {import('../workbook/private/WorksheetChangeEvent.js').WorksheetChangeEvent} WorksheetChangeEvent */
 
 /**

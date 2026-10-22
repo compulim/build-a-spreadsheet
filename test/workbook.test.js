@@ -9,7 +9,7 @@ import {
 } from "../src/workbook/constants.js";
 import { getColumnName } from "../src/workbook/getColumnName.js";
 import { Workbook } from "../src/workbook/Workbook.js";
-import { Worksheet } from "../src/workbook/Worksheet.js";
+import { Worksheet } from "../src/worksheet/Worksheet.js";
 import { WorksheetHistory } from "../src/worksheet/WorksheetHistory.js";
 import { createZip } from "../src/zip.js";
 

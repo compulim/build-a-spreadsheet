@@ -1,12 +1,12 @@
 import { formatValue } from './csv.js';
 
-/** @typedef {import('./workbook/Worksheet.js').CellNumberFormat} CellNumberFormat */
+/** @typedef {import('./worksheet/Worksheet.js').CellNumberFormat} CellNumberFormat */
 
 /**
  * Formats a cell value for display. Only finite numbers are affected by `format`. Decorations (the currency sign,
  * parentheses around negative currency and the percent sign) are not part of `text`, they are added by CSS.
  *
- * @param {import('./workbook/Worksheet.js').CellValue | undefined} value
+ * @param {import('./worksheet/Worksheet.js').CellValue | undefined} value
  * @param {CellNumberFormat | undefined} format
  * @returns {{ text: string; negative: boolean }}
  */

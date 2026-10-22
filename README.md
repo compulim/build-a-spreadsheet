@@ -34,7 +34,7 @@ To deploy, publish the repository root (e.g. enable GitHub Pages for the branch)
 
 ```js
 import { Workbook } from './src/workbook/Workbook.js';
-import { Worksheet } from './src/workbook/Worksheet.js';
+import { Worksheet } from './src/worksheet/Worksheet.js';
 
 const workbook = new Workbook(); // EventTarget
 const sheet = workbook.addWorksheet('Data'); // Worksheet, also an EventTarget
