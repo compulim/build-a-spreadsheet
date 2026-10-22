@@ -79,7 +79,7 @@ element.toggleAttribute('locked', true); // Locks row 1
 worksheet.edit(edit => edit.setValue(0, 1, 'Hello')); // The grid updates
 ```
 
-The element keeps the undo history: it subscribes to the change events of its worksheet (which carry the new and previous values) and remembers each modification in a stack, one step per `edit()` transaction (column widths are not recorded). The history logic lives in [`src/worksheet/WorksheetHistory.js`](src/worksheet/WorksheetHistory.js), which has no DOM dependency. The selection is an immutable [`WorksheetSelection`](src/worksheet/WorksheetSelection.js):
+The element keeps the undo history: it subscribes to the change events of its worksheet and remembers the `undo()` object of each `edit()` transaction (and the `redo()` object returned by undoing it) in a stack (column widths are not recorded). The history logic lives in [`src/worksheet/WorksheetHistory.js`](src/worksheet/WorksheetHistory.js), which has no DOM dependency. The selection is an immutable [`WorksheetSelection`](src/worksheet/WorksheetSelection.js):
 
 ```js
 import { WorksheetSelection } from './src/worksheet/WorksheetSelection.js';
@@ -94,7 +94,7 @@ element.selection = new WorksheetSelection({ column: 0, row: 0 }, { left: 0, top
 
 | Member | Description |
 | --- | --- |
-| `Worksheet#edit(callback)` | Runs `callback(edit)` as a transaction and returns its result. `edit` has all editing functions below and is only usable inside the callback. A nested `edit()` joins the outer transaction. If the callback throws, all its changes are rolled back. Otherwise, a single `change` event is dispatched if anything changed. |
+| `Worksheet#edit(callback)` | Runs `callback(edit)` as a transaction and returns `{ undo() }`. Each transaction with cell changes sets a new `version` (GUID); `undo()` throws unless the worksheet is at the version right after the transaction, restores the previous version and returns `{ redo() }`, which likewise requires that previous version. `edit` has all editing functions below and is only usable inside the callback. A nested `edit()` joins the outer transaction. If the callback throws, all its changes are rolled back. Otherwise, a single `change` event is dispatched if anything changed. |
 | `edit.setValue(x, y, valueOrUpdater)` | Sets a cell (zero-based), or updates it with `(value, x, y) => nextValue`. Strings are trimmed. Blank strings, `null` or `undefined` clear it. Throws `RangeError` / `TypeError` on invalid input. |
 | `edit.setValues(values, x?, y?)` / `edit.setValues(updater, x, y, width, height)` | Sets a block of values (use `''` to clear), or updates every cell of a range with `(value, x, y) => nextValue`. Values outside of the sheet are ignored. |
 | `edit.setFormattings(...)` / `edit.setBorder(range, edges, value?)` / `edit.mergeCells(x, y, width, height?)` / `edit.unmergeCells(x, y)` | Formatting, borders and merged cells. |

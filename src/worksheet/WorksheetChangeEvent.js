@@ -1,17 +1,23 @@
 /** @typedef {import('./Worksheet.js').Worksheet} Worksheet */
 /** @typedef {import('./Worksheet.js').WorksheetChange} WorksheetChange */
+/** @typedef {import('./Worksheet.js').WorksheetUndo} WorksheetUndo */
 
 /** Dispatched once per `Worksheet#edit()` transaction, with all of its changes in order. */
 export class WorksheetChangeEvent extends Event {
   /**
    * @param {string} type
-   * @param {{ changes: readonly WorksheetChange[]; load: boolean; worksheet: Worksheet }} init
+   * @param {{ changes: readonly WorksheetChange[]; load: boolean; undo?: WorksheetUndo | undefined; worksheet: Worksheet }} init
    */
-  constructor(type, { changes, load, worksheet }) {
+  constructor(type, { changes, load, undo, worksheet }) {
     super(type);
 
     /** @readonly */ this.changes = changes;
     /** `true` if the transaction loaded CSV, which is not meant to be undoable. @readonly */ this.load = load;
+    /**
+     * Undoes the transaction, `undefined` if it has no cell changes or if the event is from an undo or redo.
+     * @readonly
+     */
+    this.undo = undo;
     /** @readonly */ this.worksheet = worksheet;
   }
 }

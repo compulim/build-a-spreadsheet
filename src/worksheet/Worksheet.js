@@ -15,6 +15,8 @@ import { COLUMN_COUNT, COLUMN_WIDTH, ROW_COUNT } from './constants.js';
 /** @typedef {CellValueChange | CellFormattingChange | CellMergeChange | CellBorderChange} CellChange */
 /** @typedef {CellChange | ColumnWidthChange} WorksheetChange */
 /** @typedef {CellValue | null | undefined} CellInput */
+/** @typedef {{ undo(): WorksheetRedo }} WorksheetUndo */
+/** @typedef {{ redo(): WorksheetUndo }} WorksheetRedo */
 /** @typedef {(value: CellValue | undefined, x: number, y: number) => CellInput} CellUpdater */
 /** @typedef {'left' | 'center' | 'right'} CellAlign */
 /** @typedef {'currency' | 'date' | 'datetime' | 'duration' | 'percent'} CellNumberFormat */
@@ -70,6 +72,10 @@ const DEFAULT_FORMATTING = Object.freeze({
  * Each change has a `type` (`'value'`, `'formatting'`, `'border'`, `'merge'` or `'columnwidth'`) and carries both the
  * new and previous values, so listeners (e.g. an undo history) know exactly what was modified. If the callback throws,
  * all of its changes are rolled back and no event is dispatched.
+ *
+ * Every transaction with cell changes gives the worksheet a new `version` (a GUID). `edit()` returns an object to undo
+ * the transaction, only callable while the worksheet is still at the version right after it. Undoing restores the
+ * previous version and returns an object to redo, only callable while the worksheet is at that previous version.
  */
 export class Worksheet extends EventTarget {
   /** @type {(CellValue[] | undefined)[]} */
@@ -101,6 +107,9 @@ export class Worksheet extends EventTarget {
   /** Changes of the current transaction, `undefined` outside of `edit()`. @type {{ changes: WorksheetChange[]; load: boolean } | undefined} */
   #transaction;
 
+  /** Changes on every transaction with cell changes, restored by undo and redo. */
+  #version = crypto.randomUUID();
+
   /** @param {{ columnCount?: number; rowCount?: number; columnWidth?: number }} [options] */
   constructor({ columnCount = COLUMN_COUNT, rowCount = ROW_COUNT, columnWidth = COLUMN_WIDTH } = {}) {
     super();
@@ -109,6 +118,11 @@ export class Worksheet extends EventTarget {
     /** @readonly */ this.rowCount = rowCount;
 
     this.#columnWidths = new Array(columnCount).fill(columnWidth);
+  }
+
+  /** Version of the worksheet, a GUID replaced on every transaction with cell changes. */
+  get version() {
+    return this.#version;
   }
 
   /**
@@ -798,11 +812,13 @@ export class Worksheet extends EventTarget {
    * (`WorksheetChangeEvent`) is dispatched with all changes, unless nothing changed.
    *
    * If the callback throws, all of its changes are rolled back, no event is dispatched, and the error is rethrown.
-   * Calling `edit()` inside a transaction joins it.
+   * Calling `edit()` inside a transaction joins it, the returned object cannot undo it separately.
    *
-   * @template T
-   * @param {(edit: WorksheetEdit) => T} callback
-   * @returns {T} The return value of the callback.
+   * The returned `undo()` reverts the cell changes of the transaction (column widths are not reverted) and restores the
+   * version before it. It throws if the worksheet is not at the version right after the transaction.
+   *
+   * @param {(edit: WorksheetEdit) => void} callback
+   * @returns {WorksheetUndo}
    */
   edit(callback) {
     let active = true;
@@ -838,18 +854,22 @@ export class Worksheet extends EventTarget {
 
     if (this.#transaction) {
       try {
-        return callback(edit);
+        callback(edit);
       } finally {
         active = false;
       }
+
+      return {
+        undo() {
+          throw new Error('A nested edit() cannot be undone separately.');
+        }
+      };
     }
 
     const transaction = (this.#transaction = { changes: [], load: false });
-    /** @type {T} */
-    let result;
 
     try {
-      result = callback(edit);
+      callback(edit);
     } catch (error) {
       this.#rollback(transaction.changes);
 
@@ -859,12 +879,90 @@ export class Worksheet extends EventTarget {
       this.#transaction = undefined;
     }
 
+    const cellChanges = /** @type {CellChange[]} */ (transaction.changes.filter(({ type }) => type !== 'columnwidth'));
+    const previousVersion = this.#version;
+    const version = cellChanges.length ? crypto.randomUUID() : previousVersion;
+
+    this.#version = version;
+
+    const undo = this.#createUndo(cellChanges, previousVersion, version);
+
     transaction.changes.length &&
       this.dispatchEvent(
-        new WorksheetChangeEvent('change', { changes: transaction.changes, load: transaction.load, worksheet: this })
+        new WorksheetChangeEvent('change', {
+          changes: transaction.changes,
+          load: transaction.load,
+          undo: cellChanges.length ? undo : undefined,
+          worksheet: this
+        })
       );
 
-    return result;
+    return undo;
+  }
+
+  /**
+   * @param {CellChange[]} changes
+   * @param {string} previousVersion
+   * @param {string} version
+   * @returns {WorksheetUndo}
+   */
+  #createUndo(changes, previousVersion, version) {
+    return {
+      undo: () => {
+        this.#replay(changes, true, version, previousVersion);
+
+        return {
+          redo: () => {
+            this.#replay(changes, false, previousVersion, version);
+
+            return this.#createUndo(changes, previousVersion, version);
+          }
+        };
+      }
+    };
+  }
+
+  /**
+   * Reverts or re-applies cell changes, then dispatches a `change` event (without `undo`) with the changes in the order
+   * they were applied.
+   *
+   * @param {CellChange[]} changes
+   * @param {boolean} isUndo
+   * @param {string} fromVersion Version the worksheet must be at.
+   * @param {string} toVersion Version of the worksheet afterward.
+   */
+  #replay(changes, isUndo, fromVersion, toVersion) {
+    if (this.#transaction) {
+      throw new Error('Cannot undo or redo inside edit().');
+    } else if (this.#version !== fromVersion) {
+      throw new Error(`Cannot ${isUndo ? 'undo' : 'redo'}, the worksheet has changed since.`);
+    }
+
+    const ordered = isUndo ? [...changes].reverse() : changes;
+
+    // Low-level setters record into a scratch transaction, which is discarded.
+    this.#transaction = { changes: [], load: false };
+
+    try {
+      for (const change of ordered) {
+        if (change.type === 'border') {
+          this.#setStoredEdge(change.x, change.y, change.edge, isUndo ? change.previousBorder : change.border);
+        } else if (change.type === 'merge') {
+          this.#setMerge(change.x, change.y, isUndo ? change.previousMerge : change.merge);
+        } else if (change.type === 'formatting') {
+          this.#setFormatting(change.x, change.y, isUndo ? change.previousFormatting : change.formatting);
+        } else {
+          this.#setValue(change.x, change.y, isUndo ? change.previousValue : change.value);
+        }
+      }
+    } finally {
+      this.#transaction = undefined;
+    }
+
+    this.#version = toVersion;
+
+    ordered.length &&
+      this.dispatchEvent(new WorksheetChangeEvent('change', { changes: ordered, load: false, worksheet: this }));
   }
 
   /**

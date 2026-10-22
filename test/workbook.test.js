@@ -227,16 +227,13 @@ describe("Worksheet", () => {
       events.push(changes.map(({ type, x }) => [type, x])),
     );
 
-    const result = worksheet.edit((edit) => {
+    worksheet.edit((edit) => {
       edit.setValue(0, 0, "a");
       edit.setFormattings([[{ bold: true }]], 0, 0);
       worksheet.edit((nested) => nested.setValue(1, 0, "b")); // Joins the outer transaction.
       edit.setColumnWidth(2, 150);
-
-      return "done";
     });
 
-    assert.equal(result, "done");
     assert.deepEqual(events, [
       [
         ["value", 0],
@@ -245,6 +242,51 @@ describe("Worksheet", () => {
         ["columnwidth", 2],
       ],
     ]);
+  });
+
+  test("edit() returns undo/redo bound to the worksheet version", () => {
+    const worksheet = new Worksheet();
+    const v1 = worksheet.version;
+    const first = worksheet.edit((edit) => edit.setValue(0, 0, "a"));
+    const v2 = worksheet.version;
+
+    assert.notEqual(v1, v2);
+
+    const second = worksheet.edit((edit) => edit.setValue(0, 0, "b"));
+    const v3 = worksheet.version;
+
+    assert.throws(() => first.undo(), /changed/);
+
+    const { redo } = second.undo();
+
+    assert.equal(worksheet.version, v2);
+    assert.equal(worksheet.getValue(0, 0), "a");
+
+    const { redo: firstRedo } = first.undo();
+
+    assert.equal(worksheet.version, v1);
+    assert.equal(worksheet.getValue(0, 0), undefined);
+    assert.throws(() => redo(), /changed/);
+
+    firstRedo();
+    const undoAgain = redo();
+
+    assert.equal(worksheet.version, v3);
+    assert.equal(worksheet.getValue(0, 0), "b");
+    assert.throws(() => redo(), /changed/);
+
+    undoAgain.undo();
+    assert.equal(worksheet.getValue(0, 0), "a");
+  });
+
+  test("edit() without cell changes keeps the version", () => {
+    const worksheet = new Worksheet();
+    const version = worksheet.version;
+
+    worksheet.edit((edit) => edit.setColumnWidth(0, 150));
+    worksheet.edit(() => {});
+
+    assert.equal(worksheet.version, version);
   });
 
   test("edit() rolls back when the callback throws", () => {
