@@ -9,7 +9,7 @@ Written in plain HTML, CSS and JavaScript (ES modules), so it can be served as s
 - Resize a column by dragging the right border of its header; double-click the border to auto-fit the column to its content. When multiple whole columns are selected, all of them are resized to the same width.
 - Virtualized rendering: only the visible rows are in the DOM, while scrolling uses the browser's native scrollbars.
 - Smooth scrolling: rows are rendered synchronously on scroll with a viewport of pre-rendered rows on each side, so wheel, touchpad and momentum scrolling stay seamless. Keyboard navigation scrolls smoothly for short distances (instant for long jumps, or when the user prefers reduced motion).
-- Keyboard navigation: arrow keys, <kbd>Ctrl</kbd>+arrow (jump to edge), <kbd>Home</kbd>/<kbd>End</kbd>, <kbd>Page Up</kbd>/<kbd>Page Down</kbd>, <kbd>Enter</kbd>/<kbd>Tab</kbd>.
+- Keyboard navigation: arrow keys, <kbd>Ctrl</kbd>+arrow (jump to edge), <kbd>Home</kbd>/<kbd>End</kbd>, <kbd>Page Up</kbd>/<kbd>Page Down</kbd>, <kbd>Enter</kbd>/<kbd>Tab</kbd>, <kbd>Alt</kbd>+arrow (move the active cell within the selection), <kbd>Escape</kbd> (collapse the selection to the active cell).
 - Multiple selection with <kbd>Shift</kbd>+click, <kbd>Shift</kbd>+arrow keys, mouse drag, or by clicking row/column headers; <kbd>Ctrl</kbd>+<kbd>A</kbd> selects all.
 - Editing: type to replace, <kbd>F2</kbd> or double-click to edit, <kbd>Escape</kbd> to cancel, <kbd>Delete</kbd> to clear. A leading `'` keeps the value as text.
 - Copy, cut and paste with Excel and Excel Web App (tab-separated text and HTML table on the clipboard). Pasting a single value into a larger selection fills it.

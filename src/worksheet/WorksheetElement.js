@@ -1501,7 +1501,10 @@ export class WorksheetElement extends HTMLElement {
       column = column - 1 < left ? right : column - 1;
     }
 
-    this.#selectKeepingScroll({ column, row }, this.#focus);
+    // Keep the selected range, only move the active cell within it.
+    this.#editMode && this.#commitEdit();
+    this.#selectionObject = new WorksheetSelection(this.#toMergeStart({ column, row }), { left, top, right, bottom });
+    this.#updateSelection();
     this.#scrollIntoView(this.#selectionObject.activeCell);
   }
 
@@ -1519,6 +1522,26 @@ export class WorksheetElement extends HTMLElement {
       Math.floor((this.clientHeight - this.#headerHeight - frozenHeight) / this.#rowHeight) - 1
     );
     const { column, row } = shiftKey ? this.#focus : this.#selectionObject.activeCell;
+
+    // Alt+Arrow moves the active cell within the selection without changing the selected range.
+    if (event.altKey && !shiftKey && !ctrlKey && key.startsWith('Arrow')) {
+      event.preventDefault();
+
+      const { left, top, right, bottom } = this.#selectionObject.range;
+      const end = this.#toMergeEnd(this.#selectionObject.activeCell);
+      const next = {
+        column:
+          key === 'ArrowLeft' ? Math.max(left, column - 1) : key === 'ArrowRight' ? Math.min(right, end.column + 1) : column,
+        row: key === 'ArrowUp' ? Math.max(top, row - 1) : key === 'ArrowDown' ? Math.min(bottom, end.row + 1) : row
+      };
+      const activeCell = this.#toMergeStart(next);
+
+      this.#selectionObject = new WorksheetSelection(activeCell, { left, top, right, bottom });
+      this.#updateSelection();
+      this.#scrollIntoView(activeCell);
+
+      return;
+    }
 
     /** @type {[number, number] | undefined} */
     let delta;
@@ -1565,6 +1588,12 @@ export class WorksheetElement extends HTMLElement {
       case 'Tab':
         event.preventDefault();
         this.#moveWithinSelection(shiftKey ? -1 : 1, 0);
+
+        return;
+
+      case 'Escape':
+        event.preventDefault();
+        this.#select(this.#selectionObject.activeCell);
 
         return;
 
