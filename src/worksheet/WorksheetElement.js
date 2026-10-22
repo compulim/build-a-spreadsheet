@@ -1591,6 +1591,12 @@ export class WorksheetElement extends HTMLElement {
 
         return;
 
+      case 'Escape':
+        event.preventDefault();
+        this.#select(this.#selectionObject.activeCell);
+
+        return;
+
       case 'F2':
         event.preventDefault();
         this.#startEdit();
