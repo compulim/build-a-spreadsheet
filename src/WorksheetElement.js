@@ -157,6 +157,7 @@ export class WorksheetElement extends HTMLElement {
     selectOf = (element, anchor, focus) => element.#select(anchor, focus);
   }
 
+  /** @readonly */
   #worksheet = new Worksheet();
 
   #initialized = false;
@@ -357,7 +358,7 @@ export class WorksheetElement extends HTMLElement {
   /** @param {Event} event */
   #handleCellChange = event => {
     const { x, y: row } = /** @type {import('./workbook/private/CellChangeEvent.js').CellChangeEvent} */ (event);
-    const merge = row < this.#firstRow ? this.#worksheet?.getMerges(x, row, 1, 1)[0] : undefined;
+    const merge = row < this.#firstRow ? this.#worksheet.getMerges(x, row, 1, 1)[0] : undefined;
 
     // Only re-render if the changed cell is currently rendered (or a merged cell extending into the rendered rows).
     // Multiple changes are batched into a single frame.
@@ -398,7 +399,7 @@ export class WorksheetElement extends HTMLElement {
    * @returns {CellPosition}
    */
   #toMergeStart(cell) {
-    const merge = this.#worksheet?.getMerges(cell.column, cell.row, 1, 1)[0];
+    const merge = this.#worksheet.getMerges(cell.column, cell.row, 1, 1)[0];
 
     return merge ? { column: merge.x, row: merge.y } : cell;
   }
@@ -410,7 +411,7 @@ export class WorksheetElement extends HTMLElement {
    * @returns {CellPosition}
    */
   #toMergeEnd(cell) {
-    const merge = this.#worksheet?.getMerges(cell.column, cell.row, 1, 1)[0];
+    const merge = this.#worksheet.getMerges(cell.column, cell.row, 1, 1)[0];
 
     return merge ? { column: merge.x + merge.width - 1, row: merge.y + merge.height - 1 } : cell;
   }
@@ -473,7 +474,7 @@ export class WorksheetElement extends HTMLElement {
    */
   #isEditable(column, row) {
     return (
-      !!this.#worksheet && !(this.#locked && (column < this.#lockedColumnCount || row < this.#lockedRowCount))
+      !(this.#locked && (column < this.#lockedColumnCount || row < this.#lockedRowCount))
     );
   }
 
@@ -502,10 +503,10 @@ export class WorksheetElement extends HTMLElement {
 
     // The selection covers all merged cells partially selected. Expanding may cover more merged cells, so it repeats
     // until nothing changes.
-    for (let changed = !!this.#worksheet; changed; ) {
+    for (let changed = true; changed; ) {
       changed = false;
 
-      for (const { x, y, width, height } of this.#worksheet?.getMerges(left, top, right - left + 1, bottom - top + 1) || []) {
+      for (const { x, y, width, height } of this.#worksheet.getMerges(left, top, right - left + 1, bottom - top + 1)) {
         if (x < left || y < top || x + width - 1 > right || y + height - 1 > bottom) {
           left = Math.min(left, x);
           top = Math.min(top, y);
@@ -679,7 +680,7 @@ export class WorksheetElement extends HTMLElement {
     // Tall merged cells are drawn by their first rendered row, which changes with the first row.
     const forceContent =
       this.#contentDirty ||
-      (firstRow !== this.#firstRow && !!this.#worksheet?.getMerges().some(({ height }) => height > 1));
+      (firstRow !== this.#firstRow && this.#worksheet.getMerges().some(({ height }) => height > 1));
 
     this.#firstRow = firstRow;
 
@@ -771,7 +772,7 @@ export class WorksheetElement extends HTMLElement {
    * @param {number} column
    */
   #getColumnWidth(column) {
-    return this.#worksheet && column >= 0 && column < this.#columnCount
+    return column >= 0 && column < this.#columnCount
       ? this.#worksheet.getColumnWidth(column)
       : this.#columnWidth;
   }
@@ -783,7 +784,7 @@ export class WorksheetElement extends HTMLElement {
    * @param {number} width
    */
   #setColumnWidth(column, width) {
-    if (this.#worksheet && column >= 0 && column < this.#columnCount) {
+    if (column >= 0 && column < this.#columnCount) {
       this.#worksheet.setColumnWidth(column, Math.max(MIN_COLUMN_WIDTH, Math.round(width)));
     }
   }
@@ -843,37 +844,35 @@ export class WorksheetElement extends HTMLElement {
 
     let width = context.measureText(getColumnName(column)).width;
 
-    if (this.#worksheet) {
-      const formattings = this.#worksheet.getFormattings(column, 0, 1, this.#rowCount);
-      const values = this.#worksheet.getValues(column, 0, 1, this.#rowCount);
+    const formattings = this.#worksheet.getFormattings(column, 0, 1, this.#rowCount);
+    const values = this.#worksheet.getValues(column, 0, 1, this.#rowCount);
 
-      for (let row = 0; row < values.length; row++) {
-        const merge = this.#worksheet.getMerges(column, row, 1, 1)[0];
+    for (let row = 0; row < values.length; row++) {
+      const merge = this.#worksheet.getMerges(column, row, 1, 1)[0];
 
-        // Content of a merged cell is in its top-left cell, and spans all merged columns.
-        if (merge && row !== merge.y) {
-          continue;
+      // Content of a merged cell is in its top-left cell, and spans all merged columns.
+      if (merge && row !== merge.y) {
+        continue;
+      }
+
+      const value = merge ? this.#worksheet.getValue(merge.x, row) : values[row][0];
+      const format = (merge ? this.#worksheet.getFormattings(merge.x, row, 1, 1)[0][0] : formattings[row][0]).format;
+      let otherColumnsWidth = 0;
+
+      if (merge) {
+        for (let index = merge.x; index < merge.x + merge.width; index++) {
+          index !== column && (otherColumnsWidth += this.#getColumnWidth(index));
         }
+      }
 
-        const value = merge ? this.#worksheet.getValue(merge.x, row) : values[row][0];
-        const format = (merge ? this.#worksheet.getFormattings(merge.x, row, 1, 1)[0][0] : formattings[row][0]).format;
-        let otherColumnsWidth = 0;
+      const { text: formatted } = formatDisplayValue(value, format);
+      // Includes decorations added by CSS: currency sign (with a gap) and parentheses, or percent sign.
+      const text =
+        typeof value === 'number' && format === 'currency' ? `$ (${formatted})` : typeof value === 'number' && format === 'percent' ? `${formatted}%` : formatted;
 
-        if (merge) {
-          for (let index = merge.x; index < merge.x + merge.width; index++) {
-            index !== column && (otherColumnsWidth += this.#getColumnWidth(index));
-          }
-        }
-
-        const { text: formatted } = formatDisplayValue(value, format);
-        // Includes decorations added by CSS: currency sign (with a gap) and parentheses, or percent sign.
-        const text =
-          typeof value === 'number' && format === 'currency' ? `$ (${formatted})` : typeof value === 'number' && format === 'percent' ? `${formatted}%` : formatted;
-
-        if (text) {
-          for (const line of text.split('\n')) {
-            width = Math.max(width, context.measureText(line).width - otherColumnsWidth);
-          }
+      if (text) {
+        for (const line of text.split('\n')) {
+          width = Math.max(width, context.measureText(line).width - otherColumnsWidth);
         }
       }
     }
@@ -920,7 +919,7 @@ export class WorksheetElement extends HTMLElement {
   #renderRowContent(slot) {
     const { cells, row } = slot;
     const worksheet = this.#worksheet;
-    const merges = (worksheet?.getMerges(0, row, this.#columnCount, 1) || []).sort((a, b) => a.x - b.x);
+    const merges = worksheet.getMerges(0, row, this.#columnCount, 1).sort((a, b) => a.x - b.x);
     // Frozen rows are always rendered, other rows only from the first rendered row.
     const firstRenderedRow = this.#frozenRows.includes(slot) ? 0 : this.#firstRow;
     let mergeIndex = 0;
@@ -966,9 +965,9 @@ export class WorksheetElement extends HTMLElement {
         cell.style.position = top ? 'relative' : '';
       }
 
-      const value = worksheet ? worksheet.getValue(x, y) : '';
+      const value = worksheet.getValue(x, y);
       const type = typeof value;
-      const formatting = worksheet?.getFormattings(x, y, 1, 1)[0][0];
+      const formatting = worksheet.getFormattings(x, y, 1, 1)[0][0];
       // Number formats only apply to numbers, decorations (e.g. currency sign) are added by CSS.
       const format = (type === 'number' && formatting?.format) || '';
       const { negative, text } = formatDisplayValue(value, formatting?.format);
@@ -1022,7 +1021,7 @@ export class WorksheetElement extends HTMLElement {
         color ? (cell.dataset.color = color) : delete cell.dataset.color;
       }
 
-      const shadow = worksheet ? this.#getBorderShadow(worksheet, x, y, lastColumn, lastRow) : '';
+      const shadow = this.#getBorderShadow(worksheet, x, y, lastColumn, lastRow);
 
       // Compare with the last set value, as the browser normalizes `style.boxShadow`.
       if ((cell.dataset.border || '') !== shadow) {
@@ -1030,7 +1029,7 @@ export class WorksheetElement extends HTMLElement {
         cell.style.boxShadow = shadow;
       }
 
-      const corners = worksheet ? this.#getBorderCorners(worksheet, x, y, lastColumn, lastRow) : '';
+      const corners = this.#getBorderCorners(worksheet, x, y, lastColumn, lastRow);
 
       if ((cell.dataset.borderCorners || '') !== corners) {
         cell.dataset.borderCorners = corners;
@@ -1631,7 +1630,7 @@ export class WorksheetElement extends HTMLElement {
   #startEdit(initialText) {
     const { column, row } = this.#anchor;
 
-    if (!this.#worksheet || !this.#isEditable(column, row)) {
+    if (!this.#isEditable(column, row)) {
       this.dispatchEvent(new CustomEvent('lockedit', { detail: { column, row } }));
 
       return false;
@@ -1676,7 +1675,7 @@ export class WorksheetElement extends HTMLElement {
 
     this.#closeEditor();
 
-    if (this.#worksheet && this.#isEditable(column, row)) {
+    if (this.#isEditable(column, row)) {
       // Leading apostrophe forces the value to be text, same as Excel.
       // Leading "=" evaluates a simple arithmetic formula and stores only the result; invalid formulas are kept as text.
       const result = text.startsWith('=') ? calculate(text.slice(1)) : undefined;
@@ -1743,10 +1742,6 @@ export class WorksheetElement extends HTMLElement {
   #clearSelection() {
     const worksheet = this.#worksheet;
 
-    if (!worksheet) {
-      return;
-    }
-
     const { left, top, right, bottom } = this.#selection;
     let skipped = false;
 
@@ -1795,7 +1790,7 @@ export class WorksheetElement extends HTMLElement {
    * @param {boolean} cut
    */
   #handleCopy(event, cut) {
-    if (event.target !== this || !this.#worksheet || !event.clipboardData) {
+    if (event.target !== this || !event.clipboardData) {
       return;
     }
 
@@ -1831,7 +1826,7 @@ export class WorksheetElement extends HTMLElement {
   #handlePaste(event) {
     const worksheet = this.#worksheet;
 
-    if (event.target !== this || !worksheet || !event.clipboardData) {
+    if (event.target !== this || !event.clipboardData) {
       return;
     }
 
