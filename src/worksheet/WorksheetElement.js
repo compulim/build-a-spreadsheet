@@ -1327,36 +1327,39 @@ export class WorksheetElement extends HTMLElement {
    * @returns {boolean} `false` if nothing was applied.
    */
   #undoOrRedo(action) {
-    const changes = this.#history.peek(action);
-
-    if (!changes) {
-      return false;
-    }
-
     /** @type {CellPosition[]} */
     const cells = [];
 
-    for (const change of changes) {
-      if (change.type === 'merge') {
-        // All cells of a merged cell are involved, not only the cells with content.
-        const { width, height } = /** @type {{ width: number; height: number }} */ (change.merge || change.previousMerge);
+    /** @param {readonly import('../workbook/Worksheet.js').CellChange[]} changes */
+    const canApply = changes => {
+      for (const change of changes) {
+        if (change.type === 'merge') {
+          // All cells of a merged cell are involved, not only the cells with content.
+          const { width, height } = /** @type {{ width: number; height: number }} */ (change.merge || change.previousMerge);
 
-        cells.push({ column: change.x, row: change.y }, { column: change.x + width - 1, row: change.y + height - 1 });
-      } else if (change.type !== 'border') {
-        cells.push({ column: change.x, row: change.y });
+          cells.push({ column: change.x, row: change.y }, { column: change.x + width - 1, row: change.y + height - 1 });
+        } else if (change.type !== 'border') {
+          cells.push({ column: change.x, row: change.y });
+        }
       }
-    }
 
-    const locked = cells.find(({ column, row }) => !this.#isEditable(column, row));
+      const locked = cells.find(({ column, row }) => !this.#isEditable(column, row));
 
-    if (locked) {
-      this.dispatchEvent(new CustomEvent('lockedit', { detail: locked }));
+      if (locked) {
+        this.dispatchEvent(new CustomEvent('lockedit', { detail: locked }));
 
+        return false;
+      }
+
+      this.#editMode && this.#cancelEdit();
+
+      return true;
+    };
+
+    if (!this.#history[action](canApply)) {
       return false;
     }
 
-    this.#editMode && this.#cancelEdit();
-    this.#history[action]();
     this.#scheduleHistoryChange();
 
     if (cells.length) {

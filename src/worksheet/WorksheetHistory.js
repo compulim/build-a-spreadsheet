@@ -49,16 +49,6 @@ export class WorksheetHistory {
     return this.#redoStack.length > 0;
   }
 
-  /**
-   * Changes `undo()` (or `redo()`) would apply next, `undefined` if none.
-   *
-   * @param {'undo' | 'redo'} action
-   * @returns {readonly CellChange[] | undefined}
-   */
-  peek(action) {
-    return (action === 'undo' ? this.#undoStack : this.#redoStack).at(-1);
-  }
-
   /** Clears the undo and redo stacks. */
   clear() {
     this.#undoStack = [];
@@ -68,32 +58,39 @@ export class WorksheetHistory {
   /**
    * Reverts the last group of changes.
    *
-   * @returns {boolean} `false` if there is nothing to undo.
+   * @param {(changes: readonly CellChange[]) => boolean} [canApply] Called with the changes before reverting them, return
+   *   `false` to refuse (the history is left as-is).
+   * @returns {boolean} `false` if there is nothing to undo, or if refused.
    */
-  undo() {
-    return this.#apply(this.#undoStack, this.#redoStack, true);
+  undo(canApply) {
+    return this.#apply(this.#undoStack, this.#redoStack, true, canApply);
   }
 
   /**
    * Re-applies the last undone group of changes.
    *
-   * @returns {boolean} `false` if there is nothing to redo.
+   * @param {(changes: readonly CellChange[]) => boolean} [canApply] Called with the changes before re-applying them,
+   *   return `false` to refuse (the history is left as-is).
+   * @returns {boolean} `false` if there is nothing to redo, or if refused.
    */
-  redo() {
-    return this.#apply(this.#redoStack, this.#undoStack, false);
+  redo(canApply) {
+    return this.#apply(this.#redoStack, this.#undoStack, false, canApply);
   }
 
   /**
    * @param {CellChange[][]} from
    * @param {CellChange[][]} to
    * @param {boolean} isUndo
+   * @param {((changes: readonly CellChange[]) => boolean) | undefined} canApply
    */
-  #apply(from, to, isUndo) {
-    const changes = from.pop();
+  #apply(from, to, isUndo, canApply) {
+    const changes = from.at(-1);
 
-    if (!changes) {
+    if (!changes || (canApply && !canApply(changes))) {
       return false;
     }
+
+    from.pop();
 
     const worksheet = this.#worksheet;
 
