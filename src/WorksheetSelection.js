@@ -1,6 +1,6 @@
 /**
- * @typedef {{ column: number; row: number }} CellPosition
- * @typedef {{ left: number; top: number; right: number; bottom: number }} CellRange
+ * @typedef {{ readonly column: number; readonly row: number }} CellPosition
+ * @typedef {{ readonly left: number; readonly top: number; readonly right: number; readonly bottom: number }} CellRange
  */
 
 /**

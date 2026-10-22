@@ -9,8 +9,8 @@ import { WorksheetSelection } from './WorksheetSelection.js';
 
 /**
  * @typedef {import('./workbook/Worksheet.js').CellValue} CellValue
- * @typedef {{ column: number; row: number }} CellPosition
- * @typedef {{ left: number; top: number; right: number; bottom: number }} CellRange
+ * @typedef {{ readonly column: number; readonly row: number }} CellPosition
+ * @typedef {{ readonly left: number; readonly top: number; readonly right: number; readonly bottom: number }} CellRange
  */
 
 /**
@@ -129,6 +129,23 @@ function escapeHTML(text) {
   return text.replace(
     /[&<>"']/g,
     char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char] || char
+  );
+}
+
+/**
+ * @param {WorksheetSelection} selection
+ * @param {CellPosition} activeCell
+ * @param {CellRange} range
+ * @returns {boolean}
+ */
+function isSameSelection({ activeCell, range }, { column, row }, { left, top, right, bottom }) {
+  return (
+    activeCell.column === column &&
+    activeCell.row === row &&
+    range.left === left &&
+    range.top === top &&
+    range.right === right &&
+    range.bottom === bottom
   );
 }
 
@@ -534,14 +551,37 @@ export class WorksheetElement extends HTMLElement {
     return this.#rangeOf(this.#anchor, this.#focus);
   }
 
-  /** @returns {WorksheetSelection} */
+  /**
+   * Last `WorksheetSelection` returned or set, kept until the selection changes.
+   *
+   * @type {WorksheetSelection | undefined}
+   */
+  #selectionObject;
+
+  /**
+   * Returns the same instance until the selection changes.
+   *
+   * @returns {WorksheetSelection}
+   */
   get selection() {
-    return new WorksheetSelection(this.#anchor, this.#selectedRange);
+    const range = this.#selectedRange;
+
+    if (!this.#selectionObject || !isSameSelection(this.#selectionObject, this.#anchor, range)) {
+      this.#selectionObject = new WorksheetSelection(this.#anchor, range);
+    }
+
+    return this.#selectionObject;
   }
 
-  /** @param {WorksheetSelection} selection */
+  /**
+   * Selects cells. The getter returns the very same instance, unless the selection was adjusted (e.g. clamped or
+   * expanded to cover merged cells).
+   *
+   * @param {WorksheetSelection} selection
+   */
   set selection(selection) {
     this.#select(selection.activeCell, selection.focus);
+    this.#selectionObject = selection;
   }
 
   /** Whether there are changes to undo. */
