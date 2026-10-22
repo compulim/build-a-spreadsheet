@@ -275,33 +275,12 @@ function updateSelectionInfo() {
 }
 
 /**
- * Returns the cell whose formatting the toolbar reflects: the active cell, or the first non-empty selected cell if the
- * active cell is empty (empty cells cannot hold formatting).
- */
-function getFormattingCell() {
-  const { activeCell, range } = getSelection();
-  const worksheet = activeElement?.worksheet;
-
-  if (worksheet && (worksheet.getValue(activeCell.column, activeCell.row) ?? '') === '') {
-    for (let row = range.top; row <= range.bottom; row++) {
-      for (let column = range.left; column <= range.right; column++) {
-        if ((worksheet.getValue(column, row) ?? '') !== '') {
-          return { column, row };
-        }
-      }
-    }
-  }
-
-  return activeCell;
-}
-
-/**
- * Whether the style is applied to every contentful cell in the selection.
+ * Whether the predicate holds for the formatting of every contentful cell in the selection.
  * If the selection has no contentful cells, checks the active cell instead.
  *
- * @param {'bold' | 'italic' | 'underline' | 'strikethrough'} style
+ * @param {(formatting: import('./worksheet/Worksheet.js').CellFormatting | undefined) => boolean} predicate
  */
-function isStyleAppliedToSelection(style) {
+function isFormattingAppliedToSelection(predicate) {
   const worksheet = activeElement?.worksheet;
 
   if (!worksheet) {
@@ -319,34 +298,37 @@ function isStyleAppliedToSelection(style) {
       if ((worksheet.getValue(column, row) ?? '') !== '') {
         hasContent = true;
 
-        if (!formattings[row - range.top]?.[column - range.left]?.[style]) {
+        if (!predicate(formattings[row - range.top]?.[column - range.left])) {
           return false;
         }
       }
     }
   }
 
-  return hasContent || !!worksheet.getFormattings(activeCell.column, activeCell.row, 1, 1)[0][0]?.[style];
+  return hasContent || predicate(worksheet.getFormattings(activeCell.column, activeCell.row, 1, 1)[0][0]);
 }
 
 function updateFormattingButtons() {
-  const { column, row } = getFormattingCell();
-  const formatting = activeElement?.worksheet?.getFormattings(column, row, 1, 1)[0][0];
-
   for (const { style, button } of styleButtons) {
-    button.setAttribute('aria-pressed', String(isStyleAppliedToSelection(style)));
+    button.setAttribute('aria-pressed', String(isFormattingAppliedToSelection(formatting => !!formatting?.[style])));
   }
 
   for (const { align, button } of alignButtons) {
-    button.setAttribute('aria-pressed', String(formatting?.align === align));
+    button.setAttribute('aria-pressed', String(isFormattingAppliedToSelection(formatting => formatting?.align === align)));
   }
 
   for (const { format, button } of formatButtons) {
-    button.setAttribute('aria-pressed', String(formatting?.format === format));
+    button.setAttribute(
+      'aria-pressed',
+      String(isFormattingAppliedToSelection(formatting => formatting?.format === format))
+    );
   }
 
   for (const { name, button } of highlightButtons) {
-    button.setAttribute('aria-pressed', String(formatting?.highlight === name));
+    button.setAttribute(
+      'aria-pressed',
+      String(isFormattingAppliedToSelection(formatting => formatting?.highlight === name))
+    );
   }
 
   mergeButton.setAttribute('aria-pressed', String(isSelectionMerged()));
@@ -390,7 +372,7 @@ function formatSelection(updater) {
 
 for (const { style, button } of styleButtons) {
   button.addEventListener('click', () => {
-    const value = !isStyleAppliedToSelection(style);
+    const value = !isFormattingAppliedToSelection(formatting => !!formatting?.[style]);
 
     formatSelection(formatting => ({ ...formatting, [style]: value }));
   });
