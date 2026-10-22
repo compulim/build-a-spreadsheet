@@ -42,14 +42,13 @@ const DEFAULT_FORMATTING = Object.freeze({
  * A single worksheet of 50 columns by 10,000 rows (by default). Values are stored sparsely.
  * All coordinates (`x` for column, `y` for row) are zero-based.
  *
- * Dispatches `cellchange` (`CellChangeEvent`) whenever the value of a cell changes, `borderchange` (with `x` and `y`)
- * whenever the border of a cell changes, `formattingchange` (with `x` and `y`) whenever the formatting of a cell changes,
- * `columnwidthchange` (with `x`) whenever the width of a column changes, and `mergechange` (with `x`, `y`, `width` and
- * `height`)
- * whenever cells are merged or unmerged.
+ * Dispatches `cellchange` (`CellChangeEvent`) whenever the value of a cell changes, `borderchange` (with `x`, `y`,
+ * `edge`, `border` and `previousBorder`) whenever a stored edge changes, `formattingchange` (with `x`, `y`, `formatting`
+ * and `previousFormatting`) whenever the formatting of a cell changes, `columnwidthchange` (with `x`) whenever the width
+ * of a column changes, `mergechange` (with `x`, `y`, `width`, `height`, `merge` and `previousMerge`) whenever cells are
+ * merged or unmerged, and `load` when values are loaded from CSV.
  *
- * Keeps an undo history of cell value and formatting changes. Changes made synchronously in the same task (e.g. a paste) are grouped into a
- * single undo step.
+ * Events carry the previous and new values, so listeners (e.g. an undo history) know exactly what was modified.
  */
 export class Worksheet extends EventTarget {
   /** @type {(CellValue[] | undefined)[]} */
@@ -77,17 +76,6 @@ export class Worksheet extends EventTarget {
 
   /** @type {number[]} */
   #columnWidths;
-
-  /** @type {CellChange[][]} */
-  #undoStack = [];
-
-  /** @type {CellChange[][]} */
-  #redoStack = [];
-
-  /** @type {CellChange[] | undefined} */
-  #pending;
-
-  #applyingHistory = false;
 
   /** @param {{ columnCount?: number; rowCount?: number; columnWidth?: number }} [options] */
   constructor({ columnCount = COLUMN_COUNT, rowCount = ROW_COUNT, columnWidth = COLUMN_WIDTH } = {}) {
@@ -202,24 +190,7 @@ export class Worksheet extends EventTarget {
       (cells || (this.#rows[y] = []))[x] = value;
     }
 
-    this.#applyingHistory || this.#record({ x, y, value, previousValue });
-
     this.dispatchEvent(new CellChangeEvent('cellchange', { x, y, value, previousValue, worksheet: this }));
-  }
-
-  /** @param {CellChange} change */
-  #record(change) {
-    if (!this.#pending) {
-      const pending = (this.#pending = []);
-
-      this.#undoStack.push(pending);
-      this.#redoStack = [];
-      queueMicrotask(() => {
-        this.#pending === pending && (this.#pending = undefined);
-      });
-    }
-
-    this.#pending.push(change);
   }
 
   /** Size of the used area, from A1 to the last used row/column. */
@@ -320,69 +291,6 @@ export class Worksheet extends EventTarget {
     }
   }
 
-  /** Whether `undo()` has anything to revert. */
-  get canUndo() {
-    return this.#undoStack.length > 0;
-  }
-
-  /** Whether `redo()` has anything to re-apply. */
-  get canRedo() {
-    return this.#redoStack.length > 0;
-  }
-
-  /**
-   * Reverts the last group of cell value and formatting changes.
-   *
-   * @returns {boolean} `false` if there is nothing to undo.
-   */
-  undo() {
-    return this.#applyHistory(this.#undoStack, this.#redoStack, true);
-  }
-
-  /**
-   * Re-applies the last undone group of cell value and formatting changes.
-   *
-   * @returns {boolean} `false` if there is nothing to redo.
-   */
-  redo() {
-    return this.#applyHistory(this.#redoStack, this.#undoStack, false);
-  }
-
-  /**
-   * @param {CellChange[][]} from
-   * @param {CellChange[][]} to
-   * @param {boolean} isUndo
-   */
-  #applyHistory(from, to, isUndo) {
-    const changes = from.pop();
-
-    if (!changes) {
-      return false;
-    }
-
-    this.#pending = undefined;
-    to.push(changes);
-    this.#applyingHistory = true;
-
-    try {
-      for (const change of isUndo ? [...changes].reverse() : changes) {
-        if ('edge' in change) {
-          this.#setStoredEdge(change.x, change.y, change.edge, isUndo ? change.previousBorder : change.border);
-        } else if ('merge' in change) {
-          this.#setMerge(change.x, change.y, isUndo ? change.previousMerge : change.merge);
-        } else if ('formatting' in change) {
-          this.#setFormatting(change.x, change.y, isUndo ? change.previousFormatting : change.formatting);
-        } else {
-          this.setValue(change.x, change.y, isUndo ? change.previousValue : change.value);
-        }
-      }
-    } finally {
-      this.#applyingHistory = false;
-    }
-
-    return true;
-  }
-
   /**
    * Returns the borders of a cell.
    *
@@ -421,13 +329,13 @@ export class Worksheet extends EventTarget {
 
     next.top || next.left ? this.#borders.set(key, next) : this.#borders.delete(key);
 
-    this.#applyingHistory || this.#record({ x, y, edge: side, border: value, previousBorder: previous[side] });
-
-    this.dispatchEvent(Object.assign(new Event('borderchange'), { x, y }));
+    this.dispatchEvent(
+      Object.assign(new Event('borderchange'), { x, y, edge: side, border: value, previousBorder: previous[side] })
+    );
   }
 
   /**
-   * Sets or unsets borders of a range. Undoable:
+   * Sets or unsets borders of a range:
    *
    * - `'left'`: left of the leftmost cells.
    * - `'right'`: right of the rightmost cells.
@@ -561,9 +469,9 @@ export class Worksheet extends EventTarget {
 
     isEqual(formatting, DEFAULT_FORMATTING) ? this.#formattings.delete(key) : this.#formattings.set(key, formatting);
 
-    this.#applyingHistory || this.#record({ x, y, formatting, previousFormatting: { ...previous } });
-
-    this.dispatchEvent(Object.assign(new Event('formattingchange'), { x, y }));
+    this.dispatchEvent(
+      Object.assign(new Event('formattingchange'), { x, y, formatting: { ...formatting }, previousFormatting: { ...previous } })
+    );
   }
 
   /**
@@ -720,16 +628,22 @@ export class Worksheet extends EventTarget {
       this.#merges.delete(key);
     }
 
-    this.#applyingHistory || this.#record({ x, y, merge: size && { ...size }, previousMerge });
-
-    this.dispatchEvent(Object.assign(new Event('mergechange'), { x, y, ...(size || previousMerge) }));
+    this.dispatchEvent(
+      Object.assign(new Event('mergechange'), {
+        x,
+        y,
+        ...(size || previousMerge),
+        merge: size && { ...size },
+        previousMerge: previousMerge && { ...previousMerge }
+      })
+    );
   }
 
   /**
    * Merges a range of cells into a single cell. Merged cells overlapping the range are merged together.
    *
    * Non-empty values are concatenated (row by row, separated by a space) into the top-left cell and other cells are
-   * cleared. The formatting of the first non-empty cell is used. Borders between the merged cells are removed. Undoable.
+   * cleared. The formatting of the first non-empty cell is used. Borders between the merged cells are removed.
    *
    * @param {number} x
    * @param {number} y
@@ -805,7 +719,7 @@ export class Worksheet extends EventTarget {
   }
 
   /**
-   * Unmerges the merged cell containing a cell. The content stays in the top-left cell. Undoable.
+   * Unmerges the merged cell containing a cell. The content stays in the top-left cell.
    *
    * @param {number} x
    * @param {number} y
@@ -844,14 +758,12 @@ export class Worksheet extends EventTarget {
   }
 
   /**
-   * Loads values from CSV into this worksheet. Loading is not an undoable change, the undo and redo history is cleared.
+   * Loads values from CSV into this worksheet, then dispatches `load`. Loading is not meant to be undoable.
    *
    * @param {string} text
    */
   loadCSV(text) {
     this.setValues(parseCSV(text));
-    this.#undoStack = [];
-    this.#redoStack = [];
-    this.#pending = undefined;
+    this.dispatchEvent(new Event('load'));
   }
 }

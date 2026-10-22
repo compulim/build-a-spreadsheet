@@ -4,7 +4,14 @@ import { cellsToPNG } from './printCells.js';
 import { MAX_WORKSHEETS } from './workbook/constants.js';
 import { getColumnName } from './workbook/getColumnName.js';
 import { Workbook } from './workbook/Workbook.js';
-import { getWorksheetSelection, selectWorksheetCells, WorksheetElement } from './WorksheetElement.js';
+import {
+  getWorksheetHistory,
+  getWorksheetSelection,
+  redoWorksheet,
+  selectWorksheetCells,
+  undoWorksheet,
+  WorksheetElement
+} from './WorksheetElement.js';
 
 /** @typedef {import('./workbook/Worksheet.js').Worksheet} Worksheet */
 
@@ -88,6 +95,7 @@ function mountWorksheet(worksheet) {
   element.hidden = true;
   element.addEventListener('selectionchange', () => element === activeElement && updateSelectionInfo());
   element.addEventListener('lockedit', () => showStatus('Some cells are locked and cannot be edited.'));
+  element.addEventListener('historychange', () => element === activeElement && updateUndoButtons());
   gridContainer.append(element);
 }
 
@@ -429,63 +437,20 @@ mergeButton.addEventListener('click', () => {
 });
 
 function updateUndoButtons() {
-  undoButton.disabled = !activeElement?.worksheet?.canUndo;
-  redoButton.disabled = !activeElement?.worksheet?.canRedo;
+  const { canUndo, canRedo } = activeElement ? getWorksheetHistory(activeElement) : { canUndo: false, canRedo: false };
+
+  undoButton.disabled = !canUndo;
+  redoButton.disabled = !canRedo;
 }
 
 /** @param {'undo' | 'redo'} action */
 function undoOrRedo(action) {
-  const worksheet = activeElement?.worksheet;
-
-  if (!worksheet) {
-    return;
-  }
-
-  /** @type {{ x: number; y: number }[]} */
-  const changes = [];
-  const handleCellChange = (/** @type {Event} */ event) =>
-    changes.push(/** @type {import('./workbook/private/CellChangeEvent.js').CellChangeEvent} */ (event));
-  // All cells of a merged cell are involved, not only the cells with content.
-  const handleMergeChange = (/** @type {Event} */ event) => {
-    const { x, y, width, height } = /** @type {Event & { x: number; y: number; width: number; height: number }} */ (event);
-
-    changes.push({ x, y }, { x: x + width - 1, y: y + height - 1 });
-  };
-
-  worksheet.addEventListener('cellchange', handleCellChange);
-  worksheet.addEventListener('formattingchange', handleCellChange);
-  worksheet.addEventListener('mergechange', handleMergeChange);
-
-  try {
-    if (!worksheet[action]()) {
-      return;
-    }
-
-    if (locked && changes.some(({ x, y }) => x < LOCKED_COLUMN_COUNT || y < LOCKED_ROW_COUNT)) {
-      // Revert, locked cells cannot be changed.
-      worksheet[action === 'undo' ? 'redo' : 'undo']();
-      showStatus(`Cannot ${action} because some cells are locked.`);
-
-      return;
-    }
-  } finally {
-    worksheet.removeEventListener('cellchange', handleCellChange);
-    worksheet.removeEventListener('formattingchange', handleCellChange);
-    worksheet.removeEventListener('mergechange', handleMergeChange);
-    updateUndoButtons();
+  if (activeElement && (action === 'undo' ? undoWorksheet : redoWorksheet)(activeElement)) {
     updateFormattingButtons();
+    updateSelectionInfo();
   }
 
   activeElement?.focus();
-
-  if (changes.length) {
-    const xs = changes.map(({ x }) => x);
-    const ys = changes.map(({ y }) => y);
-
-    selectWorksheetCells(/** @type {WorksheetElement} */ (activeElement), { column: Math.min(...xs), row: Math.min(...ys) }, { column: Math.max(...xs), row: Math.max(...ys) });
-  }
-
-  updateSelectionInfo();
 }
 
 undoButton.addEventListener('click', () => undoOrRedo('undo'));

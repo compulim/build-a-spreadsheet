@@ -4,6 +4,7 @@ import { getHighlight } from './highlights.js';
 import { formatDisplayValue } from './numberFormats.js';
 import { getColumnName } from './workbook/getColumnName.js';
 import { Worksheet } from './workbook/Worksheet.js';
+import { WorksheetHistory } from './WorksheetHistory.js';
 
 /**
  * @typedef {import('./workbook/Worksheet.js').CellValue} CellValue
@@ -136,6 +137,12 @@ let getSelectionOf;
 /** @type {(element: WorksheetElement, anchor: CellPosition, focus?: CellPosition) => void} */
 let selectOf;
 
+/** @type {(element: WorksheetElement, action: 'undo' | 'redo') => boolean} */
+let undoOrRedoOf;
+
+/** @type {(element: WorksheetElement) => { canUndo: boolean; canRedo: boolean }} */
+let getHistoryOf;
+
 /**
  * `<compulim-worksheet>`, a virtualized spreadsheet grid showing the `Worksheet` it owns. Only the visible rows (plus a
  * few extra) are in the DOM, while the scrolling itself is handled by the browser using a native scrollbar on the element
@@ -147,7 +154,10 @@ let selectOf;
  * - `locked`: lockable rows and columns are read-only and frozen.
  * - `locked-column-count` and `locked-row-count`: number of lockable leading columns and rows, defaults to 0.
  *
- * Events: `selectionchange` and `lockedit` (`CustomEvent` with the `{ column, row }` of the locked cell).
+ * Keeps an undo history of changes made to its worksheet, see `undoWorksheet()` and `redoWorksheet()`.
+ *
+ * Events: `selectionchange`, `historychange` (undo/redo availability may have changed) and `lockedit` (`CustomEvent`
+ * with the `{ column, row }` of the locked cell).
  */
 export class WorksheetElement extends HTMLElement {
   static observedAttributes = ['locked', 'locked-column-count', 'locked-row-count'];
@@ -155,10 +165,15 @@ export class WorksheetElement extends HTMLElement {
   static {
     getSelectionOf = element => ({ activeCell: element.#activeCell, selection: element.#selection });
     selectOf = (element, anchor, focus) => element.#select(anchor, focus);
+    undoOrRedoOf = (element, action) => element.#undoOrRedo(action);
+    getHistoryOf = element => ({ canUndo: element.#history.canUndo, canRedo: element.#history.canRedo });
   }
 
   /** @readonly */
   #worksheet = new Worksheet();
+
+  /** Undo history, built by subscribing to the worksheet. @readonly */
+  #history = new WorksheetHistory(this.#worksheet);
 
   #initialized = false;
 
@@ -479,6 +494,11 @@ export class WorksheetElement extends HTMLElement {
 
   #attachWorksheet() {
     const worksheet = this.#worksheet;
+
+    // Listeners run after the history recorded the change, so `historychange` reflects it.
+    for (const type of ['cellchange', 'formattingchange', 'borderchange', 'mergechange', 'load']) {
+      worksheet.addEventListener(type, this.#scheduleHistoryChange);
+    }
 
     worksheet.addEventListener('cellchange', this.#handleCellChange);
     worksheet.addEventListener('borderchange', this.#handleBorderChange);
@@ -1234,6 +1254,71 @@ export class WorksheetElement extends HTMLElement {
     this.dispatchEvent(new Event('selectionchange'));
   }
 
+  #historyChangeScheduled = false;
+
+  #scheduleHistoryChange = () => {
+    if (!this.#historyChangeScheduled) {
+      this.#historyChangeScheduled = true;
+      queueMicrotask(() => {
+        this.#historyChangeScheduled = false;
+        this.dispatchEvent(new Event('historychange'));
+      });
+    }
+  };
+
+  /**
+   * Undoes or redoes the next group of changes, then selects the changed cells. Refused (dispatching `lockedit`) if
+   * any changed cell is locked.
+   *
+   * @param {'undo' | 'redo'} action
+   * @returns {boolean} `false` if nothing was applied.
+   */
+  #undoOrRedo(action) {
+    const changes = this.#history.peek(action);
+
+    if (!changes) {
+      return false;
+    }
+
+    /** @type {CellPosition[]} */
+    const cells = [];
+
+    for (const change of changes) {
+      if ('merge' in change) {
+        // All cells of a merged cell are involved, not only the cells with content.
+        const { width, height } = /** @type {{ width: number; height: number }} */ (change.merge || change.previousMerge);
+
+        cells.push({ column: change.x, row: change.y }, { column: change.x + width - 1, row: change.y + height - 1 });
+      } else if (!('edge' in change)) {
+        cells.push({ column: change.x, row: change.y });
+      }
+    }
+
+    const locked = cells.find(({ column, row }) => !this.#isEditable(column, row));
+
+    if (locked) {
+      this.dispatchEvent(new CustomEvent('lockedit', { detail: locked }));
+
+      return false;
+    }
+
+    this.#editMode && this.#cancelEdit();
+    this.#history[action]();
+    this.#scheduleHistoryChange();
+
+    if (cells.length) {
+      const columns = cells.map(({ column }) => column);
+      const rows = cells.map(({ row }) => row);
+
+      this.#select(
+        { column: Math.min(...columns), row: Math.min(...rows) },
+        { column: Math.max(...columns), row: Math.max(...rows) }
+      );
+    }
+
+    return true;
+  }
+
   // #endregion
 
   // #region Keyboard
@@ -1964,4 +2049,33 @@ export function getWorksheetSelection(element) {
  */
 export function selectWorksheetCells(element, anchor, focus) {
   selectOf(element, anchor, focus);
+}
+
+/**
+ * Reverts the last group of changes made to the worksheet of a `<compulim-worksheet>` and selects the changed cells.
+ *
+ * @param {WorksheetElement} element
+ * @returns {boolean} `false` if there is nothing to undo, or if locked cells would change.
+ */
+export function undoWorksheet(element) {
+  return undoOrRedoOf(element, 'undo');
+}
+
+/**
+ * Re-applies the last undone group of changes of a `<compulim-worksheet>` and selects the changed cells.
+ *
+ * @param {WorksheetElement} element
+ * @returns {boolean} `false` if there is nothing to redo, or if locked cells would change.
+ */
+export function redoWorksheet(element) {
+  return undoOrRedoOf(element, 'redo');
+}
+
+/**
+ * Returns whether undo and redo are available in a `<compulim-worksheet>`.
+ *
+ * @param {WorksheetElement} element
+ */
+export function getWorksheetHistory(element) {
+  return getHistoryOf(element);
 }

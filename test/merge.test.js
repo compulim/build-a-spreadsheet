@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Worksheet } from '../src/workbook/Worksheet.js';
+import { WorksheetHistory } from '../src/WorksheetHistory.js';
 
 test('mergeCells concatenates values into the first cell and keeps its formatting', () => {
   const worksheet = new Worksheet();
@@ -77,16 +78,17 @@ test('getMerges returns all merges', () => {
 
 test('merge is undoable', async () => {
   const worksheet = new Worksheet();
+  const history = new WorksheetHistory(worksheet);
 
   worksheet.setValues([['a', 'b']]);
   await Promise.resolve();
   worksheet.mergeCells(0, 0, 2);
-  worksheet.undo();
+  history.undo();
 
   assert.deepEqual(worksheet.getMerges(0, 0, 1, 1), []);
   assert.deepEqual(worksheet.getValues(0, 0, 2, 1), [['a', 'b']]);
 
-  worksheet.redo();
+  history.redo();
   assert.deepEqual(worksheet.getMerges(1, 0, 1, 1), [{ x: 0, y: 0, width: 2, height: 1 }]);
 });
 
@@ -104,18 +106,19 @@ test('merge uses the formatting of the first non-empty cell', () => {
 
 test('undo of merge restores inner borders', async () => {
   const worksheet = new Worksheet();
+  const history = new WorksheetHistory(worksheet);
 
   worksheet.setBorder({ x: 1, y: 1, width: 3, height: 1 }, new Set(['outside', 'inside']));
   await Promise.resolve();
   worksheet.mergeCells(1, 1, 3);
   assert.equal(worksheet.getBorder(2, 1).left, false);
   await Promise.resolve();
-  worksheet.undo();
+  history.undo();
 
   assert.equal(worksheet.getBorder(2, 1).left, true);
   assert.equal(worksheet.getBorder(3, 1).left, true);
   assert.deepEqual(worksheet.getMerges(1, 1, 1, 1), []);
-  worksheet.redo();
+  history.redo();
   assert.equal(worksheet.getBorder(2, 1).left, false);
 });
 
@@ -130,6 +133,7 @@ test('CSV keeps merged content in the first cell', () => {
 
 test('setBorder is undoable', async () => {
   const worksheet = new Worksheet();
+  const history = new WorksheetHistory(worksheet);
   const range = { x: 1, y: 1, width: 2, height: 2 };
 
   worksheet.setBorder(range, new Set(['outside', 'inside']));
@@ -138,12 +142,12 @@ test('setBorder is undoable', async () => {
   await Promise.resolve();
 
   assert.equal(worksheet.getBorder(2, 1).left, false);
-  worksheet.undo();
+  history.undo();
   assert.equal(worksheet.getBorder(2, 1).left, true);
-  worksheet.undo();
+  history.undo();
   assert.deepEqual(worksheet.getBorder(1, 1), { top: false, right: false, bottom: false, left: false });
-  assert.equal(worksheet.undo(), false);
-  worksheet.redo();
+  assert.equal(history.undo(), false);
+  history.redo();
   assert.deepEqual(worksheet.getBorder(1, 1), { top: true, right: true, bottom: true, left: true });
 });
 
@@ -205,15 +209,16 @@ test('getMerges returns merges intersecting a range', () => {
 
 test('rectangular merge is undoable', async () => {
   const worksheet = new Worksheet();
+  const history = new WorksheetHistory(worksheet);
 
   worksheet.mergeCells(0, 0, 2, 1);
   await Promise.resolve();
   worksheet.mergeCells(1, 0, 1, 3);
 
   assert.deepEqual(worksheet.getMerges(), [{ x: 0, y: 0, width: 2, height: 3 }]);
-  worksheet.undo();
+  history.undo();
   assert.deepEqual(worksheet.getMerges(), [{ x: 0, y: 0, width: 2, height: 1 }]);
-  worksheet.redo();
+  history.redo();
   assert.deepEqual(worksheet.getMerges(), [{ x: 0, y: 0, width: 2, height: 3 }]);
 });
 

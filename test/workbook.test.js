@@ -6,6 +6,7 @@ import { COLUMN_COUNT, MAX_WORKSHEETS, ROW_COUNT } from '../src/workbook/constan
 import { getColumnName } from '../src/workbook/getColumnName.js';
 import { Workbook } from '../src/workbook/Workbook.js';
 import { Worksheet } from '../src/workbook/Worksheet.js';
+import { WorksheetHistory } from '../src/WorksheetHistory.js';
 import { createZip } from '../src/zip.js';
 
 describe('Worksheet', () => {
@@ -119,31 +120,32 @@ describe('Worksheet', () => {
   test('undo and redo', async () => {
     const tick = () => new Promise(resolve => setTimeout(resolve));
     const worksheet = new Worksheet();
+    const history = new WorksheetHistory(worksheet);
 
-    assert.equal(worksheet.undo(), false);
-    assert.equal(worksheet.redo(), false);
+    assert.equal(history.undo(), false);
+    assert.equal(history.redo(), false);
 
     worksheet.setValue(0, 0, 'a');
     await tick();
     worksheet.setValues([['b', 'c']]);
     await tick();
 
-    assert.equal(worksheet.canUndo, true);
-    assert.equal(worksheet.undo(), true);
+    assert.equal(history.canUndo, true);
+    assert.equal(history.undo(), true);
     assert.deepEqual(worksheet.getValues(0, 0, 2, 1), [['a', '']]);
-    assert.equal(worksheet.undo(), true);
+    assert.equal(history.undo(), true);
     assert.deepEqual(worksheet.getValues(0, 0, 2, 1), [['', '']]);
-    assert.equal(worksheet.undo(), false);
+    assert.equal(history.undo(), false);
 
-    assert.equal(worksheet.redo(), true);
-    assert.equal(worksheet.redo(), true);
-    assert.equal(worksheet.redo(), false);
+    assert.equal(history.redo(), true);
+    assert.equal(history.redo(), true);
+    assert.equal(history.redo(), false);
     assert.deepEqual(worksheet.getValues(0, 0, 2, 1), [['b', 'c']]);
 
-    worksheet.undo();
-    assert.equal(worksheet.canRedo, true);
+    history.undo();
+    assert.equal(history.canRedo, true);
     worksheet.setValue(1, 0, 2);
-    assert.equal(worksheet.canRedo, false);
+    assert.equal(history.canRedo, false);
   });
 
   test('setValue validates input', () => {
@@ -199,7 +201,12 @@ describe('Worksheet', () => {
 
     assert.equal(csv, '"Name, ""quoted""",42,\r\n,,FALSE\r\n');
     assert.deepEqual(Worksheet.fromCSV(csv).getValues(0, 0, 6, 6), worksheet.getValues(0, 0, 6, 6));
-    assert.equal(Worksheet.fromCSV(csv).canUndo, false);
+
+    const loaded = new Worksheet();
+    const history = new WorksheetHistory(loaded);
+
+    loaded.loadCSV(csv);
+    assert.equal(history.canUndo, false);
 
   });
 
@@ -500,21 +507,22 @@ test('Worksheet formatting is not kept on empty cells', () => {
 test('Worksheet undo/redo formatting', async () => {
   const nextTask = () => new Promise(resolve => setTimeout(resolve));
   const worksheet = new Worksheet({ columnCount: 3, rowCount: 3 });
+  const history = new WorksheetHistory(worksheet);
 
   worksheet.setValue(0, 0, 'ABC');
   await nextTask();
   worksheet.setFormattings([[{ bold: true }]], 0, 0);
   await nextTask();
 
-  assert.strictEqual(worksheet.undo(), true);
+  assert.strictEqual(history.undo(), true);
   assert.strictEqual(worksheet.getValue(0, 0), 'ABC');
   assert.strictEqual(worksheet.getFormattings(0, 0, 1, 1)[0][0].bold, false);
 
-  assert.strictEqual(worksheet.undo(), true);
+  assert.strictEqual(history.undo(), true);
   assert.strictEqual(worksheet.getValue(0, 0), undefined);
 
-  worksheet.redo();
-  worksheet.redo();
+  history.redo();
+  history.redo();
   assert.strictEqual(worksheet.getFormattings(0, 0, 1, 1)[0][0].bold, true);
   await nextTask();
 
@@ -522,10 +530,10 @@ test('Worksheet undo/redo formatting', async () => {
   worksheet.setValue(0, 0, '');
   await nextTask();
   assert.strictEqual(worksheet.getFormattings(0, 0, 1, 1)[0][0].bold, false);
-  worksheet.undo();
+  history.undo();
   assert.strictEqual(worksheet.getValue(0, 0), 'ABC');
   assert.strictEqual(worksheet.getFormattings(0, 0, 1, 1)[0][0].bold, true);
-  worksheet.redo();
+  history.redo();
   assert.strictEqual(worksheet.getValue(0, 0), undefined);
   assert.strictEqual(worksheet.getFormattings(0, 0, 1, 1)[0][0].bold, false);
 });

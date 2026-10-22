@@ -48,7 +48,6 @@ sheet.setValue(1, 0, 42);
 sheet.setValue(2, 0, true);
 sheet.getValues(0, 0, 3, 1); // [['Name', 42, true]] — getValues(x, y, width, height), empty cells are ''
 sheet.setValues([['', '']], 1, 0); // Clears B1:C1
-sheet.undo(); // true, B1:C1 restored; returns false when there is nothing to undo
 sheet.setColumnWidth(0, 150);
 
 sheet.toCSV(); // 'Name,42,TRUE\r\n'
@@ -73,6 +72,16 @@ element.toggleAttribute('locked', true); // Locks row 1
 worksheet.setValue(0, 1, 'Hello'); // The grid updates
 ```
 
+The element keeps the undo history: it subscribes to the change events of its worksheet (which carry the new and previous values) and remembers each modification in a stack, grouping synchronous changes into one step. The history logic lives in [`src/WorksheetHistory.js`](src/WorksheetHistory.js), which has no DOM dependency:
+
+```js
+import { getWorksheetHistory, redoWorksheet, undoWorksheet } from './src/WorksheetElement.js';
+
+undoWorksheet(element); // true, reverted and selected the changed cells; false if nothing to undo or locked cells would change
+redoWorksheet(element);
+getWorksheetHistory(element); // { canUndo, canRedo }, re-check on the element's `historychange` event
+```
+
 | Member | Description |
 | --- | --- |
 | `Worksheet#setValue(x, y, valueOrUpdater)` | Sets a cell (zero-based), or updates it with `(value, x, y) => nextValue`. Strings are trimmed. Blank strings, `null` or `undefined` clear it. Throws `RangeError` / `TypeError` on invalid input. |
@@ -80,13 +89,13 @@ worksheet.setValue(0, 1, 'Hello'); // The grid updates
 | `Worksheet#getValues(x, y, width, height)` | Returns a 2D array (`values[y][x]`) of a range. |
 | `Worksheet#setValues(values, x?, y?)` / `Worksheet#setValues(updater, x, y, width, height)` | Sets a block of values (use `''` to clear), or updates every cell of a range with `(value, x, y) => nextValue`. Values outside of the sheet are ignored. |
 | `Worksheet#getColumnWidth(x)` / `Worksheet#setColumnWidth(x, width)` | Column widths in pixels, dispatches `columnwidthchange`. |
-| `Worksheet#undo()` / `Worksheet#redo()` | Undo/redo cell changes, returns `false` at the end of the stack. Synchronous changes are grouped. |
-| `Worksheet#toCSV()` / `Worksheet#loadCSV(text)` / `Worksheet.fromCSV(text)` | CSV serialization. |
+| `Worksheet#toCSV()` / `Worksheet#loadCSV(text)` / `Worksheet.fromCSV(text)` | CSV serialization. `loadCSV` dispatches `load`, which clears undo history. |
 | `Workbook#addWorksheet(name?, index?)` / `Workbook#getWorksheetElement(worksheet)` / `Workbook#removeWorksheet(worksheetOrIndex)` | Manage up to 50 sheets. |
 | `Workbook#getWorksheetName(worksheet)` / `Workbook#renameWorksheet(worksheet, name)` | Sheet names are owned by the workbook. |
 | `Workbook#worksheets` / `Workbook#getWorksheet(nameOrIndex)` | Access sheets. |
 | `Workbook#toZip()` / `Workbook.fromZip(data)` | ZIP of CSV files. |
-| `cellchange` event | Dispatched by `Worksheet` and re-dispatched by `Workbook` (`CellChangeEvent`). |
+| `cellchange` event | Dispatched by `Worksheet` and re-dispatched by `Workbook` (`CellChangeEvent`, with `value` and `previousValue`). |
+| `formattingchange` / `borderchange` / `mergechange` events | Dispatched by `Worksheet` with the new and previous `formatting` / `border` / `merge`. |
 | `worksheetadd` / `worksheetremove` / `worksheetrename` events | Dispatched by `Workbook` (`WorksheetEvent`). |
 
 In the browser console, the running app is available as `app.workbook` and `app.grid`.
