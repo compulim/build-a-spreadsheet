@@ -2,7 +2,7 @@ import { formatValue } from './csv.js';
 import { HIGHLIGHTS } from './highlights.js';
 import { cellsToPNG } from './printCells.js';
 import { MAX_WORKSHEETS } from './workbook/constants.js';
-import { getColumnName } from './workbook/getColumnName.js';
+import { getColumnName } from './worksheet/getColumnName.js';
 import { Workbook } from './workbook/Workbook.js';
 import { WorksheetElement } from './worksheet/WorksheetElement.js';
 import { WorksheetSelection } from './worksheet/WorksheetSelection.js';

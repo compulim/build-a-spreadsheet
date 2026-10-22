@@ -4,7 +4,7 @@ import { describe, test } from "node:test";
 import { WorksheetChangeEvent } from "../src/worksheet/WorksheetChangeEvent.js";
 import { MAX_WORKSHEETS } from "../src/workbook/constants.js";
 import { COLUMN_COUNT, ROW_COUNT } from "../src/worksheet/constants.js";
-import { getColumnName } from "../src/workbook/getColumnName.js";
+import { getColumnName } from "../src/worksheet/getColumnName.js";
 import { Workbook } from "../src/workbook/Workbook.js";
 import { Worksheet } from "../src/worksheet/Worksheet.js";
 import { WorksheetHistory } from "../src/worksheet/WorksheetHistory.js";

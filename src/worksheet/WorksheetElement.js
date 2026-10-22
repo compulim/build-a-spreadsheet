@@ -2,7 +2,7 @@ import { calculate } from '../calculator.js';
 import { formatValue, inferValue, parseTSV, stringifyTSV } from '../csv.js';
 import { getHighlight } from '../highlights.js';
 import { formatDisplayValue } from '../numberFormats.js';
-import { getColumnName } from '../workbook/getColumnName.js';
+import { getColumnName } from './getColumnName.js';
 import { Worksheet } from './Worksheet.js';
 import { WorksheetHistory } from './WorksheetHistory.js';
 import { WorksheetSelection } from './WorksheetSelection.js';
