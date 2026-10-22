@@ -1,11 +1,12 @@
 /** @typedef {import('./workbook/Worksheet.js').Worksheet} Worksheet */
 /** @typedef {import('./workbook/Worksheet.js').CellChange} CellChange */
+/** @typedef {import('./workbook/private/WorksheetChangeEvent.js').WorksheetChangeEvent} WorksheetChangeEvent */
 
 /**
- * Undo/redo history of a `Worksheet`, built by subscribing to its change events. Changes made synchronously in the same
- * task (e.g. a paste) are grouped into a single step. Loading from CSV clears the history.
+ * Undo/redo history of a `Worksheet`, built by subscribing to its `change` event. Each `edit()` transaction is a single
+ * step. Column width changes are not recorded. Loading from CSV clears the history.
  *
- * Steps are replayed through the public API of the worksheet.
+ * Steps are replayed in a transaction through `Worksheet#edit()`.
  */
 export class WorksheetHistory {
   /** @type {Worksheet} */
@@ -17,50 +18,25 @@ export class WorksheetHistory {
   /** @type {CellChange[][]} */
   #redoStack = [];
 
-  /** @type {CellChange[] | undefined} */
-  #pending;
-
   #applying = false;
 
   /** @param {Worksheet} worksheet */
   constructor(worksheet) {
     this.#worksheet = worksheet;
 
-    const record = (/** @type {any} */ { x, y, value, previousValue, formatting, previousFormatting, edge, border, previousBorder, merge, previousMerge, type }) =>
-      this.#record(
-        type === 'cellchange'
-          ? { x, y, value, previousValue }
-          : type === 'formattingchange'
-            ? { x, y, formatting, previousFormatting }
-            : type === 'borderchange'
-              ? { x, y, edge, border, previousBorder }
-              : { x, y, merge, previousMerge }
-      );
+    worksheet.addEventListener('change', event => {
+      const { changes, load } = /** @type {WorksheetChangeEvent} */ (event);
 
-    for (const type of ['cellchange', 'formattingchange', 'borderchange', 'mergechange']) {
-      worksheet.addEventListener(type, record);
-    }
-
-    worksheet.addEventListener('load', () => this.clear());
+      load ? this.clear() : this.#record(/** @type {CellChange[]} */ (changes.filter(({ type }) => type !== 'columnwidth')));
+    });
   }
 
-  /** @param {CellChange} change */
-  #record(change) {
-    if (this.#applying) {
-      return;
-    }
-
-    if (!this.#pending) {
-      const pending = (this.#pending = []);
-
-      this.#undoStack.push(pending);
+  /** @param {CellChange[]} changes */
+  #record(changes) {
+    if (!this.#applying && changes.length) {
+      this.#undoStack.push(changes);
       this.#redoStack = [];
-      queueMicrotask(() => {
-        this.#pending === pending && (this.#pending = undefined);
-      });
     }
-
-    this.#pending.push(change);
   }
 
   /** Whether `undo()` has anything to revert. */
@@ -87,7 +63,6 @@ export class WorksheetHistory {
   clear() {
     this.#undoStack = [];
     this.#redoStack = [];
-    this.#pending = undefined;
   }
 
   /**
@@ -122,29 +97,35 @@ export class WorksheetHistory {
 
     const worksheet = this.#worksheet;
 
-    this.#pending = undefined;
-    to.push(changes);
     this.#applying = true;
 
     try {
-      for (const change of isUndo ? [...changes].reverse() : changes) {
-        const { x, y } = change;
+      worksheet.edit(edit => {
+        for (const change of isUndo ? [...changes].reverse() : changes) {
+          const { x, y } = change;
 
-        if ('edge' in change) {
-          worksheet.setBorder({ x, y }, new Set([change.edge]), isUndo ? change.previousBorder : change.border);
-        } else if ('merge' in change) {
-          const merge = isUndo ? change.previousMerge : change.merge;
+          if (change.type === 'border') {
+            edit.setBorder({ x, y }, new Set([change.edge]), isUndo ? change.previousBorder : change.border);
+          } else if (change.type === 'merge') {
+            const merge = isUndo ? change.previousMerge : change.merge;
 
-          merge ? worksheet.mergeCells(x, y, merge.width, merge.height) : worksheet.unmergeCells(x, y);
-        } else if ('formatting' in change) {
-          worksheet.setFormattings([[isUndo ? change.previousFormatting : change.formatting]], x, y);
-        } else {
-          worksheet.setValue(x, y, isUndo ? change.previousValue : change.value);
+            merge ? edit.mergeCells(x, y, merge.width, merge.height) : edit.unmergeCells(x, y);
+          } else if (change.type === 'formatting') {
+            edit.setFormattings([[isUndo ? change.previousFormatting : change.formatting]], x, y);
+          } else {
+            edit.setValue(x, y, isUndo ? change.previousValue : change.value);
+          }
         }
-      }
+      });
+    } catch (error) {
+      from.push(changes);
+
+      throw error;
     } finally {
       this.#applying = false;
     }
+
+    to.push(changes);
 
     return true;
   }

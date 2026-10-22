@@ -250,8 +250,8 @@ function setWorkbook(nextWorkbook) {
     workbook.removeEventListener('worksheetremove', renderTabs);
     workbook.removeEventListener('worksheetadd', handleWorksheetAdd);
     workbook.removeEventListener('worksheetrename', renderTabs);
-    workbook.removeEventListener('cellchange', updateUndoButtons);
-    workbook.removeEventListener('cellchange', updateFormattingButtons);
+    workbook.removeEventListener('change', updateUndoButtons);
+    workbook.removeEventListener('change', updateFormattingButtons);
   }
 
   workbook = nextWorkbook;
@@ -259,10 +259,10 @@ function setWorkbook(nextWorkbook) {
   workbook.addEventListener('worksheetremove', renderTabs);
   workbook.addEventListener('worksheetadd', handleWorksheetAdd);
   workbook.addEventListener('worksheetrename', renderTabs);
-  workbook.addEventListener('cellchange', updateUndoButtons);
-  workbook.addEventListener('cellchange', updateFormattingButtons);
+  workbook.addEventListener('change', updateUndoButtons);
+  workbook.addEventListener('change', updateFormattingButtons);
 
-  // Expose for scripting from the browser console, e.g. `app.workbook.worksheets[0].setValue(0, 0, 'Hello')`.
+  // Expose for scripting from the browser console, e.g. `app.workbook.worksheets[0].edit(edit => edit.setValue(0, 0, 'Hello'))`.
   Object.assign(globalThis, { app: { workbook } });
 
   gridContainer.replaceChildren();
@@ -331,7 +331,7 @@ function formatSelection(updater) {
   if (worksheet) {
     const { left, top, right, bottom } = getSelection().selection;
 
-    worksheet.setFormattings(updater, left, top, right - left + 1, bottom - top + 1);
+    worksheet.edit(edit => edit.setFormattings(updater, left, top, right - left + 1, bottom - top + 1));
     updateFormattingButtons();
     updateUndoButtons();
   }
@@ -418,14 +418,14 @@ mergeButton.addEventListener('click', () => {
     if (!isEditable(left, top) || !isEditable(right, bottom)) {
       skipped = true;
     } else if (unmerge) {
-      worksheet
-        .getMerges(left, top, right - left + 1, bottom - top + 1)
-        .forEach(({ x, y }) => worksheet.unmergeCells(x, y));
+      worksheet.edit(edit =>
+        worksheet.getMerges(left, top, right - left + 1, bottom - top + 1).forEach(({ x, y }) => edit.unmergeCells(x, y))
+      );
 
       // Keeps all cells of the unmerged cells selected, the selection may be only the merged cell itself.
       selectWorksheetCells(/** @type {WorksheetElement} */ (activeElement), { column: left, row: top }, { column: right, row: bottom });
     } else {
-      worksheet.mergeCells(left, top, right - left + 1, bottom - top + 1);
+      worksheet.edit(edit => edit.mergeCells(left, top, right - left + 1, bottom - top + 1));
     }
 
     skipped && showStatus('Some cells are locked and cannot be merged.');
@@ -498,11 +498,13 @@ borderSelect.addEventListener('change', () => {
     const { left, top, right, bottom } = getSelection().selection;
     const range = { x: left, y: top, width: right - left + 1, height: bottom - top + 1 };
 
-    if (preset === 'all' || preset === 'none') {
-      worksheet.setBorder(range, new Set(['outside', 'inside']), preset === 'all');
-    } else {
-      worksheet.setBorder(range, new Set([/** @type {import('./workbook/Worksheet.js').BorderEdges} */ (preset)]));
-    }
+    worksheet.edit(edit => {
+      if (preset === 'all' || preset === 'none') {
+        edit.setBorder(range, new Set(['outside', 'inside']), preset === 'all');
+      } else {
+        edit.setBorder(range, new Set([/** @type {import('./workbook/Worksheet.js').BorderEdges} */ (preset)]));
+      }
+    });
 
     updateUndoButtons();
   }
@@ -552,7 +554,7 @@ fileInput.addEventListener('change', async () => {
       const text = await file.text();
       const worksheet = workbook.addWorksheet(name);
 
-      worksheet.loadCSV(text);
+      worksheet.edit(edit => edit.loadCSV(text));
       activateWorksheet(worksheet);
     }
   } catch (error) {

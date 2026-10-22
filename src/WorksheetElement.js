@@ -421,41 +421,51 @@ export class WorksheetElement extends HTMLElement {
   /** @type {HTMLInputElement} */
   #editor;
 
-  /** @param {Event} event */
-  #handleCellChange = event => {
-    const { x, y: row } = /** @type {import('./workbook/private/CellChangeEvent.js').CellChangeEvent} */ (event);
-    const merge = row < this.#firstRow ? this.#worksheet.getMerges(x, row, 1, 1)[0] : undefined;
+  /**
+   * Re-renders what a transaction changed.
+   *
+   * @param {Event} event
+   */
+  #handleChange = event => {
+    const { changes } = /** @type {import('./workbook/private/WorksheetChangeEvent.js').WorksheetChangeEvent} */ (event);
+    let anchorChanged = false;
+    let mergeChanged = false;
 
-    // Only re-render if the changed cell is currently rendered (or a merged cell extending into the rendered rows).
-    // Multiple changes are batched into a single frame.
-    if (
-      (row >= this.#firstRow && row < this.#firstRow + this.#pool.length) ||
-      row < this.#lockedRowCount ||
-      (merge && merge.y + merge.height > this.#firstRow)
-    ) {
-      this.#contentDirty = true;
-      this.#scheduleRender();
+    for (const change of changes) {
+      if (change.type === 'columnwidth') {
+        this.#applyColumnWidth(change.x);
+        // Merged cells span multiple columns.
+        this.#contentDirty = true;
+      } else if (change.type === 'value') {
+        const { x, y: row } = change;
+        const merge = row < this.#firstRow ? this.#worksheet.getMerges(x, row, 1, 1)[0] : undefined;
+
+        // Only re-render if the changed cell is currently rendered (or a merged cell extending into the rendered rows).
+        if (
+          (row >= this.#firstRow && row < this.#firstRow + this.#pool.length) ||
+          row < this.#lockedRowCount ||
+          (merge && merge.y + merge.height > this.#firstRow)
+        ) {
+          this.#contentDirty = true;
+        }
+
+        anchorChanged ||= row === this.#anchor.row && x === this.#anchor.column;
+      } else {
+        mergeChanged ||= change.type === 'merge';
+        this.#contentDirty = true;
+      }
     }
 
-    if (row === this.#anchor.row && x === this.#anchor.column) {
-      this.#dispatchSelectionChange();
+    changes.some(({ type }) => type === 'columnwidth') && this.#updateColumnLayout();
+    this.#scheduleRender();
+
+    if (mergeChanged) {
+      this.#anchor = this.#toMergeStart(this.#anchor);
+      this.#updateSelection();
     }
-  };
 
-  /** @param {Event} event */
-  #handleColumnWidthChange = event => {
-    this.#applyColumnWidth(/** @type {Event & { x: number }} */ (event).x);
-    this.#updateColumnLayout();
-    // Merged cells span multiple columns.
-    this.#contentDirty = true;
-    this.#scheduleRender();
-  };
-
-  #handleMergeChange = () => {
-    this.#contentDirty = true;
-    this.#scheduleRender();
-    this.#anchor = this.#toMergeStart(this.#anchor);
-    this.#updateSelection();
+    anchorChanged && this.#dispatchSelectionChange();
+    this.#scheduleHistoryChange();
   };
 
   /**
@@ -482,11 +492,6 @@ export class WorksheetElement extends HTMLElement {
     return merge ? { column: merge.x + merge.width - 1, row: merge.y + merge.height - 1 } : cell;
   }
 
-  #handleBorderChange = () => {
-    this.#contentDirty = true;
-    this.#scheduleRender();
-  };
-
   /** @returns {Worksheet} */
   get worksheet() {
     return this.#worksheet;
@@ -495,16 +500,8 @@ export class WorksheetElement extends HTMLElement {
   #attachWorksheet() {
     const worksheet = this.#worksheet;
 
-    // Listeners run after the history recorded the change, so `historychange` reflects it.
-    for (const type of ['cellchange', 'formattingchange', 'borderchange', 'mergechange', 'load']) {
-      worksheet.addEventListener(type, this.#scheduleHistoryChange);
-    }
-
-    worksheet.addEventListener('cellchange', this.#handleCellChange);
-    worksheet.addEventListener('borderchange', this.#handleBorderChange);
-    worksheet.addEventListener('formattingchange', this.#handleBorderChange);
-    worksheet.addEventListener('columnwidthchange', this.#handleColumnWidthChange);
-    worksheet.addEventListener('mergechange', this.#handleMergeChange);
+    // Runs after the history recorded the change, so `historychange` reflects it.
+    worksheet.addEventListener('change', this.#handleChange);
 
     for (let column = 0; column < this.#columnCount; column++) {
       this.#applyColumnWidth(column);
@@ -856,7 +853,7 @@ export class WorksheetElement extends HTMLElement {
    */
   #setColumnWidth(column, width) {
     if (column >= 0 && column < this.#columnCount) {
-      this.#worksheet.setColumnWidth(column, Math.max(MIN_COLUMN_WIDTH, Math.round(width)));
+      this.#worksheet.edit(edit => edit.setColumnWidth(column, Math.max(MIN_COLUMN_WIDTH, Math.round(width))));
     }
   }
 
@@ -1284,12 +1281,12 @@ export class WorksheetElement extends HTMLElement {
     const cells = [];
 
     for (const change of changes) {
-      if ('merge' in change) {
+      if (change.type === 'merge') {
         // All cells of a merged cell are involved, not only the cells with content.
         const { width, height } = /** @type {{ width: number; height: number }} */ (change.merge || change.previousMerge);
 
         cells.push({ column: change.x, row: change.y }, { column: change.x + width - 1, row: change.y + height - 1 });
-      } else if (!('edge' in change)) {
+      } else if (change.type !== 'border') {
         cells.push({ column: change.x, row: change.y });
       }
     }
@@ -1821,10 +1818,8 @@ export class WorksheetElement extends HTMLElement {
       // Leading "=" evaluates a simple arithmetic formula and stores only the result; invalid formulas are kept as text.
       const result = text.startsWith('=') ? calculate(text.slice(1)) : undefined;
 
-      this.#worksheet.setValue(
-        column,
-        row,
-        text.startsWith("'") ? text.slice(1) : result ?? inferValue(text)
+      this.#worksheet.edit(edit =>
+        edit.setValue(column, row, text.startsWith("'") ? text.slice(1) : result ?? inferValue(text))
       );
     }
   }
@@ -1886,15 +1881,17 @@ export class WorksheetElement extends HTMLElement {
     const { left, top, right, bottom } = this.#selection;
     let skipped = false;
 
-    for (let row = top; row <= bottom; row++) {
-      for (let column = left; column <= right; column++) {
-        if (this.#isEditable(column, row)) {
-          worksheet.setValue(column, row, '');
-        } else {
-          skipped = true;
+    worksheet.edit(edit => {
+      for (let row = top; row <= bottom; row++) {
+        for (let column = left; column <= right; column++) {
+          if (this.#isEditable(column, row)) {
+            edit.setValue(column, row, '');
+          } else {
+            skipped = true;
+          }
         }
       }
-    }
+    });
 
     skipped && this.dispatchEvent(new CustomEvent('lockedit', { detail: this.#anchor }));
   }
@@ -1998,26 +1995,28 @@ export class WorksheetElement extends HTMLElement {
     const pasteColumns = Math.min(tile ? selectedColumns : dataColumns, this.#columnCount - left);
     let skipped = false;
 
-    for (let rowOffset = 0; rowOffset < pasteRows; rowOffset++) {
-      const rowValues = values[rowOffset % dataRows];
+    worksheet.edit(edit => {
+      for (let rowOffset = 0; rowOffset < pasteRows; rowOffset++) {
+        const rowValues = values[rowOffset % dataRows];
 
-      for (let columnOffset = 0; columnOffset < pasteColumns; columnOffset++) {
-        const column = left + columnOffset;
-        const row = top + rowOffset;
+        for (let columnOffset = 0; columnOffset < pasteColumns; columnOffset++) {
+          const column = left + columnOffset;
+          const row = top + rowOffset;
 
-        if (this.#isEditable(column, row)) {
-          worksheet.setValue(column, row, rowValues[columnOffset % dataColumns] ?? '');
+          if (this.#isEditable(column, row)) {
+            edit.setValue(column, row, rowValues[columnOffset % dataColumns] ?? '');
 
-          if (formattings) {
-            const formattingRow = formattings[rowOffset % dataRows];
+            if (formattings) {
+              const formattingRow = formattings[rowOffset % dataRows];
 
-            worksheet.setFormattings([[formattingRow?.[columnOffset % (formattingRow?.length || 1)]]], column, row);
+              edit.setFormattings([[formattingRow?.[columnOffset % (formattingRow?.length || 1)]]], column, row);
+            }
+          } else {
+            skipped = true;
           }
-        } else {
-          skipped = true;
         }
       }
-    }
+    });
 
     const anchor = { column: left, row: top };
 

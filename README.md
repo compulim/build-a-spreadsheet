@@ -39,19 +39,26 @@ import { Worksheet } from './src/workbook/Worksheet.js';
 const workbook = new Workbook(); // EventTarget
 const sheet = workbook.addWorksheet('Data'); // Worksheet, also an EventTarget
 
-workbook.addEventListener('cellchange', ({ worksheet, x, y, value, previousValue }) => {
-  console.log(workbook.getWorksheetName(worksheet), x, y, previousValue, '→', value);
+// One `change` event per transaction, with all changes in order.
+workbook.addEventListener('change', ({ worksheet, changes }) => {
+  for (const change of changes) {
+    change.type === 'value' &&
+      console.log(workbook.getWorksheetName(worksheet), change.x, change.y, change.previousValue, '→', change.value);
+  }
 });
 
-sheet.setValue(0, 0, 'Name'); // setValue(x: number, y: number, value: boolean | number | string), zero-based
-sheet.setValue(1, 0, 42);
-sheet.setValue(2, 0, true);
+// All modifications are made through the `edit` object, which is only usable inside the callback.
+sheet.edit(edit => {
+  edit.setValue(0, 0, 'Name'); // setValue(x: number, y: number, value: boolean | number | string), zero-based
+  edit.setValue(1, 0, 42);
+  edit.setValue(2, 0, true);
+});
 sheet.getValues(0, 0, 3, 1); // [['Name', 42, true]] — getValues(x, y, width, height), empty cells are ''
-sheet.setValues([['', '']], 1, 0); // Clears B1:C1
-sheet.setColumnWidth(0, 150);
+sheet.edit(edit => edit.setValues([['', '']], 1, 0)); // Clears B1:C1
+sheet.edit(edit => edit.setColumnWidth(0, 150));
 
 sheet.toCSV(); // 'Name,42,TRUE\r\n'
-workbook.addWorksheet('Imported').loadCSV('a,1\r\n');
+workbook.addWorksheet('Imported').edit(edit => edit.loadCSV('a,1\r\n'));
 
 const zip = await workbook.toZip(); // Uint8Array, one "<sheet name>.csv" per worksheet
 const loaded = await Workbook.fromZip(zip);
@@ -69,10 +76,10 @@ element.setAttribute('locked-row-count', '1'); // Number of lockable rows, can b
 element.setAttribute('locked-column-count', '1'); // Number of lockable columns
 document.body.append(element);
 element.toggleAttribute('locked', true); // Locks row 1
-worksheet.setValue(0, 1, 'Hello'); // The grid updates
+worksheet.edit(edit => edit.setValue(0, 1, 'Hello')); // The grid updates
 ```
 
-The element keeps the undo history: it subscribes to the change events of its worksheet (which carry the new and previous values) and remembers each modification in a stack, grouping synchronous changes into one step. The history logic lives in [`src/WorksheetHistory.js`](src/WorksheetHistory.js), which has no DOM dependency:
+The element keeps the undo history: it subscribes to the change events of its worksheet (which carry the new and previous values) and remembers each modification in a stack, one step per `edit()` transaction (column widths are not recorded). The history logic lives in [`src/WorksheetHistory.js`](src/WorksheetHistory.js), which has no DOM dependency:
 
 ```js
 import { getWorksheetHistory, redoWorksheet, undoWorksheet } from './src/WorksheetElement.js';
@@ -84,18 +91,21 @@ getWorksheetHistory(element); // { canUndo, canRedo }, re-check on the element's
 
 | Member | Description |
 | --- | --- |
-| `Worksheet#setValue(x, y, valueOrUpdater)` | Sets a cell (zero-based), or updates it with `(value, x, y) => nextValue`. Strings are trimmed. Blank strings, `null` or `undefined` clear it. Throws `RangeError` / `TypeError` on invalid input. |
+| `Worksheet#edit(callback)` | Runs `callback(edit)` as a transaction and returns its result. `edit` has all editing functions below and is only usable inside the callback. A nested `edit()` joins the outer transaction. If the callback throws, all its changes are rolled back. Otherwise, a single `change` event is dispatched if anything changed. |
+| `edit.setValue(x, y, valueOrUpdater)` | Sets a cell (zero-based), or updates it with `(value, x, y) => nextValue`. Strings are trimmed. Blank strings, `null` or `undefined` clear it. Throws `RangeError` / `TypeError` on invalid input. |
+| `edit.setValues(values, x?, y?)` / `edit.setValues(updater, x, y, width, height)` | Sets a block of values (use `''` to clear), or updates every cell of a range with `(value, x, y) => nextValue`. Values outside of the sheet are ignored. |
+| `edit.setFormattings(...)` / `edit.setBorder(range, edges, value?)` / `edit.mergeCells(x, y, width, height?)` / `edit.unmergeCells(x, y)` | Formatting, borders and merged cells. |
+| `edit.setColumnWidth(x, width)` | Column width in pixels. |
+| `edit.loadCSV(text)` | Loads CSV, the `change` event has `load: true`, which clears undo history. |
 | `Worksheet#getValue(x, y)` | Returns a cell value, `undefined` if empty. |
 | `Worksheet#getValues(x, y, width, height)` | Returns a 2D array (`values[y][x]`) of a range. |
-| `Worksheet#setValues(values, x?, y?)` / `Worksheet#setValues(updater, x, y, width, height)` | Sets a block of values (use `''` to clear), or updates every cell of a range with `(value, x, y) => nextValue`. Values outside of the sheet are ignored. |
-| `Worksheet#getColumnWidth(x)` / `Worksheet#setColumnWidth(x, width)` | Column widths in pixels, dispatches `columnwidthchange`. |
-| `Worksheet#toCSV()` / `Worksheet#loadCSV(text)` / `Worksheet.fromCSV(text)` | CSV serialization. `loadCSV` dispatches `load`, which clears undo history. |
+| `Worksheet#getColumnWidth(x)` | Column width in pixels. |
+| `Worksheet#toCSV()` / `Worksheet.fromCSV(text)` | CSV serialization. |
 | `Workbook#addWorksheet(name?, index?)` / `Workbook#getWorksheetElement(worksheet)` / `Workbook#removeWorksheet(worksheetOrIndex)` | Manage up to 50 sheets. |
 | `Workbook#getWorksheetName(worksheet)` / `Workbook#renameWorksheet(worksheet, name)` | Sheet names are owned by the workbook. |
 | `Workbook#worksheets` / `Workbook#getWorksheet(nameOrIndex)` | Access sheets. |
 | `Workbook#toZip()` / `Workbook.fromZip(data)` | ZIP of CSV files. |
-| `cellchange` event | Dispatched by `Worksheet` and re-dispatched by `Workbook` (`CellChangeEvent`, with `value` and `previousValue`). |
-| `formattingchange` / `borderchange` / `mergechange` events | Dispatched by `Worksheet` with the new and previous `formatting` / `border` / `merge`. |
+| `change` event | Dispatched by `Worksheet` once per transaction and re-dispatched by `Workbook` (`WorksheetChangeEvent`, with `worksheet`, `load` and `changes`). Each change has a `type` (`'value'`, `'formatting'`, `'border'`, `'merge'` or `'columnwidth'`) with the new and previous value. |
 | `worksheetadd` / `worksheetremove` / `worksheetrename` events | Dispatched by `Workbook` (`WorksheetEvent`). |
 
 In the browser console, the running app is available as `app.workbook` and `app.grid`.

@@ -1,5 +1,5 @@
 import { createZip, readZip } from '../zip.js';
-import { CellChangeEvent } from './private/CellChangeEvent.js';
+import { WorksheetChangeEvent } from './private/WorksheetChangeEvent.js';
 import { MAX_WORKSHEET_NAME_LENGTH, MAX_WORKSHEETS } from './constants.js';
 import { Worksheet } from './Worksheet.js';
 import { sanitizeWorksheetName, validateWorksheetName } from './private/worksheetName.js';
@@ -11,7 +11,7 @@ import { WorksheetEvent } from './private/WorksheetEvent.js';
  * Worksheets are created by the workbook. In a browser where `<compulim-worksheet>` is defined, each worksheet is owned
  * by a newly instantiated `<compulim-worksheet>` element, see `getWorksheetElement()`.
  *
- * Re-dispatches `cellchange` (`CellChangeEvent`) from all of its worksheets, and dispatches
+ * Re-dispatches `change` (`WorksheetChangeEvent`) from all of its worksheets, and dispatches
  * `worksheetadd`, `worksheetremove` and `worksheetrename` (`WorksheetEvent`).
  */
 export class Workbook extends EventTarget {
@@ -25,8 +25,8 @@ export class Workbook extends EventTarget {
   #elements = new Map();
 
   /** @param {Event} event */
-  #handleCellChange = event => {
-    this.dispatchEvent(new CellChangeEvent('cellchange', /** @type {CellChangeEvent} */ (event)));
+  #handleChange = event => {
+    this.dispatchEvent(new WorksheetChangeEvent('change', /** @type {WorksheetChangeEvent} */ (event)));
   };
 
   /** @returns {Worksheet[]} */
@@ -174,7 +174,7 @@ export class Workbook extends EventTarget {
     element && this.#elements.set(worksheet, element);
     this.#names.set(worksheet, name);
     this.#worksheets.splice(index, 0, worksheet);
-    worksheet.addEventListener('cellchange', this.#handleCellChange);
+    worksheet.addEventListener('change', this.#handleChange);
 
     this.dispatchEvent(new WorksheetEvent('worksheetadd', { worksheet, index }));
 
@@ -200,7 +200,7 @@ export class Workbook extends EventTarget {
     this.#elements.get(worksheet)?.remove();
     this.#elements.delete(worksheet);
     this.#names.delete(worksheet);
-    worksheet.removeEventListener('cellchange', this.#handleCellChange);
+    worksheet.removeEventListener('change', this.#handleChange);
 
     this.dispatchEvent(new WorksheetEvent('worksheetremove', { worksheet, index }));
 
@@ -247,7 +247,7 @@ export class Workbook extends EventTarget {
 
       workbook
         .addWorksheet(workbook.getUniqueWorksheetName(fileName.replace(/\.csv$/i, '')))
-        .loadCSV(decoder.decode(content));
+        .edit(edit => edit.loadCSV(decoder.decode(content)));
     }
 
     return workbook;
