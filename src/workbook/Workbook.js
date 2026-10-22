@@ -1,9 +1,9 @@
 import { createZip, readZip } from '../zip.js';
-import { WorksheetChangeEvent } from './private/WorksheetChangeEvent.js';
+import { WorksheetChangeEvent } from '../worksheet/WorksheetChangeEvent.js';
 import { MAX_WORKSHEET_NAME_LENGTH, MAX_WORKSHEETS } from './constants.js';
 import { Worksheet } from '../worksheet/Worksheet.js';
 import { sanitizeWorksheetName, validateWorksheetName } from './private/worksheetName.js';
-import { WorksheetEvent } from './private/WorksheetEvent.js';
+import { WorksheetEvent } from '../worksheet/WorksheetEvent.js';
 
 /**
  * A workbook with up to 50 worksheets.

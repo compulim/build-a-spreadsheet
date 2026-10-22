@@ -95,7 +95,7 @@ function mountWorksheet(worksheet) {
 
 /** @param {Event} event */
 function handleWorksheetAdd(event) {
-  mountWorksheet(/** @type {import('./workbook/private/WorksheetEvent.js').WorksheetEvent} */ (event).worksheet);
+  mountWorksheet(/** @type {import('./worksheet/WorksheetEvent.js').WorksheetEvent} */ (event).worksheet);
 }
 
 /** Active cell and selection of the active worksheet. */

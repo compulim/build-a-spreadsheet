@@ -1,12 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { WorksheetChangeEvent } from "../src/workbook/private/WorksheetChangeEvent.js";
-import {
-  COLUMN_COUNT,
-  MAX_WORKSHEETS,
-  ROW_COUNT,
-} from "../src/workbook/constants.js";
+import { WorksheetChangeEvent } from "../src/worksheet/WorksheetChangeEvent.js";
+import { MAX_WORKSHEETS } from "../src/workbook/constants.js";
+import { COLUMN_COUNT, ROW_COUNT } from "../src/worksheet/constants.js";
 import { getColumnName } from "../src/workbook/getColumnName.js";
 import { Workbook } from "../src/workbook/Workbook.js";
 import { Worksheet } from "../src/worksheet/Worksheet.js";

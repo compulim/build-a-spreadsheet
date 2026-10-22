@@ -1,6 +1,6 @@
 /** @typedef {import('./Worksheet.js').Worksheet} Worksheet */
 /** @typedef {import('./Worksheet.js').CellChange} CellChange */
-/** @typedef {import('../workbook/private/WorksheetChangeEvent.js').WorksheetChangeEvent} WorksheetChangeEvent */
+/** @typedef {import('./WorksheetChangeEvent.js').WorksheetChangeEvent} WorksheetChangeEvent */
 
 /**
  * Undo/redo history of a `Worksheet`, built by subscribing to its `change` event. Each `edit()` transaction is a single

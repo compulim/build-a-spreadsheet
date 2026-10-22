@@ -425,7 +425,7 @@ export class WorksheetElement extends HTMLElement {
    * @param {Event} event
    */
   #handleChange = event => {
-    const { changes } = /** @type {import('../workbook/private/WorksheetChangeEvent.js').WorksheetChangeEvent} */ (event);
+    const { changes } = /** @type {import('./WorksheetChangeEvent.js').WorksheetChangeEvent} */ (event);
     let anchorChanged = false;
     let mergeChanged = false;
 
@@ -1345,7 +1345,7 @@ export class WorksheetElement extends HTMLElement {
 
     /** @param {Event} event */
     const handleChange = event => {
-      for (const change of /** @type {import('../workbook/private/WorksheetChangeEvent.js').WorksheetChangeEvent} */ (
+      for (const change of /** @type {import('./WorksheetChangeEvent.js').WorksheetChangeEvent} */ (
         event
       ).changes) {
         if (change.type === 'merge') {

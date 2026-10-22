@@ -1,5 +1,5 @@
-/** @typedef {import('../../worksheet/Worksheet.js').Worksheet} Worksheet */
-/** @typedef {import('../../worksheet/Worksheet.js').WorksheetChange} WorksheetChange */
+/** @typedef {import('./Worksheet.js').Worksheet} Worksheet */
+/** @typedef {import('./Worksheet.js').WorksheetChange} WorksheetChange */
 
 /** Dispatched once per `Worksheet#edit()` transaction, with all of its changes in order. */
 export class WorksheetChangeEvent extends Event {
