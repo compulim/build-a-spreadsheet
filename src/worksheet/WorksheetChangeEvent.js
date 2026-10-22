@@ -14,7 +14,7 @@ export class WorksheetChangeEvent extends Event {
     /** @readonly */ this.changes = changes;
     /** `true` if the transaction loaded CSV, which is not meant to be undoable. @readonly */ this.load = load;
     /**
-     * Undoes the transaction, `undefined` if it has no cell changes or if the event is from an undo or redo.
+     * Undoes the transaction, `undefined` if the event is from an undo or redo.
      * @readonly
      */
     this.undo = undo;

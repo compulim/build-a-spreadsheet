@@ -115,19 +115,22 @@ describe("Worksheet", () => {
     const worksheet = new Worksheet();
     const events = [];
 
-    worksheet.addEventListener("change", ({ changes }) =>
-      events.push(...changes.map(({ x }) => x)),
+    const version = worksheet.version;
+
+    worksheet.addEventListener("columnwidthchange", ({ detail }) =>
+      events.push(detail.x),
     );
 
     assert.equal(worksheet.getColumnWidth(0), 100);
 
-    worksheet.edit((edit) => edit.setColumnWidth(2, 150));
-    worksheet.edit((edit) => edit.setColumnWidth(2, 150));
+    worksheet.setColumnWidth(2, 150);
+    worksheet.setColumnWidth(2, 150);
 
     assert.equal(worksheet.getColumnWidth(2), 150);
     assert.deepEqual(events, [2]);
+    assert.equal(worksheet.version, version);
     assert.throws(
-      () => worksheet.edit((edit) => edit.setColumnWidth(50, 10)),
+      () => worksheet.setColumnWidth(50, 10),
       RangeError,
     );
   });
@@ -231,7 +234,6 @@ describe("Worksheet", () => {
       edit.setValue(0, 0, "a");
       edit.setFormattings([[{ bold: true }]], 0, 0);
       worksheet.edit((nested) => nested.setValue(1, 0, "b")); // Joins the outer transaction.
-      edit.setColumnWidth(2, 150);
     });
 
     assert.deepEqual(events, [
@@ -239,7 +241,6 @@ describe("Worksheet", () => {
         ["value", 0],
         ["formatting", 0],
         ["value", 1],
-        ["columnwidth", 2],
       ],
     ]);
   });
@@ -279,11 +280,10 @@ describe("Worksheet", () => {
     assert.equal(worksheet.getValue(0, 0), "a");
   });
 
-  test("edit() without cell changes keeps the version", () => {
+  test("edit() without changes keeps the version", () => {
     const worksheet = new Worksheet();
     const version = worksheet.version;
 
-    worksheet.edit((edit) => edit.setColumnWidth(0, 150));
     worksheet.edit(() => {});
 
     assert.equal(worksheet.version, version);
@@ -303,7 +303,6 @@ describe("Worksheet", () => {
           edit.setFormattings([[{ bold: true }]], 0, 0);
           edit.setBorder({ x: 0, y: 0 }, new Set(["outside"]));
           edit.mergeCells(0, 0, 2);
-          edit.setColumnWidth(0, 150);
           throw new Error("oops");
         }),
       /oops/,
@@ -314,7 +313,6 @@ describe("Worksheet", () => {
     assert.equal(worksheet.getFormattings(0, 0, 1, 1)[0][0].bold, false);
     assert.equal(worksheet.getBorder(0, 0).top, false);
     assert.deepEqual(worksheet.getMerges(), []);
-    assert.equal(worksheet.getColumnWidth(0), 100);
   });
 
   test("editing functions are only available inside edit()", () => {
@@ -333,7 +331,6 @@ describe("Worksheet", () => {
       "setBorder",
       "mergeCells",
       "unmergeCells",
-      "setColumnWidth",
       "loadCSV",
     ]) {
       assert.equal(name in worksheet, false, name);

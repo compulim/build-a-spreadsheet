@@ -11,9 +11,8 @@ import { COLUMN_COUNT, COLUMN_WIDTH, ROW_COUNT } from './constants.js';
 /** @typedef {{ type: 'merge'; x: number; y: number; merge: CellMergeSize | undefined; previousMerge: CellMergeSize | undefined }} CellMergeChange */
 /** @typedef {{ x: number; y: number; width: number; height: number }} CellMerge */
 /** @typedef {{ type: 'border'; x: number; y: number; edge: 'left' | 'top'; border: boolean; previousBorder: boolean }} CellBorderChange */
-/** @typedef {{ type: 'columnwidth'; x: number; width: number; previousWidth: number }} ColumnWidthChange */
 /** @typedef {CellValueChange | CellFormattingChange | CellMergeChange | CellBorderChange} CellChange */
-/** @typedef {CellChange | ColumnWidthChange} WorksheetChange */
+/** @typedef {CellChange} WorksheetChange */
 /** @typedef {CellValue | null | undefined} CellInput */
 /** @typedef {{ undo(): WorksheetRedo }} WorksheetUndo */
 /** @typedef {{ redo(): WorksheetUndo }} WorksheetRedo */
@@ -23,7 +22,6 @@ import { COLUMN_COUNT, COLUMN_WIDTH, ROW_COUNT } from './constants.js';
 /**
  * Editing functions, only usable inside the `edit()` callback.
  * @typedef {{
- *   setColumnWidth(x: number, width: number): void;
  *   setValue(x: number, y: number, valueOrUpdater: CellInput | CellUpdater): void;
  *   setValues(valuesOrUpdater: CellInput[][] | CellUpdater, x?: number, y?: number, width?: number, height?: number): void;
  *   setFormattings(formattingsOrUpdater: FormattingInput[][] | FormattingUpdater, x?: number, y?: number, width?: number, height?: number): void;
@@ -69,11 +67,11 @@ const DEFAULT_FORMATTING = Object.freeze({
  * ```
  *
  * When the transaction ends, a single `change` event (`WorksheetChangeEvent`) is dispatched with all changes, in order.
- * Each change has a `type` (`'value'`, `'formatting'`, `'border'`, `'merge'` or `'columnwidth'`) and carries both the
+ * Each change has a `type` (`'value'`, `'formatting'`, `'border'` or `'merge'`) and carries both the
  * new and previous values, so listeners (e.g. an undo history) know exactly what was modified. If the callback throws,
  * all of its changes are rolled back and no event is dispatched.
  *
- * Every transaction with cell changes gives the worksheet a new `version` (a GUID). `edit()` returns an object to undo
+ * Every transaction with changes gives the worksheet a new `version` (a GUID). `edit()` returns an object to undo
  * the transaction, only callable while the worksheet is still at the version right after it. Undoing restores the
  * previous version and returns an object to redo, only callable while the worksheet is at that previous version.
  */
@@ -107,7 +105,7 @@ export class Worksheet extends EventTarget {
   /** Changes of the current transaction, `undefined` outside of `edit()`. @type {{ changes: WorksheetChange[]; load: boolean } | undefined} */
   #transaction;
 
-  /** Changes on every transaction with cell changes, restored by undo and redo. */
+  /** Changes on every transaction with changes, restored by undo and redo. */
   #version = crypto.randomUUID();
 
   /** @param {{ columnCount?: number; rowCount?: number; columnWidth?: number }} [options] */
@@ -120,7 +118,7 @@ export class Worksheet extends EventTarget {
     this.#columnWidths = new Array(columnCount).fill(columnWidth);
   }
 
-  /** Version of the worksheet, a GUID replaced on every transaction with cell changes. */
+  /** Version of the worksheet, a GUID replaced on every transaction with changes. */
   get version() {
     return this.#version;
   }
@@ -150,12 +148,13 @@ export class Worksheet extends EventTarget {
   }
 
   /**
-   * Sets the width of a column in pixels. Records a `columnwidth` change if changed.
+   * Sets the width of a column in pixels. Not part of `edit()`: it is not undoable and does not change the `version`.
+   * Dispatches a `columnwidthchange` event (`CustomEvent` with `detail` of `{ x, width, previousWidth }`) if changed.
    *
    * @param {number} x
    * @param {number} width
    */
-  #setColumnWidth(x, width) {
+  setColumnWidth(x, width) {
     this.#assertCell(x, 0);
 
     if (!Number.isFinite(width) || width < 0) {
@@ -167,7 +166,7 @@ export class Worksheet extends EventTarget {
     const previousWidth = this.#columnWidths[x];
 
     this.#columnWidths[x] = width;
-    this.#record({ type: 'columnwidth', x, width, previousWidth });
+    this.dispatchEvent(new CustomEvent('columnwidthchange', { detail: { x, width, previousWidth } }));
   }
 
   /**
@@ -814,7 +813,7 @@ export class Worksheet extends EventTarget {
    * If the callback throws, all of its changes are rolled back, no event is dispatched, and the error is rethrown.
    * Calling `edit()` inside a transaction joins it, the returned object cannot undo it separately.
    *
-   * The returned `undo()` reverts the cell changes of the transaction (column widths are not reverted) and restores the
+   * The returned `undo()` reverts the changes of the transaction and restores the
    * version before it. It throws if the worksheet is not at the version right after the transaction.
    *
    * @param {(edit: WorksheetEdit) => void} callback
@@ -825,7 +824,6 @@ export class Worksheet extends EventTarget {
 
     /** @type {Record<keyof WorksheetEdit, Function>} */
     const functions = {
-      setColumnWidth: this.#setColumnWidth,
       setValue: this.#setValue,
       setValues: this.#setValues,
       setFormattings: this.#setFormattings,
@@ -879,20 +877,20 @@ export class Worksheet extends EventTarget {
       this.#transaction = undefined;
     }
 
-    const cellChanges = /** @type {CellChange[]} */ (transaction.changes.filter(({ type }) => type !== 'columnwidth'));
+    const { changes } = transaction;
     const previousVersion = this.#version;
-    const version = cellChanges.length ? crypto.randomUUID() : previousVersion;
+    const version = changes.length ? crypto.randomUUID() : previousVersion;
 
     this.#version = version;
 
-    const undo = this.#createUndo(cellChanges, previousVersion, version);
+    const undo = this.#createUndo(changes, previousVersion, version);
 
-    transaction.changes.length &&
+    changes.length &&
       this.dispatchEvent(
         new WorksheetChangeEvent('change', {
-          changes: transaction.changes,
+          changes,
           load: transaction.load,
-          undo: cellChanges.length ? undo : undefined,
+          undo,
           worksheet: this
         })
       );
@@ -972,9 +970,7 @@ export class Worksheet extends EventTarget {
    */
   #rollback(changes) {
     for (const change of [...changes].reverse()) {
-      if (change.type === 'columnwidth') {
-        this.#columnWidths[change.x] = change.previousWidth;
-      } else if (change.type === 'border') {
+      if (change.type === 'border') {
         this.#setStoredEdge(change.x, change.y, change.edge, change.previousBorder);
       } else if (change.type === 'merge') {
         this.#setMerge(change.x, change.y, change.previousMerge);
