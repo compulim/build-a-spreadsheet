@@ -34,44 +34,81 @@ To deploy, publish the repository root (e.g. enable GitHub Pages for the branch)
 
 ```js
 import { Workbook } from './src/workbook/Workbook.js';
-import { Worksheet } from './src/workbook/Worksheet.js';
+import { Worksheet } from './src/worksheet/Worksheet.js';
 
 const workbook = new Workbook(); // EventTarget
 const sheet = workbook.addWorksheet('Data'); // Worksheet, also an EventTarget
 
-workbook.addEventListener('cellchange', ({ worksheet, x, y, value, previousValue }) => {
-  console.log(workbook.getWorksheetName(worksheet), x, y, previousValue, '→', value);
+// One `change` event per transaction, with all changes in order.
+workbook.addEventListener('change', ({ worksheet, changes }) => {
+  for (const change of changes) {
+    change.type === 'value' &&
+      console.log(workbook.getWorksheetName(worksheet), change.x, change.y, change.previousValue, '→', change.value);
+  }
 });
 
-sheet.setValue(0, 0, 'Name'); // setValue(x: number, y: number, value: boolean | number | string), zero-based
-sheet.setValue(1, 0, 42);
-sheet.setValue(2, 0, true);
+// All modifications are made through the `edit` object, which is only usable inside the callback.
+sheet.edit(edit => {
+  edit.setValue(0, 0, 'Name'); // setValue(x: number, y: number, value: boolean | number | string), zero-based
+  edit.setValue(1, 0, 42);
+  edit.setValue(2, 0, true);
+});
 sheet.getValues(0, 0, 3, 1); // [['Name', 42, true]] — getValues(x, y, width, height), empty cells are ''
-sheet.setValues([['', '']], 1, 0); // Clears B1:C1
-sheet.undo(); // true, B1:C1 restored; returns false when there is nothing to undo
-sheet.setColumnWidth(0, 150);
+sheet.edit(edit => edit.setValues([['', '']], 1, 0)); // Clears B1:C1
+sheet.edit(edit => edit.setColumnWidth(0, 150));
 
 sheet.toCSV(); // 'Name,42,TRUE\r\n'
-workbook.addWorksheet('Imported', Worksheet.fromCSV('a,1\r\n'));
+workbook.addWorksheet('Imported').edit(edit => edit.loadCSV('a,1\r\n'));
 
 const zip = await workbook.toZip(); // Uint8Array, one "<sheet name>.csv" per worksheet
 const loaded = await Workbook.fromZip(zip);
 ```
 
+In a browser where `<compulim-worksheet>` ([`src/worksheet/WorksheetElement.js`](src/worksheet/WorksheetElement.js)) is defined, the workbook instantiates one element per worksheet. The element renders the grid, handles user interactions, and wholly owns the worksheet. Its public members are the read-only `worksheet` property, `selection`, `undo()`, `redo()`, `canUndo` and `canRedo`:
+
+```js
+import './src/worksheet/WorksheetElement.js';
+
+const worksheet = workbook.addWorksheet('Hello');
+const element = workbook.getWorksheetElement(worksheet); // <compulim-worksheet>, element.worksheet === worksheet
+
+element.setAttribute('locked-row-count', '1'); // Number of lockable rows, can be changed at any time
+element.setAttribute('locked-column-count', '1'); // Number of lockable columns
+document.body.append(element);
+element.toggleAttribute('locked', true); // Locks row 1
+worksheet.edit(edit => edit.setValue(0, 1, 'Hello')); // The grid updates
+```
+
+The element keeps the undo history: it subscribes to the change events of its worksheet (which carry the new and previous values) and remembers each modification in a stack, one step per `edit()` transaction (column widths are not recorded). The history logic lives in [`src/worksheet/WorksheetHistory.js`](src/worksheet/WorksheetHistory.js), which has no DOM dependency. The selection is an immutable [`WorksheetSelection`](src/worksheet/WorksheetSelection.js):
+
+```js
+import { WorksheetSelection } from './src/worksheet/WorksheetSelection.js';
+
+element.undo(); // true, reverted and selected the changed cells; false if nothing to undo
+element.redo();
+element.canUndo; // Re-check `canUndo` / `canRedo` on the element's `historychange` event
+
+element.selection; // WorksheetSelection { activeCell: { column, row }, range: { left, top, right, bottom } }
+element.selection = new WorksheetSelection({ column: 0, row: 0 }, { left: 0, top: 0, right: 2, bottom: 1 }); // Selects A1:C2
+```
+
 | Member | Description |
 | --- | --- |
-| `Worksheet#setValue(x, y, valueOrUpdater)` | Sets a cell (zero-based), or updates it with `(value, x, y) => nextValue`. Strings are trimmed. Blank strings, `null` or `undefined` clear it. Throws `RangeError` / `TypeError` on invalid input. |
+| `Worksheet#edit(callback)` | Runs `callback(edit)` as a transaction and returns its result. `edit` has all editing functions below and is only usable inside the callback. A nested `edit()` joins the outer transaction. If the callback throws, all its changes are rolled back. Otherwise, a single `change` event is dispatched if anything changed. |
+| `edit.setValue(x, y, valueOrUpdater)` | Sets a cell (zero-based), or updates it with `(value, x, y) => nextValue`. Strings are trimmed. Blank strings, `null` or `undefined` clear it. Throws `RangeError` / `TypeError` on invalid input. |
+| `edit.setValues(values, x?, y?)` / `edit.setValues(updater, x, y, width, height)` | Sets a block of values (use `''` to clear), or updates every cell of a range with `(value, x, y) => nextValue`. Values outside of the sheet are ignored. |
+| `edit.setFormattings(...)` / `edit.setBorder(range, edges, value?)` / `edit.mergeCells(x, y, width, height?)` / `edit.unmergeCells(x, y)` | Formatting, borders and merged cells. |
+| `edit.setColumnWidth(x, width)` | Column width in pixels. |
+| `edit.loadCSV(text)` | Loads CSV, the `change` event has `load: true`, which clears undo history. |
 | `Worksheet#getValue(x, y)` | Returns a cell value, `undefined` if empty. |
 | `Worksheet#getValues(x, y, width, height)` | Returns a 2D array (`values[y][x]`) of a range. |
-| `Worksheet#setValues(values, x?, y?)` / `Worksheet#setValues(updater, x, y, width, height)` | Sets a block of values (use `''` to clear), or updates every cell of a range with `(value, x, y) => nextValue`. Values outside of the sheet are ignored. |
-| `Worksheet#getColumnWidth(x)` / `Worksheet#setColumnWidth(x, width)` | Column widths in pixels, dispatches `columnwidthchange`. |
-| `Worksheet#undo()` / `Worksheet#redo()` | Undo/redo cell changes, returns `false` at the end of the stack. Synchronous changes are grouped. |
+| `Worksheet#getColumnWidth(x)` | Column width in pixels. |
 | `Worksheet#toCSV()` / `Worksheet.fromCSV(text)` | CSV serialization. |
-| `Workbook#addWorksheet(name?, worksheet?, index?)` / `Workbook#removeWorksheet(worksheetOrIndex)` | Manage up to 50 sheets. |
+| `Workbook#addWorksheet(name?, index?)` / `Workbook#getWorksheetElement(worksheet)` / `Workbook#removeWorksheet(worksheetOrIndex)` | Manage up to 50 sheets. |
 | `Workbook#getWorksheetName(worksheet)` / `Workbook#renameWorksheet(worksheet, name)` | Sheet names are owned by the workbook. |
 | `Workbook#worksheets` / `Workbook#getWorksheet(nameOrIndex)` | Access sheets. |
 | `Workbook#toZip()` / `Workbook.fromZip(data)` | ZIP of CSV files. |
-| `cellchange` event | Dispatched by `Worksheet` and re-dispatched by `Workbook` (`CellChangeEvent`). |
+| `change` event | Dispatched by `Worksheet` once per transaction and re-dispatched by `Workbook` (`WorksheetChangeEvent`, with `worksheet`, `load` and `changes`). Each change has a `type` (`'value'`, `'formatting'`, `'border'`, `'merge'` or `'columnwidth'`) with the new and previous value. |
 | `worksheetadd` / `worksheetremove` / `worksheetrename` events | Dispatched by `Workbook` (`WorksheetEvent`). |
 
 In the browser console, the running app is available as `app.workbook` and `app.grid`.

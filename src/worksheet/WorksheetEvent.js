@@ -1,4 +1,4 @@
-/** @typedef {import('../Worksheet.js').Worksheet} Worksheet */
+/** @typedef {import('./Worksheet.js').Worksheet} Worksheet */
 
 export class WorksheetEvent extends Event {
   /**

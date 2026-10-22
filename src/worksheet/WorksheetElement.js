@@ -1,15 +1,16 @@
-import { calculate } from './calculator.js';
-import { formatValue, inferValue, parseTSV, stringifyTSV } from './csv.js';
-import { getHighlight } from './highlights.js';
-import { formatDisplayValue } from './numberFormats.js';
-import { getColumnName } from './workbook/getColumnName.js';
+import { calculate } from '../calculator.js';
+import { formatValue, inferValue, parseTSV, stringifyTSV } from '../csv.js';
+import { getHighlight } from '../highlights.js';
+import { formatDisplayValue } from '../numberFormats.js';
+import { getColumnName } from './getColumnName.js';
+import { Worksheet } from './Worksheet.js';
+import { WorksheetHistory } from './WorksheetHistory.js';
+import { WorksheetSelection } from './WorksheetSelection.js';
 
 /**
- * @typedef {import('./workbook/Worksheet.js').Worksheet} Worksheet
- * @typedef {import('./workbook/Worksheet.js').CellValue} CellValue
- * @typedef {{ column: number; row: number }} CellPosition
- * @typedef {{ left: number; top: number; right: number; bottom: number }} CellRange
- * @typedef {{ anchor: CellPosition; focus: CellPosition; scrollLeft: number; scrollTop: number }} ViewState
+ * @typedef {import('./Worksheet.js').CellValue} CellValue
+ * @typedef {{ readonly column: number; readonly row: number }} CellPosition
+ * @typedef {{ readonly left: number; readonly top: number; readonly right: number; readonly bottom: number }} CellRange
  */
 
 /**
@@ -103,7 +104,7 @@ function createElement(tagName, className) {
  * Returns formattings embedded by this app in clipboard HTML, or `undefined` if the HTML is not from this app.
  *
  * @param {string} html
- * @returns {Partial<import('./workbook/Worksheet.js').CellFormatting>[][] | undefined}
+ * @returns {Partial<import('./Worksheet.js').CellFormatting>[][] | undefined}
  */
 function parseClipboardFormattings(html) {
   if (!html) {
@@ -132,31 +133,70 @@ function escapeHTML(text) {
 }
 
 /**
- * Virtualized spreadsheet grid. Only the visible rows (plus a few extra) are in the DOM, while the scrolling itself is
- * handled by the browser using a native scrollbar on a container sized to the full worksheet.
+ * @param {WorksheetSelection} selection
+ * @param {CellPosition} activeCell
+ * @param {CellRange} range
+ * @returns {boolean}
  */
-export class SpreadsheetGrid extends EventTarget {
-  /** @type {Worksheet | undefined} */
-  #worksheet;
+function isSameSelection({ activeCell, range }, { column, row }, { left, top, right, bottom }) {
+  return (
+    activeCell.column === column &&
+    activeCell.row === row &&
+    range.left === left &&
+    range.top === top &&
+    range.right === right &&
+    range.bottom === bottom
+  );
+}
 
-  /** @type {WeakMap<Worksheet, ViewState>} */
-  #viewStates = new WeakMap();
+/**
+ * `<compulim-worksheet>`, a virtualized spreadsheet grid showing the `Worksheet` it owns. Only the visible rows (plus a
+ * few extra) are in the DOM, while the scrolling itself is handled by the browser using a native scrollbar on the element
+ * sized to the full worksheet.
+ *
+ * Public members:
+ * - `worksheet`: a newly constructed `Worksheet` owned by the element.
+ * - `selection`: the `WorksheetSelection`, set it to select cells.
+ * - `undo()` / `redo()` and `canUndo` / `canRedo`: the undo history of changes made to the worksheet.
+ *
+ * Attributes:
+ * - `locked`: lockable rows and columns are read-only and frozen.
+ * - `locked-column-count` and `locked-row-count`: number of lockable leading columns and rows, defaults to 0.
+ *
+ * Events: `selectionchange`, `historychange` (undo/redo availability may have changed) and `lockedit` (`CustomEvent`
+ * with the `{ column, row }` of the locked cell).
+ */
+export class WorksheetElement extends HTMLElement {
+  static observedAttributes = ['locked', 'locked-column-count', 'locked-row-count'];
 
-  /** Active cell, where editing happens. @type {CellPosition} */
-  #anchor = { column: 0, row: 0 };
+  /** @readonly */
+  #worksheet = new Worksheet();
+
+  /** Undo history, built by subscribing to the worksheet. @readonly */
+  #history = new WorksheetHistory(this.#worksheet);
+
+  #initialized = false;
+
+  #columnWidth = 0;
+  #rowHeight = 0;
+  #headerHeight = 0;
+  #rowHeaderWidth = 0;
+  #columnCount = 0;
+  #rowCount = 0;
+
   /** Cell the active cell was entered from, used when moving out of a merged cell. @type {CellPosition} */
   #preferred = { column: 0, row: 0 };
 
-  /** The other end of the selected range. @type {CellPosition} */
+  /** Cell the selection was extended to (before expanding to merged cells). @type {CellPosition} */
   #focus = { column: 0, row: 0 };
 
   #locked = false;
 
   /** Number of leading columns that are read-only and frozen while locked. */
-  #lockedColumnCount;
+  #lockedColumnCount = 0;
 
   /** Number of leading rows that are read-only and frozen while locked. */
-  #lockedRowCount;
+  #lockedRowCount = 0;
 
   /** Copies of the locked rows, shown in a sticky pane while locked. @type {{ header: HTMLElement; cells: HTMLElement[]; row: number }[]} */
   #frozenRows = [];
@@ -186,42 +226,100 @@ export class SpreadsheetGrid extends EventTarget {
   /** Columns being resized and where the drag started. @type {{ columns: number[]; startX: number; startWidth: number } | undefined} */
   #resizing;
 
+  connectedCallback() {
+    if (!this.#initialized) {
+      this.#initialized = true;
+      this.#init();
+    }
+  }
+
   /**
-   * @param {HTMLElement} container
-   * @param {{
-   *   columnWidth?: number;
-   *   rowHeight?: number;
-   *   rowHeaderWidth?: number;
-   *   columnCount?: number;
-   *   rowCount?: number;
-   *   lockedColumnCount?: number;
-   *   lockedRowCount?: number;
-   * }} [options]
+   * @param {string} name
+   * @param {string | null} _oldValue
+   * @param {string | null} value
    */
-  constructor(
-    container,
-    {
-      columnWidth = 100,
-      rowHeight = 24,
-      rowHeaderWidth = 56,
-      columnCount = 50,
-      rowCount = 10_000,
-      lockedColumnCount = 0,
-      lockedRowCount = 0
-    } = {}
-  ) {
-    super();
+  attributeChangedCallback(name, _oldValue, value) {
+    if (!this.#initialized) {
+      return;
+    }
 
-    this.columnWidth = columnWidth;
-    this.rowHeight = rowHeight;
-    this.headerHeight = rowHeight;
-    this.rowHeaderWidth = rowHeaderWidth;
-    this.columnCount = columnCount;
-    this.rowCount = rowCount;
-    this.#lockedColumnCount = Math.max(0, Math.min(columnCount, lockedColumnCount));
-    this.#lockedRowCount = Math.max(0, Math.min(rowCount, lockedRowCount));
+    if (name === 'locked') {
+      this.#setLocked(value !== null);
+    } else {
+      this.#updateLockedCounts();
+    }
+  }
 
-    const scroller = (this.element = createElement('div', 'grid'));
+  /** Reads `locked-column-count` and `locked-row-count`, and updates the lockable columns and rows. */
+  #updateLockedCounts() {
+    const lockedColumnCount = Math.max(
+      0,
+      Math.min(this.#columnCount, Math.floor(Number(this.getAttribute('locked-column-count'))) || 0)
+    );
+    const lockedRowCount = Math.max(
+      0,
+      Math.min(this.#rowCount, Math.floor(Number(this.getAttribute('locked-row-count'))) || 0)
+    );
+
+    if (lockedColumnCount === this.#lockedColumnCount && lockedRowCount === this.#lockedRowCount) {
+      return;
+    }
+
+    this.#lockedColumnCount = lockedColumnCount;
+    this.#lockedRowCount = lockedRowCount;
+    this.style.setProperty('--locked-row-count', String(lockedRowCount));
+
+    for (let column = 0; column < this.#columnCount; column++) {
+      for (const element of [this.#columnHeaders[column], ...this.#pool.map(({ cells }) => cells[column])]) {
+        this.#initLockableColumn(element, column);
+      }
+    }
+
+    for (const slot of this.#pool) {
+      slot.element.classList.toggle('grid__row--lockable', slot.row >= 0 && slot.row < lockedRowCount);
+    }
+
+    // Recreate the copies of the locked rows shown in the sticky pane.
+    this.#frozenRows = [];
+
+    for (let row = 0; row < lockedRowCount; row++) {
+      const slot = this.#createRow();
+
+      slot.element.classList.add('grid__row--lockable');
+      slot.element.setAttribute('aria-hidden', 'true');
+      slot.header.textContent = String(row + 1);
+      slot.row = row;
+      this.#frozenRows.push(slot);
+      this.#renderRowSelection(slot);
+    }
+
+    this.#frozen.replaceChildren(...this.#frozenRows.map(({ element }) => element));
+
+    if (this.#locked && this.#editMode && !this.#isEditable(this.#selectionObject.activeCell.column, this.#selectionObject.activeCell.row)) {
+      this.#cancelEdit();
+    }
+
+    this.#updateColumnLayout();
+    this.#contentDirty = true;
+    this.#scheduleRender();
+  }
+
+  #init() {
+    const columnWidth = 100;
+    const rowHeight = 24;
+    const rowHeaderWidth = 56;
+    const { columnCount, rowCount } = this.#worksheet;
+
+    this.#columnWidth = columnWidth;
+    this.#rowHeight = rowHeight;
+    this.#headerHeight = rowHeight;
+    this.#rowHeaderWidth = rowHeaderWidth;
+    this.#columnCount = columnCount;
+    this.#rowCount = rowCount;
+
+    const scroller = this;
+
+    scroller.classList.add('grid');
 
     scroller.tabIndex = 0;
     scroller.setAttribute('role', 'grid');
@@ -230,7 +328,7 @@ export class SpreadsheetGrid extends EventTarget {
     scroller.style.setProperty('--column-width', `${columnWidth}px`);
     scroller.style.setProperty('--row-height', `${rowHeight}px`);
     scroller.style.setProperty('--row-header-width', `${rowHeaderWidth}px`);
-    scroller.style.setProperty('--locked-row-count', String(this.#lockedRowCount));
+    scroller.style.setProperty('--locked-row-count', '0');
 
     const content = createElement('div', 'grid__content');
 
@@ -255,18 +353,7 @@ export class SpreadsheetGrid extends EventTarget {
 
     // Locked rows are frozen by showing copies of them in a sticky pane below the header, while the body is shifted up
     // underneath it so all other coordinates stay the same.
-    const frozen = createElement('div', 'grid__frozen');
-
-    for (let row = 0; row < this.#lockedRowCount; row++) {
-      const slot = this.#createRow();
-
-      slot.element.classList.add('grid__row--lockable');
-      slot.element.setAttribute('aria-hidden', 'true');
-      slot.header.textContent = String(row + 1);
-      slot.row = row;
-      frozen.append(slot.element);
-      this.#frozenRows.push(slot);
-    }
+    const frozen = (this.#frozen = createElement('div', 'grid__frozen'));
 
     const body = (this.#body = createElement('div', 'grid__body'));
 
@@ -285,7 +372,6 @@ export class SpreadsheetGrid extends EventTarget {
     body.append(this.#rangeOverlay, this.#activeOverlay, editor);
     content.append(header, frozen, body);
     scroller.append(content);
-    container.append(scroller);
 
     // Render synchronously in the scroll event (fired once per frame), so new rows are ready before the frame is painted.
     scroller.addEventListener('scroll', () => this.#handleScroll(), { passive: true });
@@ -306,15 +392,20 @@ export class SpreadsheetGrid extends EventTarget {
     scroller.addEventListener('paste', event => this.#handlePaste(event));
 
     editor.addEventListener('keydown', event => this.#handleEditorKeyDown(event));
-    editor.addEventListener('blur', () => this.#editMode && this.commitEdit());
+    editor.addEventListener('blur', () => this.#editMode && this.#commitEdit());
 
     new ResizeObserver(() => this.#scheduleRender()).observe(scroller);
 
-    this.#updateColumnLayout();
+    this.#attachWorksheet();
+    this.#updateLockedCounts();
+    this.#setLocked(this.hasAttribute('locked'));
   }
 
   /** @type {HTMLElement} */
   #content;
+
+  /** Sticky pane showing copies of the locked rows. @type {HTMLElement} */
+  #frozen;
 
   /** @type {HTMLElement} */
   #body;
@@ -328,41 +419,51 @@ export class SpreadsheetGrid extends EventTarget {
   /** @type {HTMLInputElement} */
   #editor;
 
-  /** @param {Event} event */
-  #handleCellChange = event => {
-    const { x, y: row } = /** @type {import('./workbook/private/CellChangeEvent.js').CellChangeEvent} */ (event);
-    const merge = row < this.#firstRow ? this.#worksheet?.getMerges(x, row, 1, 1)[0] : undefined;
+  /**
+   * Re-renders what a transaction changed.
+   *
+   * @param {Event} event
+   */
+  #handleChange = event => {
+    const { changes } = /** @type {import('./WorksheetChangeEvent.js').WorksheetChangeEvent} */ (event);
+    let anchorChanged = false;
+    let mergeChanged = false;
 
-    // Only re-render if the changed cell is currently rendered (or a merged cell extending into the rendered rows).
-    // Multiple changes are batched into a single frame.
-    if (
-      (row >= this.#firstRow && row < this.#firstRow + this.#pool.length) ||
-      row < this.#lockedRowCount ||
-      (merge && merge.y + merge.height > this.#firstRow)
-    ) {
-      this.#contentDirty = true;
-      this.#scheduleRender();
+    for (const change of changes) {
+      if (change.type === 'columnwidth') {
+        this.#applyColumnWidth(change.x);
+        // Merged cells span multiple columns.
+        this.#contentDirty = true;
+      } else if (change.type === 'value') {
+        const { x, y: row } = change;
+        const merge = row < this.#firstRow ? this.#worksheet.getMerges(x, row, 1, 1)[0] : undefined;
+
+        // Only re-render if the changed cell is currently rendered (or a merged cell extending into the rendered rows).
+        if (
+          (row >= this.#firstRow && row < this.#firstRow + this.#pool.length) ||
+          row < this.#lockedRowCount ||
+          (merge && merge.y + merge.height > this.#firstRow)
+        ) {
+          this.#contentDirty = true;
+        }
+
+        anchorChanged ||= row === this.#selectionObject.activeCell.row && x === this.#selectionObject.activeCell.column;
+      } else {
+        mergeChanged ||= change.type === 'merge';
+        this.#contentDirty = true;
+      }
     }
 
-    if (row === this.#anchor.row && x === this.#anchor.column) {
-      this.#dispatchSelectionChange();
+    changes.some(({ type }) => type === 'columnwidth') && this.#updateColumnLayout();
+    this.#scheduleRender();
+
+    if (mergeChanged) {
+      this.#setSelection(this.#selectionObject.activeCell, this.#focus);
+      this.#updateSelection();
     }
-  };
 
-  /** @param {Event} event */
-  #handleColumnWidthChange = event => {
-    this.#applyColumnWidth(/** @type {Event & { x: number }} */ (event).x);
-    this.#updateColumnLayout();
-    // Merged cells span multiple columns.
-    this.#contentDirty = true;
-    this.#scheduleRender();
-  };
-
-  #handleMergeChange = () => {
-    this.#contentDirty = true;
-    this.#scheduleRender();
-    this.#anchor = this.#toMergeStart(this.#anchor);
-    this.#updateSelection();
+    anchorChanged && this.#dispatchSelectionChange();
+    this.#scheduleHistoryChange();
   };
 
   /**
@@ -372,7 +473,7 @@ export class SpreadsheetGrid extends EventTarget {
    * @returns {CellPosition}
    */
   #toMergeStart(cell) {
-    const merge = this.#worksheet?.getMerges(cell.column, cell.row, 1, 1)[0];
+    const merge = this.#worksheet.getMerges(cell.column, cell.row, 1, 1)[0];
 
     return merge ? { column: merge.x, row: merge.y } : cell;
   }
@@ -384,94 +485,50 @@ export class SpreadsheetGrid extends EventTarget {
    * @returns {CellPosition}
    */
   #toMergeEnd(cell) {
-    const merge = this.#worksheet?.getMerges(cell.column, cell.row, 1, 1)[0];
+    const merge = this.#worksheet.getMerges(cell.column, cell.row, 1, 1)[0];
 
     return merge ? { column: merge.x + merge.width - 1, row: merge.y + merge.height - 1 } : cell;
   }
 
-  #handleBorderChange = () => {
-    this.#contentDirty = true;
-    this.#scheduleRender();
-  };
-
-  /** @returns {Worksheet | undefined} */
+  /** @returns {Worksheet} */
   get worksheet() {
     return this.#worksheet;
   }
 
-  /**
-   * Shows a worksheet. Selection and scroll position are remembered per worksheet.
-   *
-   * @param {Worksheet | undefined} worksheet
-   */
-  setWorksheet(worksheet) {
-    if (worksheet === this.#worksheet) {
-      return;
-    }
+  #attachWorksheet() {
+    const worksheet = this.#worksheet;
 
-    this.#editMode && this.commitEdit();
+    // Runs after the history recorded the change, so `historychange` reflects it.
+    worksheet.addEventListener('change', this.#handleChange);
 
-    if (this.#worksheet) {
-      this.#viewStates.set(this.#worksheet, {
-        anchor: this.#anchor,
-        focus: this.#focus,
-        scrollLeft: this.element.scrollLeft,
-        scrollTop: this.element.scrollTop
-      });
-
-      this.#worksheet.removeEventListener('cellchange', this.#handleCellChange);
-      this.#worksheet.removeEventListener('borderchange', this.#handleBorderChange);
-      this.#worksheet.removeEventListener('formattingchange', this.#handleBorderChange);
-      this.#worksheet.removeEventListener('columnwidthchange', this.#handleColumnWidthChange);
-      this.#worksheet.removeEventListener('mergechange', this.#handleMergeChange);
-    }
-
-    this.#worksheet = worksheet;
-
-    const state = worksheet && this.#viewStates.get(worksheet);
-
-    this.#anchor = state?.anchor || { column: 0, row: 0 };
-    this.#focus = state?.focus || { column: 0, row: 0 };
-
-    worksheet?.addEventListener('cellchange', this.#handleCellChange);
-    worksheet?.addEventListener('borderchange', this.#handleBorderChange);
-    worksheet?.addEventListener('formattingchange', this.#handleBorderChange);
-    worksheet?.addEventListener('columnwidthchange', this.#handleColumnWidthChange);
-    worksheet?.addEventListener('mergechange', this.#handleMergeChange);
-
-    for (let column = 0; column < this.columnCount; column++) {
+    for (let column = 0; column < this.#columnCount; column++) {
       this.#applyColumnWidth(column);
     }
 
     this.#updateColumnLayout();
-
-    this.#clearScrollTarget();
-    this.element.scrollLeft = state?.scrollLeft || 0;
-    this.element.scrollTop = state?.scrollTop || 0;
 
     this.#contentDirty = true;
     this.#render();
     this.#updateSelection();
   }
 
-  /** Whether lockable rows and columns are currently locked (read-only). */
-  get locked() {
-    return this.#locked;
-  }
-
-  set locked(locked) {
-    locked = !!locked;
+  /**
+   * Sets whether lockable rows and columns are locked (read-only).
+   *
+   * @param {boolean} locked
+   */
+  #setLocked(locked) {
 
     if (locked === this.#locked) {
       return;
     }
 
     this.#locked = locked;
-    this.element.classList.toggle('grid--locked', locked);
-    locked && this.element.classList.remove('grid--resize-hover');
+    this.classList.toggle('grid--locked', locked);
+    locked && this.classList.remove('grid--resize-hover');
 
-    if (locked && this.#editMode && !this.isEditable(this.#anchor.column, this.#anchor.row)) {
-      this.cancelEdit();
+    if (locked && this.#editMode && !this.#isEditable(this.#selectionObject.activeCell.column, this.#selectionObject.activeCell.row)) {
+      this.#cancelEdit();
     }
   }
 
@@ -481,20 +538,87 @@ export class SpreadsheetGrid extends EventTarget {
    * @param {number} column
    * @param {number} row
    */
-  isEditable(column, row) {
+  #isEditable(column, row) {
     return (
-      !!this.#worksheet && !(this.#locked && (column < this.#lockedColumnCount || row < this.#lockedRowCount))
+      !(this.#locked && (column < this.#lockedColumnCount || row < this.#lockedRowCount))
     );
   }
 
-  /** @returns {CellPosition} */
-  get activeCell() {
-    return { ...this.#anchor };
+  /**
+   * Current selection, the source of truth for the active cell and the selected range.
+   *
+   * @type {WorksheetSelection}
+   */
+  #selectionObject = new WorksheetSelection({ column: 0, row: 0 });
+
+  /**
+   * Updates `#selectionObject` from an anchor and a focus. The anchor snaps to the start of its merged cell and the
+   * range expands to cover merged cells. Keeps the current instance if nothing changed.
+   *
+   * @param {CellPosition} anchor
+   * @param {CellPosition} [focus]
+   */
+  #setSelection(anchor, focus = anchor) {
+    const activeCell = this.#toMergeStart(this.#clamp(anchor));
+
+    this.#focus = this.#clamp(focus);
+
+    const range = this.#rangeOf(activeCell, this.#focus);
+
+    if (!isSameSelection(this.#selectionObject, activeCell, range)) {
+      this.#selectionObject = new WorksheetSelection(activeCell, range);
+    }
   }
 
-  /** @returns {CellRange} */
+  /**
+   * Returns the same instance until the selection changes.
+   *
+   * @returns {WorksheetSelection}
+   */
   get selection() {
-    return this.#rangeOf(this.#anchor, this.#focus);
+    return this.#selectionObject;
+  }
+
+  /**
+   * Selects cells. The getter returns the very same instance, unless the selection was adjusted (e.g. clamped or
+   * expanded to cover merged cells).
+   *
+   * @param {WorksheetSelection} selection
+   */
+  set selection(selection) {
+    this.#select(selection.activeCell, selection.focus);
+
+    if (isSameSelection(this.#selectionObject, selection.activeCell, selection.range)) {
+      this.#selectionObject = selection;
+    }
+  }
+
+  /** Whether there are changes to undo. */
+  get canUndo() {
+    return this.#history.canUndo;
+  }
+
+  /** Whether there are undone changes to redo. */
+  get canRedo() {
+    return this.#history.canRedo;
+  }
+
+  /**
+   * Reverts the last transaction made to the worksheet and selects the changed cells.
+   *
+   * @returns {boolean} `false` if there is nothing to undo.
+   */
+  undo() {
+    return this.#undoOrRedo('undo');
+  }
+
+  /**
+   * Re-applies the last undone transaction and selects the changed cells.
+   *
+   * @returns {boolean} `false` if there is nothing to redo.
+   */
+  redo() {
+    return this.#undoOrRedo('redo');
   }
 
   /**
@@ -512,10 +636,10 @@ export class SpreadsheetGrid extends EventTarget {
 
     // The selection covers all merged cells partially selected. Expanding may cover more merged cells, so it repeats
     // until nothing changes.
-    for (let changed = !!this.#worksheet; changed; ) {
+    for (let changed = true; changed; ) {
       changed = false;
 
-      for (const { x, y, width, height } of this.#worksheet?.getMerges(left, top, right - left + 1, bottom - top + 1) || []) {
+      for (const { x, y, width, height } of this.#worksheet.getMerges(left, top, right - left + 1, bottom - top + 1)) {
         if (x < left || y < top || x + width - 1 > right || y + height - 1 > bottom) {
           left = Math.min(left, x);
           top = Math.min(top, y);
@@ -535,19 +659,14 @@ export class SpreadsheetGrid extends EventTarget {
    * @param {CellPosition} anchor
    * @param {CellPosition} [focus]
    */
-  select(anchor, focus = anchor) {
-    this.#editMode && this.commitEdit();
+  #select(anchor, focus = anchor) {
+    this.#editMode && this.#commitEdit();
 
-    this.#anchor = this.#toMergeStart(this.#clamp(anchor));
-    this.#focus = this.#clamp(focus);
+    this.#setSelection(anchor, focus);
     this.#preferred = this.#clamp(anchor);
 
     this.#updateSelection();
-    this.scrollIntoView(this.#focus);
-  }
-
-  focus() {
-    this.element.focus({ preventScroll: true });
+    this.#scrollIntoView(this.#focus);
   }
 
   /**
@@ -559,9 +678,12 @@ export class SpreadsheetGrid extends EventTarget {
    * @param {CellPosition} cell
    * @param {{ behavior?: 'auto' | 'instant' }} [options]
    */
-  scrollIntoView({ column, row }, { behavior = 'auto' } = {}) {
-    const { element, rowHeight, headerHeight, rowHeaderWidth } = this;
-    const columnWidth = this.getColumnWidth(column);
+  #scrollIntoView({ column, row }, { behavior = 'auto' } = {}) {
+    const element = this;
+    const rowHeight = this.#rowHeight;
+    const headerHeight = this.#headerHeight;
+    const rowHeaderWidth = this.#rowHeaderWidth;
+    const columnWidth = this.#getColumnWidth(column);
     const { clientWidth, clientHeight, scrollLeft, scrollTop } = element;
 
     // While a smooth scroll is in progress, continue from where it will end, so repeated key presses add up.
@@ -622,7 +744,7 @@ export class SpreadsheetGrid extends EventTarget {
    * is no scroll event for a while.
    */
   #armScrollEndFallback() {
-    if (!('onscrollend' in this.element)) {
+    if (!('onscrollend' in this)) {
       clearTimeout(this.#scrollEndTimeout);
       this.#scrollEndTimeout = setTimeout(() => (this.#scrollTarget = undefined), 150);
     }
@@ -634,7 +756,7 @@ export class SpreadsheetGrid extends EventTarget {
     const target = this.#scrollTarget;
 
     if (target) {
-      const { scrollLeft, scrollTop } = this.element;
+      const { scrollLeft, scrollTop } = this;
 
       if (Math.abs(scrollLeft - target.left) < 1 && Math.abs(scrollTop - target.top) < 1) {
         this.#clearScrollTarget();
@@ -658,7 +780,10 @@ export class SpreadsheetGrid extends EventTarget {
   }
 
   #render() {
-    const { element, rowHeight, headerHeight, rowCount } = this;
+    const element = this;
+    const rowHeight = this.#rowHeight;
+    const headerHeight = this.#headerHeight;
+    const rowCount = this.#rowCount;
     const visibleRows = Math.ceil(Math.max(0, element.clientHeight - headerHeight) / rowHeight) + 1;
     const poolSize = Math.min(rowCount, visibleRows + Math.max(MIN_OVERSCAN, visibleRows) * 2);
 
@@ -687,7 +812,7 @@ export class SpreadsheetGrid extends EventTarget {
     // Tall merged cells are drawn by their first rendered row, which changes with the first row.
     const forceContent =
       this.#contentDirty ||
-      (firstRow !== this.#firstRow && !!this.#worksheet?.getMerges().some(({ height }) => height > 1));
+      (firstRow !== this.#firstRow && this.#worksheet.getMerges().some(({ height }) => height > 1));
 
     this.#firstRow = firstRow;
 
@@ -723,12 +848,12 @@ export class SpreadsheetGrid extends EventTarget {
     header.setAttribute('role', 'rowheader');
     element.append(header);
 
-    for (let column = 0; column < this.columnCount; column++) {
+    for (let column = 0; column < this.#columnCount; column++) {
       const cell = createElement('div', 'grid__cell');
 
       cell.setAttribute('role', 'gridcell');
       cell.append(createElement('span', 'grid__cell-text'));
-      cell.style.width = `${this.getColumnWidth(column)}px`;
+      cell.style.width = `${this.#getColumnWidth(column)}px`;
       this.#initLockableColumn(cell, column);
       cells.push(cell);
       element.append(cell);
@@ -746,7 +871,7 @@ export class SpreadsheetGrid extends EventTarget {
     let offset = 0;
 
     for (let index = 0; index < column; index++) {
-      offset += this.getColumnWidth(index);
+      offset += this.#getColumnWidth(index);
     }
 
     return offset;
@@ -762,15 +887,15 @@ export class SpreadsheetGrid extends EventTarget {
       return -1;
     }
 
-    for (let column = 0, offset = 0; column < this.columnCount; column++) {
-      offset += this.getColumnWidth(column);
+    for (let column = 0, offset = 0; column < this.#columnCount; column++) {
+      offset += this.#getColumnWidth(column);
 
       if (x < offset) {
         return column;
       }
     }
 
-    return this.columnCount;
+    return this.#columnCount;
   }
 
   /**
@@ -778,10 +903,10 @@ export class SpreadsheetGrid extends EventTarget {
    *
    * @param {number} column
    */
-  getColumnWidth(column) {
-    return this.#worksheet && column >= 0 && column < this.columnCount
+  #getColumnWidth(column) {
+    return column >= 0 && column < this.#columnCount
       ? this.#worksheet.getColumnWidth(column)
-      : this.columnWidth;
+      : this.#columnWidth;
   }
 
   /**
@@ -790,9 +915,9 @@ export class SpreadsheetGrid extends EventTarget {
    * @param {number} column
    * @param {number} width
    */
-  setColumnWidth(column, width) {
-    if (this.#worksheet && column >= 0 && column < this.columnCount) {
-      this.#worksheet.setColumnWidth(column, Math.max(MIN_COLUMN_WIDTH, Math.round(width)));
+  #setColumnWidth(column, width) {
+    if (column >= 0 && column < this.#columnCount) {
+      this.#worksheet.edit(edit => edit.setColumnWidth(column, Math.max(MIN_COLUMN_WIDTH, Math.round(width))));
     }
   }
 
@@ -802,7 +927,7 @@ export class SpreadsheetGrid extends EventTarget {
    * @param {number} column
    */
   #applyColumnWidth(column) {
-    const style = `${this.getColumnWidth(column)}px`;
+    const style = `${this.#getColumnWidth(column)}px`;
 
     this.#columnHeaders[column].style.width = style;
 
@@ -816,10 +941,10 @@ export class SpreadsheetGrid extends EventTarget {
    *
    * @param {number[]} columns
    */
-  autoFitColumns(columns) {
+  #autoFitColumns(columns) {
     const width = Math.max(...columns.map(column => this.#measureColumn(column)));
 
-    columns.forEach(column => this.setColumnWidth(column, width));
+    columns.forEach(column => this.#setColumnWidth(column, width));
   }
 
   /**
@@ -827,8 +952,8 @@ export class SpreadsheetGrid extends EventTarget {
    *
    * @param {number} column
    */
-  autoFitColumn(column) {
-    this.autoFitColumns([column]);
+  #autoFitColumn(column) {
+    this.#autoFitColumns([column]);
   }
 
   /**
@@ -844,44 +969,42 @@ export class SpreadsheetGrid extends EventTarget {
     const extra = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) + 1;
 
     if (!context) {
-      return this.getColumnWidth(column);
+      return this.#getColumnWidth(column);
     }
 
     context.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
 
     let width = context.measureText(getColumnName(column)).width;
 
-    if (this.#worksheet) {
-      const formattings = this.#worksheet.getFormattings(column, 0, 1, this.rowCount);
-      const values = this.#worksheet.getValues(column, 0, 1, this.rowCount);
+    const formattings = this.#worksheet.getFormattings(column, 0, 1, this.#rowCount);
+    const values = this.#worksheet.getValues(column, 0, 1, this.#rowCount);
 
-      for (let row = 0; row < values.length; row++) {
-        const merge = this.#worksheet.getMerges(column, row, 1, 1)[0];
+    for (let row = 0; row < values.length; row++) {
+      const merge = this.#worksheet.getMerges(column, row, 1, 1)[0];
 
-        // Content of a merged cell is in its top-left cell, and spans all merged columns.
-        if (merge && row !== merge.y) {
-          continue;
+      // Content of a merged cell is in its top-left cell, and spans all merged columns.
+      if (merge && row !== merge.y) {
+        continue;
+      }
+
+      const value = merge ? this.#worksheet.getValue(merge.x, row) : values[row][0];
+      const format = (merge ? this.#worksheet.getFormattings(merge.x, row, 1, 1)[0][0] : formattings[row][0]).format;
+      let otherColumnsWidth = 0;
+
+      if (merge) {
+        for (let index = merge.x; index < merge.x + merge.width; index++) {
+          index !== column && (otherColumnsWidth += this.#getColumnWidth(index));
         }
+      }
 
-        const value = merge ? this.#worksheet.getValue(merge.x, row) : values[row][0];
-        const format = (merge ? this.#worksheet.getFormattings(merge.x, row, 1, 1)[0][0] : formattings[row][0]).format;
-        let otherColumnsWidth = 0;
+      const { text: formatted } = formatDisplayValue(value, format);
+      // Includes decorations added by CSS: currency sign (with a gap) and parentheses, or percent sign.
+      const text =
+        typeof value === 'number' && format === 'currency' ? `$ (${formatted})` : typeof value === 'number' && format === 'percent' ? `${formatted}%` : formatted;
 
-        if (merge) {
-          for (let index = merge.x; index < merge.x + merge.width; index++) {
-            index !== column && (otherColumnsWidth += this.getColumnWidth(index));
-          }
-        }
-
-        const { text: formatted } = formatDisplayValue(value, format);
-        // Includes decorations added by CSS: currency sign (with a gap) and parentheses, or percent sign.
-        const text =
-          typeof value === 'number' && format === 'currency' ? `$ (${formatted})` : typeof value === 'number' && format === 'percent' ? `${formatted}%` : formatted;
-
-        if (text) {
-          for (const line of text.split('\n')) {
-            width = Math.max(width, context.measureText(line).width - otherColumnsWidth);
-          }
+      if (text) {
+        for (const line of text.split('\n')) {
+          width = Math.max(width, context.measureText(line).width - otherColumnsWidth);
         }
       }
     }
@@ -894,10 +1017,10 @@ export class SpreadsheetGrid extends EventTarget {
 
   /** Updates positions which depend on column widths. */
   #updateColumnLayout() {
-    this.#content.style.width = `${this.rowHeaderWidth + this.#columnOffset(this.columnCount)}px`;
+    this.#content.style.width = `${this.#rowHeaderWidth + this.#columnOffset(this.#columnCount)}px`;
 
     for (let column = 0; column < this.#lockedColumnCount; column++) {
-      const left = `${this.rowHeaderWidth + this.#columnOffset(column)}px`;
+      const left = `${this.#rowHeaderWidth + this.#columnOffset(column)}px`;
 
       this.#columnHeaders[column].style.setProperty('--sticky-left', left);
 
@@ -917,10 +1040,15 @@ export class SpreadsheetGrid extends EventTarget {
    * @param {number} column
    */
   #initLockableColumn(element, column) {
-    if (column < this.#lockedColumnCount) {
-      element.classList.add('grid__lockable');
+    const lockable = column < this.#lockedColumnCount;
+
+    element.classList.toggle('grid__lockable', lockable);
+
+    if (lockable) {
       // Only applied while locked, otherwise it would offset relatively positioned cells (e.g. with borders).
-      element.style.setProperty('--sticky-left', `${this.rowHeaderWidth + this.#columnOffset(column)}px`);
+      element.style.setProperty('--sticky-left', `${this.#rowHeaderWidth + this.#columnOffset(column)}px`);
+    } else {
+      element.style.removeProperty('--sticky-left');
     }
   }
 
@@ -928,7 +1056,7 @@ export class SpreadsheetGrid extends EventTarget {
   #renderRowContent(slot) {
     const { cells, row } = slot;
     const worksheet = this.#worksheet;
-    const merges = (worksheet?.getMerges(0, row, this.columnCount, 1) || []).sort((a, b) => a.x - b.x);
+    const merges = worksheet.getMerges(0, row, this.#columnCount, 1).sort((a, b) => a.x - b.x);
     // Frozen rows are always rendered, other rows only from the first rendered row.
     const firstRenderedRow = this.#frozenRows.includes(slot) ? 0 : this.#firstRow;
     let mergeIndex = 0;
@@ -949,9 +1077,9 @@ export class SpreadsheetGrid extends EventTarget {
       // the room for it.
       const hidden = !!merge && column !== merge.x;
       const covered = !!merge && row !== Math.max(merge.y, firstRenderedRow);
-      const width = `${merge ? this.#columnOffset(lastColumn + 1) - this.#columnOffset(column) : this.getColumnWidth(column)}px`;
-      const height = merge && merge.height > 1 && !covered ? `${merge.height * this.rowHeight}px` : '';
-      const top = merge && row > merge.y && !covered ? `${(merge.y - row) * this.rowHeight}px` : '';
+      const width = `${merge ? this.#columnOffset(lastColumn + 1) - this.#columnOffset(column) : this.#getColumnWidth(column)}px`;
+      const height = merge && merge.height > 1 && !covered ? `${merge.height * this.#rowHeight}px` : '';
+      const top = merge && row > merge.y && !covered ? `${(merge.y - row) * this.#rowHeight}px` : '';
 
       if (cell.style.display !== (hidden ? 'none' : '')) {
         cell.style.display = hidden ? 'none' : '';
@@ -974,9 +1102,9 @@ export class SpreadsheetGrid extends EventTarget {
         cell.style.position = top ? 'relative' : '';
       }
 
-      const value = worksheet ? worksheet.getValue(x, y) : '';
+      const value = worksheet.getValue(x, y);
       const type = typeof value;
-      const formatting = worksheet?.getFormattings(x, y, 1, 1)[0][0];
+      const formatting = worksheet.getFormattings(x, y, 1, 1)[0][0];
       // Number formats only apply to numbers, decorations (e.g. currency sign) are added by CSS.
       const format = (type === 'number' && formatting?.format) || '';
       const { negative, text } = formatDisplayValue(value, formatting?.format);
@@ -1030,7 +1158,7 @@ export class SpreadsheetGrid extends EventTarget {
         color ? (cell.dataset.color = color) : delete cell.dataset.color;
       }
 
-      const shadow = worksheet ? this.#getBorderShadow(worksheet, x, y, lastColumn, lastRow) : '';
+      const shadow = this.#getBorderShadow(worksheet, x, y, lastColumn, lastRow);
 
       // Compare with the last set value, as the browser normalizes `style.boxShadow`.
       if ((cell.dataset.border || '') !== shadow) {
@@ -1038,7 +1166,7 @@ export class SpreadsheetGrid extends EventTarget {
         cell.style.boxShadow = shadow;
       }
 
-      const corners = worksheet ? this.#getBorderCorners(worksheet, x, y, lastColumn, lastRow) : '';
+      const corners = this.#getBorderCorners(worksheet, x, y, lastColumn, lastRow);
 
       if ((cell.dataset.borderCorners || '') !== corners) {
         cell.dataset.borderCorners = corners;
@@ -1105,7 +1233,7 @@ export class SpreadsheetGrid extends EventTarget {
 
     for (let c = column; c <= lastColumn; c++) {
       const x = this.#columnOffset(c) - this.#columnOffset(column);
-      const width = this.getColumnWidth(c);
+      const width = this.#getColumnWidth(c);
 
       bottomPartial &&
         hasHorizontalEdge(worksheet, c, lastRow) &&
@@ -1116,14 +1244,14 @@ export class SpreadsheetGrid extends EventTarget {
     }
 
     for (let r = row; r <= lastRow; r++) {
-      const y = (r - row) * this.rowHeight;
+      const y = (r - row) * this.#rowHeight;
 
       rightPartial &&
         hasVerticalEdge(worksheet, lastColumn, r) &&
-        layers.push(`${fill} right ${y}px / ${inside}px ${this.rowHeight}px no-repeat`);
+        layers.push(`${fill} right ${y}px / ${inside}px ${this.#rowHeight}px no-repeat`);
       leftPartial &&
         hasVerticalEdge(worksheet, column - 1, r) &&
-        layers.push(`${fill} left ${y}px / ${outside}px ${this.rowHeight}px no-repeat`);
+        layers.push(`${fill} left ${y}px / ${outside}px ${this.#rowHeight}px no-repeat`);
     }
 
     return layers.join(', ');
@@ -1148,29 +1276,30 @@ export class SpreadsheetGrid extends EventTarget {
 
   /** @param {{ header: HTMLElement; row: number }} slot */
   #renderRowSelection({ header, row }) {
-    const { top, bottom } = this.selection;
+    const { top, bottom } = this.#selectionObject.range;
 
     header.classList.toggle('grid__row-header--selected', row >= top && row <= bottom);
   }
 
   #updateSelection() {
-    const { rowHeight, rowHeaderWidth } = this;
-    const { left, top, right, bottom } = this.selection;
+    const rowHeight = this.#rowHeight;
+    const rowHeaderWidth = this.#rowHeaderWidth;
+    const { left, top, right, bottom } = this.#selectionObject.range;
     const rangeStyle = this.#rangeOverlay.style;
     const activeStyle = this.#activeOverlay.style;
-    const anchorEnd = this.#toMergeEnd(this.#anchor);
+    const anchorEnd = this.#toMergeEnd(this.#selectionObject.activeCell);
 
     rangeStyle.left = `${rowHeaderWidth + this.#columnOffset(left)}px`;
     rangeStyle.top = `${top * rowHeight}px`;
     rangeStyle.width = `${this.#columnOffset(right + 1) - this.#columnOffset(left)}px`;
     rangeStyle.height = `${(bottom - top + 1) * rowHeight}px`;
     this.#rangeOverlay.hidden =
-      left === this.#anchor.column && right === anchorEnd.column && top === this.#anchor.row && bottom === anchorEnd.row;
+      left === this.#selectionObject.activeCell.column && right === anchorEnd.column && top === this.#selectionObject.activeCell.row && bottom === anchorEnd.row;
 
-    activeStyle.left = `${rowHeaderWidth + this.#columnOffset(this.#anchor.column)}px`;
-    activeStyle.width = `${this.#columnOffset(anchorEnd.column + 1) - this.#columnOffset(this.#anchor.column)}px`;
-    activeStyle.top = `${this.#anchor.row * rowHeight}px`;
-    activeStyle.height = `${(anchorEnd.row - this.#anchor.row + 1) * rowHeight}px`;
+    activeStyle.left = `${rowHeaderWidth + this.#columnOffset(this.#selectionObject.activeCell.column)}px`;
+    activeStyle.width = `${this.#columnOffset(anchorEnd.column + 1) - this.#columnOffset(this.#selectionObject.activeCell.column)}px`;
+    activeStyle.top = `${this.#selectionObject.activeCell.row * rowHeight}px`;
+    activeStyle.height = `${(anchorEnd.row - this.#selectionObject.activeCell.row + 1) * rowHeight}px`;
 
     this.#columnHeaders.forEach((header, column) =>
       header.classList.toggle('grid__column-header--selected', column >= left && column <= right)
@@ -1186,6 +1315,74 @@ export class SpreadsheetGrid extends EventTarget {
     this.dispatchEvent(new Event('selectionchange'));
   }
 
+  #historyChangeScheduled = false;
+
+  #scheduleHistoryChange = () => {
+    if (!this.#historyChangeScheduled) {
+      this.#historyChangeScheduled = true;
+      queueMicrotask(() => {
+        this.#historyChangeScheduled = false;
+        this.dispatchEvent(new Event('historychange'));
+      });
+    }
+  };
+
+  /**
+   * Undoes or redoes the next group of changes, then selects the changed cells.
+   *
+   * @param {'undo' | 'redo'} action
+   * @returns {boolean} `false` if there is nothing to undo or redo.
+   */
+  #undoOrRedo(action) {
+    if (!(action === 'undo' ? this.#history.canUndo : this.#history.canRedo)) {
+      return false;
+    }
+
+    this.#editMode && this.#cancelEdit();
+
+    /** @type {CellPosition[]} */
+    const cells = [];
+
+    /** @param {Event} event */
+    const handleChange = event => {
+      for (const change of /** @type {import('./WorksheetChangeEvent.js').WorksheetChangeEvent} */ (
+        event
+      ).changes) {
+        if (change.type === 'merge') {
+          // All cells of a merged cell are involved, not only the cells with content.
+          const { width, height } = /** @type {{ width: number; height: number }} */ (change.merge || change.previousMerge);
+
+          cells.push({ column: change.x, row: change.y }, { column: change.x + width - 1, row: change.y + height - 1 });
+        } else if (change.type !== 'border' && change.type !== 'columnwidth') {
+          cells.push({ column: change.x, row: change.y });
+        }
+      }
+    };
+
+    // The replay is a single transaction, dispatching a single `change` event synchronously.
+    this.#worksheet.addEventListener('change', handleChange);
+
+    try {
+      this.#history[action]();
+    } finally {
+      this.#worksheet.removeEventListener('change', handleChange);
+    }
+
+    this.#scheduleHistoryChange();
+
+    if (cells.length) {
+      const columns = cells.map(({ column }) => column);
+      const rows = cells.map(({ row }) => row);
+
+      this.#select(
+        { column: Math.min(...columns), row: Math.min(...rows) },
+        { column: Math.max(...columns), row: Math.max(...rows) }
+      );
+    }
+
+    return true;
+  }
+
   // #endregion
 
   // #region Keyboard
@@ -1196,8 +1393,8 @@ export class SpreadsheetGrid extends EventTarget {
    */
   #clamp({ column, row }) {
     return {
-      column: Math.max(0, Math.min(this.columnCount - 1, column)),
-      row: Math.max(0, Math.min(this.rowCount - 1, row))
+      column: Math.max(0, Math.min(this.#columnCount - 1, column)),
+      row: Math.max(0, Math.min(this.#rowCount - 1, row))
     };
   }
 
@@ -1210,10 +1407,10 @@ export class SpreadsheetGrid extends EventTarget {
    */
   #move(deltaColumn, deltaRow, extend) {
     if (extend) {
-      return this.select(this.#anchor, this.#extendFocus(deltaColumn, deltaRow));
+      return this.#select(this.#selectionObject.activeCell, this.#extendFocus(deltaColumn, deltaRow));
     }
 
-    const from = this.#anchor;
+    const from = this.#selectionObject.activeCell;
     const preferred = this.#preferred;
     const end = this.#toMergeEnd(from);
     // Moving right or down skips the rest of a merged cell. Moving vertically out of a merged cell keeps the column
@@ -1231,7 +1428,7 @@ export class SpreadsheetGrid extends EventTarget {
           ? preferred.row
           : from.row;
 
-    this.select(this.#clamp({ column: column + deltaColumn, row: row + deltaRow }));
+    this.#select(this.#clamp({ column: column + deltaColumn, row: row + deltaRow }));
   }
 
   /**
@@ -1243,17 +1440,17 @@ export class SpreadsheetGrid extends EventTarget {
    * @returns {CellPosition}
    */
   #extendFocus(deltaColumn, deltaRow) {
-    const { selection } = this;
+    const selection = this.#selectionObject.range;
     let focus = this.#focus;
 
     for (;;) {
       const next = { column: focus.column + deltaColumn, row: focus.row + deltaRow };
 
-      if (next.column < 0 || next.column >= this.columnCount || next.row < 0 || next.row >= this.rowCount) {
+      if (next.column < 0 || next.column >= this.#columnCount || next.row < 0 || next.row >= this.#rowCount) {
         return this.#focus;
       }
 
-      const range = this.#rangeOf(this.#anchor, next);
+      const range = this.#rangeOf(this.#selectionObject.activeCell, next);
 
       if (
         range.left !== selection.left ||
@@ -1275,16 +1472,16 @@ export class SpreadsheetGrid extends EventTarget {
    * @param {number} deltaRow
    */
   #moveWithinSelection(deltaColumn, deltaRow) {
-    const { left, top, right, bottom } = this.selection;
+    const { left, top, right, bottom } = this.#selectionObject.range;
 
-    const end = this.#toMergeEnd(this.#anchor);
+    const end = this.#toMergeEnd(this.#selectionObject.activeCell);
 
     // A single (possibly merged) cell is selected.
-    if (left === this.#anchor.column && right === end.column && top === this.#anchor.row && bottom === end.row) {
+    if (left === this.#selectionObject.activeCell.column && right === end.column && top === this.#selectionObject.activeCell.row && bottom === end.row) {
       return this.#move(deltaColumn, deltaRow, false);
     }
 
-    let { column, row } = this.#anchor;
+    let { column, row } = this.#selectionObject.activeCell;
 
     // Moving right or down skips the rest of a merged cell.
     column = (deltaColumn > 0 ? end.column : column) + deltaColumn;
@@ -1305,23 +1502,23 @@ export class SpreadsheetGrid extends EventTarget {
     }
 
     this.#selectKeepingScroll({ column, row }, this.#focus);
-    this.scrollIntoView(this.#anchor);
+    this.#scrollIntoView(this.#selectionObject.activeCell);
   }
 
   /** @param {KeyboardEvent} event */
   #handleKeyDown(event) {
-    if (event.target !== this.element || event.isComposing) {
+    if (event.target !== this || event.isComposing) {
       return;
     }
 
     const { key, shiftKey } = event;
     const ctrlKey = event.ctrlKey || event.metaKey;
-    const frozenHeight = this.#locked ? this.#lockedRowCount * this.rowHeight : 0;
+    const frozenHeight = this.#locked ? this.#lockedRowCount * this.#rowHeight : 0;
     const pageRows = Math.max(
       1,
-      Math.floor((this.element.clientHeight - this.headerHeight - frozenHeight) / this.rowHeight) - 1
+      Math.floor((this.clientHeight - this.#headerHeight - frozenHeight) / this.#rowHeight) - 1
     );
-    const { column, row } = shiftKey ? this.#focus : this.#anchor;
+    const { column, row } = shiftKey ? this.#focus : this.#selectionObject.activeCell;
 
     /** @type {[number, number] | undefined} */
     let delta;
@@ -1332,7 +1529,7 @@ export class SpreadsheetGrid extends EventTarget {
         break;
 
       case 'ArrowDown':
-        delta = [0, ctrlKey ? this.rowCount - 1 - row : 1];
+        delta = [0, ctrlKey ? this.#rowCount - 1 - row : 1];
         break;
 
       case 'ArrowLeft':
@@ -1340,7 +1537,7 @@ export class SpreadsheetGrid extends EventTarget {
         break;
 
       case 'ArrowRight':
-        delta = [ctrlKey ? this.columnCount - 1 - column : 1, 0];
+        delta = [ctrlKey ? this.#columnCount - 1 - column : 1, 0];
         break;
 
       case 'PageUp':
@@ -1356,7 +1553,7 @@ export class SpreadsheetGrid extends EventTarget {
         break;
 
       case 'End':
-        delta = [this.columnCount - 1 - column, ctrlKey ? this.rowCount - 1 - row : 0];
+        delta = [this.#columnCount - 1 - column, ctrlKey ? this.#rowCount - 1 - row : 0];
         break;
 
       case 'Enter':
@@ -1373,25 +1570,25 @@ export class SpreadsheetGrid extends EventTarget {
 
       case 'F2':
         event.preventDefault();
-        this.startEdit();
+        this.#startEdit();
 
         return;
 
       case 'Delete':
       case 'Backspace':
         event.preventDefault();
-        this.clearSelection();
+        this.#clearSelection();
 
         return;
 
       default:
         if (ctrlKey && !event.altKey && key.toLowerCase() === 'a') {
           event.preventDefault();
-          this.#selectKeepingScroll({ column: 0, row: 0 }, { column: this.columnCount - 1, row: this.rowCount - 1 });
+          this.#selectKeepingScroll({ column: 0, row: 0 }, { column: this.#columnCount - 1, row: this.#rowCount - 1 });
         } else if (key.length === 1 && !ctrlKey && !event.altKey) {
           // Printable character: start editing, replacing the content (same as Excel).
           event.preventDefault();
-          this.startEdit(key);
+          this.#startEdit(key);
         }
 
         return;
@@ -1410,7 +1607,10 @@ export class SpreadsheetGrid extends EventTarget {
    * @returns {CellPosition}
    */
   #cellFromPoint({ clientX, clientY }) {
-    const { element, headerHeight, rowHeaderWidth, rowHeight } = this;
+    const element = this;
+    const headerHeight = this.#headerHeight;
+    const rowHeaderWidth = this.#rowHeaderWidth;
+    const rowHeight = this.#rowHeight;
     const rect = this.#body.getBoundingClientRect();
     const scrollerRect = element.getBoundingClientRect();
     // Position relative to the top-left of the scrollable area (below the column header, right of the row header).
@@ -1438,18 +1638,18 @@ export class SpreadsheetGrid extends EventTarget {
       return;
     }
 
-    const scrollerRect = this.element.getBoundingClientRect();
+    const scrollerRect = this.getBoundingClientRect();
 
     // Ignore clicks on the native scrollbars.
     if (
-      event.clientX - scrollerRect.left >= this.element.clientLeft + this.element.clientWidth ||
-      event.clientY - scrollerRect.top >= this.element.clientTop + this.element.clientHeight
+      event.clientX - scrollerRect.left >= this.clientLeft + this.clientWidth ||
+      event.clientY - scrollerRect.top >= this.clientTop + this.clientHeight
     ) {
       return;
     }
 
     event.preventDefault();
-    this.focus();
+    this.focus({ preventScroll: true });
 
     const resizeColumn = this.#resizeColumnFromPoint(event);
 
@@ -1458,9 +1658,9 @@ export class SpreadsheetGrid extends EventTarget {
       this.#resizing = {
         columns: this.#columnsToResize(resizeColumn),
         startX: event.clientX,
-        startWidth: this.getColumnWidth(resizeColumn)
+        startWidth: this.#getColumnWidth(resizeColumn)
       };
-      this.element.setPointerCapture(event.pointerId);
+      this.setPointerCapture(event.pointerId);
 
       return;
     }
@@ -1469,7 +1669,7 @@ export class SpreadsheetGrid extends EventTarget {
     const { shiftKey } = event;
 
     if (target.closest('.grid__corner')) {
-      this.#selectKeepingScroll({ column: 0, row: 0 }, { column: this.columnCount - 1, row: this.rowCount - 1 });
+      this.#selectKeepingScroll({ column: 0, row: 0 }, { column: this.#columnCount - 1, row: this.#rowCount - 1 });
 
       return;
     } else if (target.closest('.grid__column-header')) {
@@ -1477,19 +1677,19 @@ export class SpreadsheetGrid extends EventTarget {
 
       this.#dragging = 'column';
       shiftKey
-        ? this.#selectKeepingScroll(this.#anchor, { column, row: this.rowCount - 1 })
-        : this.#selectKeepingScroll({ column, row: 0 }, { column, row: this.rowCount - 1 });
+        ? this.#selectKeepingScroll(this.#selectionObject.activeCell, { column, row: this.#rowCount - 1 })
+        : this.#selectKeepingScroll({ column, row: 0 }, { column, row: this.#rowCount - 1 });
     } else if (target.closest('.grid__row-header')) {
       this.#dragging = 'row';
       shiftKey
-        ? this.#selectKeepingScroll(this.#anchor, { column: this.columnCount - 1, row: cell.row })
-        : this.#selectKeepingScroll({ column: 0, row: cell.row }, { column: this.columnCount - 1, row: cell.row });
+        ? this.#selectKeepingScroll(this.#selectionObject.activeCell, { column: this.#columnCount - 1, row: cell.row })
+        : this.#selectKeepingScroll({ column: 0, row: cell.row }, { column: this.#columnCount - 1, row: cell.row });
     } else {
       this.#dragging = 'cell';
-      shiftKey ? this.select(this.#anchor, cell) : this.select(cell);
+      shiftKey ? this.#select(this.#selectionObject.activeCell, cell) : this.#select(cell);
     }
 
-    this.element.setPointerCapture(event.pointerId);
+    this.setPointerCapture(event.pointerId);
   }
 
   /**
@@ -1499,16 +1699,15 @@ export class SpreadsheetGrid extends EventTarget {
    * @param {CellPosition} focus
    */
   #selectKeepingScroll(anchor, focus) {
-    this.#editMode && this.commitEdit();
-    this.#anchor = this.#toMergeStart(this.#clamp(anchor));
-    this.#focus = this.#clamp(focus);
+    this.#editMode && this.#commitEdit();
+    this.#setSelection(anchor, focus);
     this.#updateSelection();
   }
 
   /** @param {PointerEvent} event */
   #handlePointerMove(event) {
     if (!this.#dragging) {
-      this.element.classList.toggle('grid--resize-hover', this.#resizeColumnFromPoint(event) >= 0);
+      this.classList.toggle('grid--resize-hover', this.#resizeColumnFromPoint(event) >= 0);
 
       return;
     }
@@ -1516,7 +1715,7 @@ export class SpreadsheetGrid extends EventTarget {
     if (this.#dragging === 'resize') {
       const { columns, startX, startWidth } = /** @type {NonNullable<typeof this.#resizing>} */ (this.#resizing);
 
-      columns.forEach(column => this.setColumnWidth(column, startWidth + event.clientX - startX));
+      columns.forEach(column => this.#setColumnWidth(column, startWidth + event.clientX - startX));
 
       return;
     }
@@ -1524,11 +1723,11 @@ export class SpreadsheetGrid extends EventTarget {
     const cell = this.#cellFromPoint(event);
 
     if (this.#dragging === 'column') {
-      this.#selectKeepingScroll(this.#anchor, { column: cell.column, row: this.rowCount - 1 });
+      this.#selectKeepingScroll(this.#selectionObject.activeCell, { column: cell.column, row: this.#rowCount - 1 });
     } else if (this.#dragging === 'row') {
-      this.#selectKeepingScroll(this.#anchor, { column: this.columnCount - 1, row: cell.row });
+      this.#selectKeepingScroll(this.#selectionObject.activeCell, { column: this.#columnCount - 1, row: cell.row });
     } else if (cell.column !== this.#focus.column || cell.row !== this.#focus.row) {
-      this.select(this.#anchor, cell);
+      this.#select(this.#selectionObject.activeCell, cell);
     }
   }
 
@@ -1537,7 +1736,7 @@ export class SpreadsheetGrid extends EventTarget {
     if (this.#dragging) {
       this.#dragging = '';
       this.#resizing = undefined;
-      this.element.hasPointerCapture(event.pointerId) && this.element.releasePointerCapture(event.pointerId);
+      this.hasPointerCapture(event.pointerId) && this.releasePointerCapture(event.pointerId);
     }
   }
 
@@ -1551,11 +1750,12 @@ export class SpreadsheetGrid extends EventTarget {
       return -1;
     }
 
-    const { element, rowHeaderWidth } = this;
+    const element = this;
+    const rowHeaderWidth = this.#rowHeaderWidth;
     const scrollerRect = element.getBoundingClientRect();
     const y = clientY - scrollerRect.top - element.clientTop;
 
-    if (y < 0 || y >= this.headerHeight) {
+    if (y < 0 || y >= this.#headerHeight) {
       return -1;
     }
 
@@ -1570,8 +1770,8 @@ export class SpreadsheetGrid extends EventTarget {
     const x = this.#locked && viewportX < lockedWidth + RESIZE_HANDLE_SIZE ? viewportX : viewportX + element.scrollLeft;
     let offset = 0;
 
-    for (let column = 0; column < this.columnCount; column++) {
-      offset += this.getColumnWidth(column);
+    for (let column = 0; column < this.#columnCount; column++) {
+      offset += this.#getColumnWidth(column);
 
       if (Math.abs(x - offset) <= RESIZE_HANDLE_SIZE) {
         return column;
@@ -1590,9 +1790,9 @@ export class SpreadsheetGrid extends EventTarget {
    * @returns {number[]}
    */
   #columnsToResize(column) {
-    const { left, top, right, bottom } = this.selection;
+    const { left, top, right, bottom } = this.#selectionObject.range;
 
-    if (top === 0 && bottom === this.rowCount - 1 && column >= left && column <= right) {
+    if (top === 0 && bottom === this.#rowCount - 1 && column >= left && column <= right) {
       return Array.from({ length: right - left + 1 }, (_, index) => left + index);
     }
 
@@ -1605,7 +1805,7 @@ export class SpreadsheetGrid extends EventTarget {
     const resizeColumn = this.#resizeColumnFromPoint(event);
 
     if (resizeColumn >= 0) {
-      this.autoFitColumns(this.#columnsToResize(resizeColumn));
+      this.#autoFitColumns(this.#columnsToResize(resizeColumn));
 
       return;
     }
@@ -1615,9 +1815,9 @@ export class SpreadsheetGrid extends EventTarget {
       target !== this.#editor &&
       !target.closest('.grid__header, .grid__row-header') &&
       event.clientY >= this.#body.getBoundingClientRect().top &&
-      event.clientX >= this.element.getBoundingClientRect().left + this.rowHeaderWidth
+      event.clientX >= this.getBoundingClientRect().left + this.#rowHeaderWidth
     ) {
-      this.startEdit();
+      this.#startEdit();
     }
   }
 
@@ -1631,16 +1831,16 @@ export class SpreadsheetGrid extends EventTarget {
    * @param {string} [initialText] When specified, replaces the cell content ("enter" mode). Otherwise, edits the current content ("edit" mode).
    * @returns {boolean} `false` if the cell is locked.
    */
-  startEdit(initialText) {
-    const { column, row } = this.#anchor;
+  #startEdit(initialText) {
+    const { column, row } = this.#selectionObject.activeCell;
 
-    if (!this.#worksheet || !this.isEditable(column, row)) {
+    if (!this.#isEditable(column, row)) {
       this.dispatchEvent(new CustomEvent('lockedit', { detail: { column, row } }));
 
       return false;
     }
 
-    this.scrollIntoView(this.#anchor);
+    this.#scrollIntoView(this.#selectionObject.activeCell);
 
     const editor = this.#editor;
     const value = this.#worksheet.getValue(column, row);
@@ -1658,42 +1858,40 @@ export class SpreadsheetGrid extends EventTarget {
 
   /** Commits the editor value to the active cell. */
   #positionEditor() {
-    const { column, row } = this.#anchor;
+    const { column, row } = this.#selectionObject.activeCell;
     const style = this.#editor.style;
 
-    style.left = `${this.rowHeaderWidth + this.#columnOffset(column)}px`;
-    style.top = `${row * this.rowHeight}px`;
-    const end = this.#toMergeEnd(this.#anchor);
+    style.left = `${this.#rowHeaderWidth + this.#columnOffset(column)}px`;
+    style.top = `${row * this.#rowHeight}px`;
+    const end = this.#toMergeEnd(this.#selectionObject.activeCell);
 
     style.width = `${this.#columnOffset(end.column + 1) - this.#columnOffset(column)}px`;
-    style.height = `${(end.row - row + 1) * this.rowHeight}px`;
+    style.height = `${(end.row - row + 1) * this.#rowHeight}px`;
   }
 
-  commitEdit() {
+  #commitEdit() {
     if (!this.#editMode) {
       return;
     }
 
-    const { column, row } = this.#anchor;
+    const { column, row } = this.#selectionObject.activeCell;
     const text = this.#editor.value;
 
     this.#closeEditor();
 
-    if (this.#worksheet && this.isEditable(column, row)) {
+    if (this.#isEditable(column, row)) {
       // Leading apostrophe forces the value to be text, same as Excel.
       // Leading "=" evaluates a simple arithmetic formula and stores only the result; invalid formulas are kept as text.
       const result = text.startsWith('=') ? calculate(text.slice(1)) : undefined;
 
-      this.#worksheet.setValue(
-        column,
-        row,
-        text.startsWith("'") ? text.slice(1) : result ?? inferValue(text)
+      this.#worksheet.edit(edit =>
+        edit.setValue(column, row, text.startsWith("'") ? text.slice(1) : result ?? inferValue(text))
       );
     }
   }
 
   /** Closes the editor without saving. */
-  cancelEdit() {
+  #cancelEdit() {
     this.#editMode && this.#closeEditor();
   }
 
@@ -1703,7 +1901,7 @@ export class SpreadsheetGrid extends EventTarget {
     this.#editMode = '';
     this.#editor.hidden = true;
 
-    hadFocus && this.focus();
+    hadFocus && this.focus({ preventScroll: true });
   }
 
   /** @param {KeyboardEvent} event */
@@ -1716,21 +1914,21 @@ export class SpreadsheetGrid extends EventTarget {
 
     if (key === 'Escape') {
       event.preventDefault();
-      this.cancelEdit();
+      this.#cancelEdit();
     } else if (key === 'Enter' && !event.altKey) {
       event.preventDefault();
-      this.commitEdit();
+      this.#commitEdit();
       this.#moveWithinSelection(0, shiftKey ? -1 : 1);
     } else if (key === 'Tab') {
       event.preventDefault();
-      this.commitEdit();
+      this.#commitEdit();
       this.#moveWithinSelection(shiftKey ? -1 : 1, 0);
     } else if (key === 'F2') {
       event.preventDefault();
       this.#editMode = this.#editMode === 'edit' ? 'enter' : 'edit';
     } else if (this.#editMode === 'enter' && key.startsWith('Arrow')) {
       event.preventDefault();
-      this.commitEdit();
+      this.#commitEdit();
       this.#move(
         key === 'ArrowLeft' ? -1 : key === 'ArrowRight' ? 1 : 0,
         key === 'ArrowUp' ? -1 : key === 'ArrowDown' ? 1 : 0,
@@ -1743,27 +1941,25 @@ export class SpreadsheetGrid extends EventTarget {
   }
 
   /** Clears all editable cells in the selection. */
-  clearSelection() {
+  #clearSelection() {
     const worksheet = this.#worksheet;
 
-    if (!worksheet) {
-      return;
-    }
-
-    const { left, top, right, bottom } = this.selection;
+    const { left, top, right, bottom } = this.#selectionObject.range;
     let skipped = false;
 
-    for (let row = top; row <= bottom; row++) {
-      for (let column = left; column <= right; column++) {
-        if (this.isEditable(column, row)) {
-          worksheet.setValue(column, row, '');
-        } else {
-          skipped = true;
+    worksheet.edit(edit => {
+      for (let row = top; row <= bottom; row++) {
+        for (let column = left; column <= right; column++) {
+          if (this.#isEditable(column, row)) {
+            edit.setValue(column, row, '');
+          } else {
+            skipped = true;
+          }
         }
       }
-    }
+    });
 
-    skipped && this.dispatchEvent(new CustomEvent('lockedit', { detail: this.#anchor }));
+    skipped && this.dispatchEvent(new CustomEvent('lockedit', { detail: this.#selectionObject.activeCell }));
   }
 
   // #endregion
@@ -1773,7 +1969,7 @@ export class SpreadsheetGrid extends EventTarget {
   /** @returns {CellValue[][]} */
   #getSelectedValues() {
     const worksheet = this.#worksheet;
-    const { left, top, right, bottom } = this.selection;
+    const { left, top, right, bottom } = this.#selectionObject.range;
 
     /** @type {CellValue[][]} */
     const values = [];
@@ -1798,14 +1994,14 @@ export class SpreadsheetGrid extends EventTarget {
    * @param {boolean} cut
    */
   #handleCopy(event, cut) {
-    if (event.target !== this.element || !this.#worksheet || !event.clipboardData) {
+    if (event.target !== this || !event.clipboardData) {
       return;
     }
 
     event.preventDefault();
 
     const values = this.#getSelectedValues();
-    const { left, top, right, bottom } = this.selection;
+    const { left, top, right, bottom } = this.#selectionObject.range;
     // Formatting (excluding borders) is embedded in the HTML flavor only, so plain text editors get plain values.
     const formattings = this.#worksheet.getFormattings(left, top, right - left + 1, bottom - top + 1);
 
@@ -1827,14 +2023,14 @@ export class SpreadsheetGrid extends EventTarget {
         .join('')}</table>`
     );
 
-    cut && this.clearSelection();
+    cut && this.#clearSelection();
   }
 
   /** @param {ClipboardEvent} event */
   #handlePaste(event) {
     const worksheet = this.#worksheet;
 
-    if (event.target !== this.element || !worksheet || !event.clipboardData) {
+    if (event.target !== this || !event.clipboardData) {
       return;
     }
 
@@ -1855,36 +2051,38 @@ export class SpreadsheetGrid extends EventTarget {
 
     const dataRows = values.length;
     const dataColumns = Math.max(...values.map(row => row.length));
-    const { left, top, right, bottom } = this.selection;
+    const { left, top, right, bottom } = this.#selectionObject.range;
     const selectedRows = bottom - top + 1;
     const selectedColumns = right - left + 1;
 
     // Same as Excel: if the selection is a multiple of the copied data, the data is repeated to fill the selection.
     const tile = selectedRows % dataRows === 0 && selectedColumns % dataColumns === 0;
-    const pasteRows = Math.min(tile ? selectedRows : dataRows, this.rowCount - top);
-    const pasteColumns = Math.min(tile ? selectedColumns : dataColumns, this.columnCount - left);
+    const pasteRows = Math.min(tile ? selectedRows : dataRows, this.#rowCount - top);
+    const pasteColumns = Math.min(tile ? selectedColumns : dataColumns, this.#columnCount - left);
     let skipped = false;
 
-    for (let rowOffset = 0; rowOffset < pasteRows; rowOffset++) {
-      const rowValues = values[rowOffset % dataRows];
+    worksheet.edit(edit => {
+      for (let rowOffset = 0; rowOffset < pasteRows; rowOffset++) {
+        const rowValues = values[rowOffset % dataRows];
 
-      for (let columnOffset = 0; columnOffset < pasteColumns; columnOffset++) {
-        const column = left + columnOffset;
-        const row = top + rowOffset;
+        for (let columnOffset = 0; columnOffset < pasteColumns; columnOffset++) {
+          const column = left + columnOffset;
+          const row = top + rowOffset;
 
-        if (this.isEditable(column, row)) {
-          worksheet.setValue(column, row, rowValues[columnOffset % dataColumns] ?? '');
+          if (this.#isEditable(column, row)) {
+            edit.setValue(column, row, rowValues[columnOffset % dataColumns] ?? '');
 
-          if (formattings) {
-            const formattingRow = formattings[rowOffset % dataRows];
+            if (formattings) {
+              const formattingRow = formattings[rowOffset % dataRows];
 
-            worksheet.setFormattings([[formattingRow?.[columnOffset % (formattingRow?.length || 1)]]], column, row);
+              edit.setFormattings([[formattingRow?.[columnOffset % (formattingRow?.length || 1)]]], column, row);
+            }
+          } else {
+            skipped = true;
           }
-        } else {
-          skipped = true;
         }
       }
-    }
+    });
 
     const anchor = { column: left, row: top };
 
@@ -1895,3 +2093,5 @@ export class SpreadsheetGrid extends EventTarget {
 
   // #endregion
 }
+
+customElements.get('compulim-worksheet') || customElements.define('compulim-worksheet', WorksheetElement);
