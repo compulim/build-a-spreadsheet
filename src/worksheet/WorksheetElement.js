@@ -1523,6 +1523,26 @@ export class WorksheetElement extends HTMLElement {
     );
     const { column, row } = shiftKey ? this.#focus : this.#selectionObject.activeCell;
 
+    // Alt+Arrow moves the active cell within the selection without changing the selected range.
+    if (event.altKey && !shiftKey && !ctrlKey && key.startsWith('Arrow')) {
+      event.preventDefault();
+
+      const { left, top, right, bottom } = this.#selectionObject.range;
+      const end = this.#toMergeEnd(this.#selectionObject.activeCell);
+      const next = {
+        column:
+          key === 'ArrowLeft' ? Math.max(left, column - 1) : key === 'ArrowRight' ? Math.min(right, end.column + 1) : column,
+        row: key === 'ArrowUp' ? Math.max(top, row - 1) : key === 'ArrowDown' ? Math.min(bottom, end.row + 1) : row
+      };
+      const activeCell = this.#toMergeStart(next);
+
+      this.#selectionObject = new WorksheetSelection(activeCell, { left, top, right, bottom });
+      this.#updateSelection();
+      this.#scrollIntoView(activeCell);
+
+      return;
+    }
+
     /** @type {[number, number] | undefined} */
     let delta;
 
