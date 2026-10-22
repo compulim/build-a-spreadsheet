@@ -430,11 +430,7 @@ export class WorksheetElement extends HTMLElement {
     let mergeChanged = false;
 
     for (const change of changes) {
-      if (change.type === 'columnwidth') {
-        this.#applyColumnWidth(change.x);
-        // Merged cells span multiple columns.
-        this.#contentDirty = true;
-      } else if (change.type === 'value') {
+      if (change.type === 'value') {
         const { x, y: row } = change;
         const merge = row < this.#firstRow ? this.#worksheet.getMerges(x, row, 1, 1)[0] : undefined;
 
@@ -454,7 +450,6 @@ export class WorksheetElement extends HTMLElement {
       }
     }
 
-    changes.some(({ type }) => type === 'columnwidth') && this.#updateColumnLayout();
     this.#scheduleRender();
 
     if (mergeChanged) {
@@ -464,6 +459,15 @@ export class WorksheetElement extends HTMLElement {
 
     anchorChanged && this.#dispatchSelectionChange();
     this.#scheduleHistoryChange();
+  };
+
+  /** @param {Event} event */
+  #handleColumnWidthChange = event => {
+    this.#applyColumnWidth(/** @type {CustomEvent<{ x: number }>} */ (event).detail.x);
+    this.#updateColumnLayout();
+    // Merged cells span multiple columns.
+    this.#contentDirty = true;
+    this.#scheduleRender();
   };
 
   /**
@@ -500,6 +504,7 @@ export class WorksheetElement extends HTMLElement {
 
     // Runs after the history recorded the change, so `historychange` reflects it.
     worksheet.addEventListener('change', this.#handleChange);
+    worksheet.addEventListener('columnwidthchange', this.#handleColumnWidthChange);
 
     for (let column = 0; column < this.#columnCount; column++) {
       this.#applyColumnWidth(column);
@@ -917,7 +922,7 @@ export class WorksheetElement extends HTMLElement {
    */
   #setColumnWidth(column, width) {
     if (column >= 0 && column < this.#columnCount) {
-      this.#worksheet.edit(edit => edit.setColumnWidth(column, Math.max(MIN_COLUMN_WIDTH, Math.round(width))));
+      this.#worksheet.setColumnWidth(column, Math.max(MIN_COLUMN_WIDTH, Math.round(width)));
     }
   }
 
@@ -1353,7 +1358,7 @@ export class WorksheetElement extends HTMLElement {
           const { width, height } = /** @type {{ width: number; height: number }} */ (change.merge || change.previousMerge);
 
           cells.push({ column: change.x, row: change.y }, { column: change.x + width - 1, row: change.y + height - 1 });
-        } else if (change.type !== 'border' && change.type !== 'columnwidth') {
+        } else if (change.type !== 'border') {
           cells.push({ column: change.x, row: change.y });
         }
       }

@@ -115,19 +115,22 @@ describe("Worksheet", () => {
     const worksheet = new Worksheet();
     const events = [];
 
-    worksheet.addEventListener("change", ({ changes }) =>
-      events.push(...changes.map(({ x }) => x)),
+    const version = worksheet.version;
+
+    worksheet.addEventListener("columnwidthchange", ({ detail }) =>
+      events.push(detail.x),
     );
 
     assert.equal(worksheet.getColumnWidth(0), 100);
 
-    worksheet.edit((edit) => edit.setColumnWidth(2, 150));
-    worksheet.edit((edit) => edit.setColumnWidth(2, 150));
+    worksheet.setColumnWidth(2, 150);
+    worksheet.setColumnWidth(2, 150);
 
     assert.equal(worksheet.getColumnWidth(2), 150);
     assert.deepEqual(events, [2]);
+    assert.equal(worksheet.version, version);
     assert.throws(
-      () => worksheet.edit((edit) => edit.setColumnWidth(50, 10)),
+      () => worksheet.setColumnWidth(50, 10),
       RangeError,
     );
   });
@@ -227,24 +230,63 @@ describe("Worksheet", () => {
       events.push(changes.map(({ type, x }) => [type, x])),
     );
 
-    const result = worksheet.edit((edit) => {
+    worksheet.edit((edit) => {
       edit.setValue(0, 0, "a");
       edit.setFormattings([[{ bold: true }]], 0, 0);
       worksheet.edit((nested) => nested.setValue(1, 0, "b")); // Joins the outer transaction.
-      edit.setColumnWidth(2, 150);
-
-      return "done";
     });
 
-    assert.equal(result, "done");
     assert.deepEqual(events, [
       [
         ["value", 0],
         ["formatting", 0],
         ["value", 1],
-        ["columnwidth", 2],
       ],
     ]);
+  });
+
+  test("edit() returns undo/redo bound to the worksheet version", () => {
+    const worksheet = new Worksheet();
+    const v1 = worksheet.version;
+    const first = worksheet.edit((edit) => edit.setValue(0, 0, "a"));
+    const v2 = worksheet.version;
+
+    assert.notEqual(v1, v2);
+
+    const second = worksheet.edit((edit) => edit.setValue(0, 0, "b"));
+    const v3 = worksheet.version;
+
+    assert.throws(() => first.undo(), /changed/);
+
+    const { redo } = second.undo();
+
+    assert.equal(worksheet.version, v2);
+    assert.equal(worksheet.getValue(0, 0), "a");
+
+    const { redo: firstRedo } = first.undo();
+
+    assert.equal(worksheet.version, v1);
+    assert.equal(worksheet.getValue(0, 0), undefined);
+    assert.throws(() => redo(), /changed/);
+
+    firstRedo();
+    const undoAgain = redo();
+
+    assert.equal(worksheet.version, v3);
+    assert.equal(worksheet.getValue(0, 0), "b");
+    assert.throws(() => redo(), /changed/);
+
+    undoAgain.undo();
+    assert.equal(worksheet.getValue(0, 0), "a");
+  });
+
+  test("edit() without changes keeps the version", () => {
+    const worksheet = new Worksheet();
+    const version = worksheet.version;
+
+    worksheet.edit(() => {});
+
+    assert.equal(worksheet.version, version);
   });
 
   test("edit() rolls back when the callback throws", () => {
@@ -261,7 +303,6 @@ describe("Worksheet", () => {
           edit.setFormattings([[{ bold: true }]], 0, 0);
           edit.setBorder({ x: 0, y: 0 }, new Set(["outside"]));
           edit.mergeCells(0, 0, 2);
-          edit.setColumnWidth(0, 150);
           throw new Error("oops");
         }),
       /oops/,
@@ -272,7 +313,6 @@ describe("Worksheet", () => {
     assert.equal(worksheet.getFormattings(0, 0, 1, 1)[0][0].bold, false);
     assert.equal(worksheet.getBorder(0, 0).top, false);
     assert.deepEqual(worksheet.getMerges(), []);
-    assert.equal(worksheet.getColumnWidth(0), 100);
   });
 
   test("editing functions are only available inside edit()", () => {
@@ -291,7 +331,6 @@ describe("Worksheet", () => {
       "setBorder",
       "mergeCells",
       "unmergeCells",
-      "setColumnWidth",
       "loadCSV",
     ]) {
       assert.equal(name in worksheet, false, name);

@@ -1,42 +1,31 @@
 /** @typedef {import('./Worksheet.js').Worksheet} Worksheet */
-/** @typedef {import('./Worksheet.js').CellChange} CellChange */
+/** @typedef {import('./Worksheet.js').WorksheetUndo} WorksheetUndo */
+/** @typedef {import('./Worksheet.js').WorksheetRedo} WorksheetRedo */
 /** @typedef {import('./WorksheetChangeEvent.js').WorksheetChangeEvent} WorksheetChangeEvent */
 
 /**
- * Undo/redo history of a `Worksheet`, built by subscribing to its `change` event. Each `edit()` transaction is a single
- * step. Column width changes are not recorded. Loading from CSV clears the history.
- *
- * Steps are replayed in a transaction through `Worksheet#edit()`.
+ * Undo/redo history of a `Worksheet`. It remembers the `undo()` objects of `edit()` transactions (from the `change`
+ * event) and the `redo()` objects returned by undoing them. Loading from CSV clears the history.
  */
 export class WorksheetHistory {
-  /** @type {Worksheet} */
-  #worksheet;
-
-  /** @type {CellChange[][]} */
+  /** @type {WorksheetUndo[]} */
   #undoStack = [];
 
-  /** @type {CellChange[][]} */
+  /** @type {WorksheetRedo[]} */
   #redoStack = [];
-
-  #applying = false;
 
   /** @param {Worksheet} worksheet */
   constructor(worksheet) {
-    this.#worksheet = worksheet;
-
     worksheet.addEventListener('change', event => {
-      const { changes, load } = /** @type {WorksheetChangeEvent} */ (event);
+      const { load, undo } = /** @type {WorksheetChangeEvent} */ (event);
 
-      load ? this.clear() : this.#record(/** @type {CellChange[]} */ (changes.filter(({ type }) => type !== 'columnwidth')));
+      if (load) {
+        this.clear();
+      } else if (undo) {
+        this.#undoStack.push(undo);
+        this.#redoStack = [];
+      }
     });
-  }
-
-  /** @param {CellChange[]} changes */
-  #record(changes) {
-    if (!this.#applying && changes.length) {
-      this.#undoStack.push(changes);
-      this.#redoStack = [];
-    }
   }
 
   /** Whether `undo()` has anything to revert. */
@@ -56,66 +45,37 @@ export class WorksheetHistory {
   }
 
   /**
-   * Reverts the last group of changes.
+   * Reverts the last transaction.
    *
    * @returns {boolean} `false` if there is nothing to undo.
    */
   undo() {
-    return this.#apply(this.#undoStack, this.#redoStack, true);
+    const entry = this.#undoStack.at(-1);
+
+    if (!entry) {
+      return false;
+    }
+
+    this.#redoStack.push(entry.undo());
+    this.#undoStack.pop();
+
+    return true;
   }
 
   /**
-   * Re-applies the last undone group of changes.
+   * Re-applies the last undone transaction.
    *
    * @returns {boolean} `false` if there is nothing to redo.
    */
   redo() {
-    return this.#apply(this.#redoStack, this.#undoStack, false);
-  }
+    const entry = this.#redoStack.at(-1);
 
-  /**
-   * @param {CellChange[][]} from
-   * @param {CellChange[][]} to
-   * @param {boolean} isUndo
-   */
-  #apply(from, to, isUndo) {
-    const changes = from.pop();
-
-    if (!changes) {
+    if (!entry) {
       return false;
     }
 
-    const worksheet = this.#worksheet;
-
-    this.#applying = true;
-
-    try {
-      worksheet.edit(edit => {
-        for (const change of isUndo ? [...changes].reverse() : changes) {
-          const { x, y } = change;
-
-          if (change.type === 'border') {
-            edit.setBorder({ x, y }, new Set([change.edge]), isUndo ? change.previousBorder : change.border);
-          } else if (change.type === 'merge') {
-            const merge = isUndo ? change.previousMerge : change.merge;
-
-            merge ? edit.mergeCells(x, y, merge.width, merge.height) : edit.unmergeCells(x, y);
-          } else if (change.type === 'formatting') {
-            edit.setFormattings([[isUndo ? change.previousFormatting : change.formatting]], x, y);
-          } else {
-            edit.setValue(x, y, isUndo ? change.previousValue : change.value);
-          }
-        }
-      });
-    } catch (error) {
-      from.push(changes);
-
-      throw error;
-    } finally {
-      this.#applying = false;
-    }
-
-    to.push(changes);
+    this.#undoStack.push(entry.redo());
+    this.#redoStack.pop();
 
     return true;
   }
