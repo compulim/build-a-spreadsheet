@@ -274,8 +274,29 @@ function updateSelectionInfo() {
   updateFormattingButtons();
 }
 
+/**
+ * Returns the cell whose formatting the toolbar reflects: the active cell, or the first non-empty selected cell if the
+ * active cell is empty (empty cells cannot hold formatting).
+ */
+function getFormattingCell() {
+  const { activeCell, range } = getSelection();
+  const worksheet = activeElement?.worksheet;
+
+  if (worksheet && (worksheet.getValue(activeCell.column, activeCell.row) ?? '') === '') {
+    for (let row = range.top; row <= range.bottom; row++) {
+      for (let column = range.left; column <= range.right; column++) {
+        if ((worksheet.getValue(column, row) ?? '') !== '') {
+          return { column, row };
+        }
+      }
+    }
+  }
+
+  return activeCell;
+}
+
 function updateFormattingButtons() {
-  const { column, row } = getSelection().activeCell;
+  const { column, row } = getFormattingCell();
   const formatting = activeElement?.worksheet?.getFormattings(column, row, 1, 1)[0][0];
 
   for (const { style, button } of styleButtons) {
