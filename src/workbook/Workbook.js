@@ -1,13 +1,15 @@
 import { createZip, readZip } from '../zip.js';
 import { CellChangeEvent } from './private/CellChangeEvent.js';
 import { MAX_WORKSHEET_NAME_LENGTH, MAX_WORKSHEETS } from './constants.js';
-import { owners } from './private/owners.js';
 import { Worksheet } from './Worksheet.js';
 import { sanitizeWorksheetName, validateWorksheetName } from './private/worksheetName.js';
 import { WorksheetEvent } from './private/WorksheetEvent.js';
 
 /**
  * A workbook with up to 50 worksheets.
+ *
+ * Worksheets are created by the workbook. In a browser where `<compulim-worksheet>` is defined, each worksheet is owned
+ * by a newly instantiated `<compulim-worksheet>` element, see `getWorksheetElement()`.
  *
  * Re-dispatches `cellchange` (`CellChangeEvent`) from all of its worksheets, and dispatches
  * `worksheetadd`, `worksheetremove` and `worksheetrename` (`WorksheetEvent`).
@@ -18,6 +20,9 @@ export class Workbook extends EventTarget {
 
   /** @type {Map<Worksheet, string>} */
   #names = new Map();
+
+  /** @type {Map<Worksheet, HTMLElement & { readonly worksheet: Worksheet }>} */
+  #elements = new Map();
 
   /** @param {Event} event */
   #handleCellChange = event => {
@@ -136,27 +141,37 @@ export class Workbook extends EventTarget {
   }
 
   /**
-   * Adds a worksheet.
+   * Returns the `<compulim-worksheet>` element owning a worksheet of this workbook, or `undefined` if not found or
+   * `<compulim-worksheet>` is not defined (e.g. outside of a browser).
+   *
+   * @param {Worksheet} worksheet
+   * @returns {(HTMLElement & { readonly worksheet: Worksheet }) | undefined}
+   */
+  getWorksheetElement(worksheet) {
+    return this.#elements.get(worksheet);
+  }
+
+  /**
+   * Adds a new worksheet, owned by a newly instantiated `<compulim-worksheet>` if it is defined.
    *
    * @param {string} [name] Name of the worksheet, default to an unused name.
-   * @param {Worksheet} [worksheet] The worksheet to add, default to a new worksheet.
    * @param {number} [index] Position of the worksheet, default to the end.
    * @returns {Worksheet}
    */
-  addWorksheet(name = this.getUniqueWorksheetName(), worksheet = new Worksheet(), index = this.#worksheets.length) {
+  addWorksheet(name = this.getUniqueWorksheetName(), index = this.#worksheets.length) {
     if (this.#worksheets.length >= MAX_WORKSHEETS) {
       throw new RangeError(`A workbook cannot have more than ${MAX_WORKSHEETS} sheets.`);
-    } else if (!(worksheet instanceof Worksheet)) {
-      throw new TypeError('Worksheet must be a Worksheet.');
-    } else if (owners.has(worksheet)) {
-      throw new TypeError('Worksheet already belongs to a workbook.');
     }
 
     this.#assertName(name);
 
     index = Math.max(0, Math.min(index, this.#worksheets.length));
 
-    owners.set(worksheet, this);
+    /** @type {(HTMLElement & { readonly worksheet: Worksheet }) | undefined} */
+    const element = globalThis.customElements?.get('compulim-worksheet') && document.createElement('compulim-worksheet');
+    const worksheet = element ? element.worksheet : new Worksheet();
+
+    element && this.#elements.set(worksheet, element);
     this.#names.set(worksheet, name);
     this.#worksheets.splice(index, 0, worksheet);
     worksheet.addEventListener('cellchange', this.#handleCellChange);
@@ -182,7 +197,8 @@ export class Workbook extends EventTarget {
     }
 
     this.#worksheets.splice(index, 1);
-    owners.delete(worksheet);
+    this.#elements.get(worksheet)?.remove();
+    this.#elements.delete(worksheet);
     this.#names.delete(worksheet);
     worksheet.removeEventListener('cellchange', this.#handleCellChange);
 
@@ -212,10 +228,9 @@ export class Workbook extends EventTarget {
    * Loads a workbook from a ZIP file containing CSV files, one worksheet per CSV file (in the order stored in the ZIP).
    *
    * @param {ArrayBuffer | Uint8Array} data
-   * @param {() => Worksheet} [createWorksheet] Creates an empty worksheet for each CSV file, default to a new worksheet.
    * @returns {Promise<Workbook>}
    */
-  static async fromZip(data, createWorksheet = () => new Worksheet()) {
+  static async fromZip(data) {
     const decoder = new TextDecoder();
     const workbook = new Workbook();
 
@@ -230,10 +245,9 @@ export class Workbook extends EventTarget {
         break;
       }
 
-      const worksheet = createWorksheet();
-
-      worksheet.loadCSV(decoder.decode(content));
-      workbook.addWorksheet(workbook.getUniqueWorksheetName(fileName.replace(/\.csv$/i, '')), worksheet);
+      workbook
+        .addWorksheet(workbook.getUniqueWorksheetName(fileName.replace(/\.csv$/i, '')))
+        .loadCSV(decoder.decode(content));
     }
 
     return workbook;

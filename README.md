@@ -52,22 +52,24 @@ sheet.undo(); // true, B1:C1 restored; returns false when there is nothing to un
 sheet.setColumnWidth(0, 150);
 
 sheet.toCSV(); // 'Name,42,TRUE\r\n'
-workbook.addWorksheet('Imported', Worksheet.fromCSV('a,1\r\n'));
+workbook.addWorksheet('Imported').loadCSV('a,1\r\n');
 
 const zip = await workbook.toZip(); // Uint8Array, one "<sheet name>.csv" per worksheet
 const loaded = await Workbook.fromZip(zip);
 ```
 
-Each sheet is shown by a `<compulim-worksheet>` custom element ([`src/WorksheetElement.js`](src/WorksheetElement.js)), which wholly owns a newly constructed `Worksheet`. Its only public member is the read-only `worksheet` property:
+In a browser where `<compulim-worksheet>` ([`src/WorksheetElement.js`](src/WorksheetElement.js)) is defined, the workbook instantiates one element per worksheet. The element renders the grid, handles user interactions, and wholly owns the worksheet. Its only public member is the read-only `worksheet` property:
 
 ```js
 import './src/WorksheetElement.js';
 
-const element = document.createElement('compulim-worksheet');
+const worksheet = workbook.addWorksheet('Hello');
+const element = workbook.getWorksheetElement(worksheet); // <compulim-worksheet>, element.worksheet === worksheet
 
+element.setAttribute('locked-row-count', '1'); // Read when first connected
 document.body.append(element);
-element.worksheet.setValue(0, 0, 'Hello'); // The grid updates
-workbook.addWorksheet('Hello', element.worksheet);
+element.toggleAttribute('locked', true); // Locks row 1
+worksheet.setValue(0, 1, 'Hello'); // The grid updates
 ```
 
 | Member | Description |
@@ -78,8 +80,8 @@ workbook.addWorksheet('Hello', element.worksheet);
 | `Worksheet#setValues(values, x?, y?)` / `Worksheet#setValues(updater, x, y, width, height)` | Sets a block of values (use `''` to clear), or updates every cell of a range with `(value, x, y) => nextValue`. Values outside of the sheet are ignored. |
 | `Worksheet#getColumnWidth(x)` / `Worksheet#setColumnWidth(x, width)` | Column widths in pixels, dispatches `columnwidthchange`. |
 | `Worksheet#undo()` / `Worksheet#redo()` | Undo/redo cell changes, returns `false` at the end of the stack. Synchronous changes are grouped. |
-| `Worksheet#toCSV()` / `Worksheet.fromCSV(text)` | CSV serialization. |
-| `Workbook#addWorksheet(name?, worksheet?, index?)` / `Workbook#removeWorksheet(worksheetOrIndex)` | Manage up to 50 sheets. |
+| `Worksheet#toCSV()` / `Worksheet#loadCSV(text)` / `Worksheet.fromCSV(text)` | CSV serialization. |
+| `Workbook#addWorksheet(name?, index?)` / `Workbook#getWorksheetElement(worksheet)` / `Workbook#removeWorksheet(worksheetOrIndex)` | Manage up to 50 sheets. |
 | `Workbook#getWorksheetName(worksheet)` / `Workbook#renameWorksheet(worksheet, name)` | Sheet names are owned by the workbook. |
 | `Workbook#worksheets` / `Workbook#getWorksheet(nameOrIndex)` | Access sheets. |
 | `Workbook#toZip()` / `Workbook.fromZip(data)` | ZIP of CSV files. |
