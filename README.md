@@ -64,10 +64,10 @@ const zip = await workbook.toZip(); // Uint8Array, one "<sheet name>.csv" per wo
 const loaded = await Workbook.fromZip(zip);
 ```
 
-In a browser where `<compulim-worksheet>` ([`src/WorksheetElement.js`](src/WorksheetElement.js)) is defined, the workbook instantiates one element per worksheet. The element renders the grid, handles user interactions, and wholly owns the worksheet. Its public members are the read-only `worksheet` property, `selection`, `undo()`, `redo()`, `canUndo` and `canRedo`:
+In a browser where `<compulim-worksheet>` ([`src/worksheet/WorksheetElement.js`](src/worksheet/WorksheetElement.js)) is defined, the workbook instantiates one element per worksheet. The element renders the grid, handles user interactions, and wholly owns the worksheet. Its public members are the read-only `worksheet` property, `selection`, `undo()`, `redo()`, `canUndo` and `canRedo`:
 
 ```js
-import './src/WorksheetElement.js';
+import './src/worksheet/WorksheetElement.js';
 
 const worksheet = workbook.addWorksheet('Hello');
 const element = workbook.getWorksheetElement(worksheet); // <compulim-worksheet>, element.worksheet === worksheet
@@ -79,10 +79,10 @@ element.toggleAttribute('locked', true); // Locks row 1
 worksheet.edit(edit => edit.setValue(0, 1, 'Hello')); // The grid updates
 ```
 
-The element keeps the undo history: it subscribes to the change events of its worksheet (which carry the new and previous values) and remembers each modification in a stack, one step per `edit()` transaction (column widths are not recorded). The history logic lives in [`src/WorksheetHistory.js`](src/WorksheetHistory.js), which has no DOM dependency. The selection is an immutable [`WorksheetSelection`](src/WorksheetSelection.js):
+The element keeps the undo history: it subscribes to the change events of its worksheet (which carry the new and previous values) and remembers each modification in a stack, one step per `edit()` transaction (column widths are not recorded). The history logic lives in [`src/worksheet/WorksheetHistory.js`](src/worksheet/WorksheetHistory.js), which has no DOM dependency. The selection is an immutable [`WorksheetSelection`](src/worksheet/WorksheetSelection.js):
 
 ```js
-import { WorksheetSelection } from './src/WorksheetSelection.js';
+import { WorksheetSelection } from './src/worksheet/WorksheetSelection.js';
 
 element.undo(); // true, reverted and selected the changed cells; false if nothing to undo or locked cells would change
 element.redo();

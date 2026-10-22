@@ -1,14 +1,14 @@
-import { calculate } from './calculator.js';
-import { formatValue, inferValue, parseTSV, stringifyTSV } from './csv.js';
-import { getHighlight } from './highlights.js';
-import { formatDisplayValue } from './numberFormats.js';
-import { getColumnName } from './workbook/getColumnName.js';
-import { Worksheet } from './workbook/Worksheet.js';
+import { calculate } from '../calculator.js';
+import { formatValue, inferValue, parseTSV, stringifyTSV } from '../csv.js';
+import { getHighlight } from '../highlights.js';
+import { formatDisplayValue } from '../numberFormats.js';
+import { getColumnName } from '../workbook/getColumnName.js';
+import { Worksheet } from '../workbook/Worksheet.js';
 import { WorksheetHistory } from './WorksheetHistory.js';
 import { WorksheetSelection } from './WorksheetSelection.js';
 
 /**
- * @typedef {import('./workbook/Worksheet.js').CellValue} CellValue
+ * @typedef {import('../workbook/Worksheet.js').CellValue} CellValue
  * @typedef {{ readonly column: number; readonly row: number }} CellPosition
  * @typedef {{ readonly left: number; readonly top: number; readonly right: number; readonly bottom: number }} CellRange
  */
@@ -104,7 +104,7 @@ function createElement(tagName, className) {
  * Returns formattings embedded by this app in clipboard HTML, or `undefined` if the HTML is not from this app.
  *
  * @param {string} html
- * @returns {Partial<import('./workbook/Worksheet.js').CellFormatting>[][] | undefined}
+ * @returns {Partial<import('../workbook/Worksheet.js').CellFormatting>[][] | undefined}
  */
 function parseClipboardFormattings(html) {
   if (!html) {
@@ -427,7 +427,7 @@ export class WorksheetElement extends HTMLElement {
    * @param {Event} event
    */
   #handleChange = event => {
-    const { changes } = /** @type {import('./workbook/private/WorksheetChangeEvent.js').WorksheetChangeEvent} */ (event);
+    const { changes } = /** @type {import('../workbook/private/WorksheetChangeEvent.js').WorksheetChangeEvent} */ (event);
     let anchorChanged = false;
     let mergeChanged = false;
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Worksheet } from "../src/workbook/Worksheet.js";
-import { WorksheetHistory } from "../src/WorksheetHistory.js";
+import { WorksheetHistory } from "../src/worksheet/WorksheetHistory.js";
 
 test("mergeCells concatenates values into the first cell and keeps its formatting", () => {
   const worksheet = new Worksheet();

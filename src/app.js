@@ -4,8 +4,8 @@ import { cellsToPNG } from './printCells.js';
 import { MAX_WORKSHEETS } from './workbook/constants.js';
 import { getColumnName } from './workbook/getColumnName.js';
 import { Workbook } from './workbook/Workbook.js';
-import { WorksheetElement } from './WorksheetElement.js';
-import { WorksheetSelection } from './WorksheetSelection.js';
+import { WorksheetElement } from './worksheet/WorksheetElement.js';
+import { WorksheetSelection } from './worksheet/WorksheetSelection.js';
 
 /** @typedef {import('./workbook/Worksheet.js').Worksheet} Worksheet */
 
