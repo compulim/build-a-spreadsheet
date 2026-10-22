@@ -295,12 +295,46 @@ function getFormattingCell() {
   return activeCell;
 }
 
+/**
+ * Whether the style is applied to every contentful cell in the selection.
+ * If the selection has no contentful cells, checks the active cell instead.
+ *
+ * @param {'bold' | 'italic' | 'underline' | 'strikethrough'} style
+ */
+function isStyleAppliedToSelection(style) {
+  const worksheet = activeElement?.worksheet;
+
+  if (!worksheet) {
+    return false;
+  }
+
+  const { activeCell, range } = getSelection();
+  const width = range.right - range.left + 1;
+  const height = range.bottom - range.top + 1;
+  const formattings = worksheet.getFormattings(range.left, range.top, width, height);
+  let hasContent = false;
+
+  for (let row = range.top; row <= range.bottom; row++) {
+    for (let column = range.left; column <= range.right; column++) {
+      if ((worksheet.getValue(column, row) ?? '') !== '') {
+        hasContent = true;
+
+        if (!formattings[row - range.top]?.[column - range.left]?.[style]) {
+          return false;
+        }
+      }
+    }
+  }
+
+  return hasContent || !!worksheet.getFormattings(activeCell.column, activeCell.row, 1, 1)[0][0]?.[style];
+}
+
 function updateFormattingButtons() {
   const { column, row } = getFormattingCell();
   const formatting = activeElement?.worksheet?.getFormattings(column, row, 1, 1)[0][0];
 
   for (const { style, button } of styleButtons) {
-    button.setAttribute('aria-pressed', String(!!formatting?.[style]));
+    button.setAttribute('aria-pressed', String(isStyleAppliedToSelection(style)));
   }
 
   for (const { align, button } of alignButtons) {
@@ -356,7 +390,7 @@ function formatSelection(updater) {
 
 for (const { style, button } of styleButtons) {
   button.addEventListener('click', () => {
-    const value = button.getAttribute('aria-pressed') !== 'true';
+    const value = !isStyleAppliedToSelection(style);
 
     formatSelection(formatting => ({ ...formatting, [style]: value }));
   });
