@@ -1501,7 +1501,10 @@ export class WorksheetElement extends HTMLElement {
       column = column - 1 < left ? right : column - 1;
     }
 
-    this.#selectKeepingScroll({ column, row }, this.#focus);
+    // Keep the selected range, only move the active cell within it.
+    this.#editMode && this.#commitEdit();
+    this.#selectionObject = new WorksheetSelection(this.#toMergeStart({ column, row }), { left, top, right, bottom });
+    this.#updateSelection();
     this.#scrollIntoView(this.#selectionObject.activeCell);
   }
 
