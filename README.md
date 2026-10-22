@@ -66,7 +66,8 @@ import './src/WorksheetElement.js';
 const worksheet = workbook.addWorksheet('Hello');
 const element = workbook.getWorksheetElement(worksheet); // <compulim-worksheet>, element.worksheet === worksheet
 
-element.setAttribute('locked-row-count', '1'); // Read when first connected
+element.setAttribute('locked-row-count', '1'); // Number of lockable rows, can be changed at any time
+element.setAttribute('locked-column-count', '1'); // Number of lockable columns
 document.body.append(element);
 element.toggleAttribute('locked', true); // Locks row 1
 worksheet.setValue(0, 1, 'Hello'); // The grid updates

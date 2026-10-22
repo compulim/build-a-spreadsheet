@@ -145,12 +145,12 @@ let selectOf;
  *
  * Attributes:
  * - `locked`: lockable rows and columns are read-only and frozen.
- * - `locked-column-count` and `locked-row-count`: number of lockable leading columns and rows, read when first connected.
+ * - `locked-column-count` and `locked-row-count`: number of lockable leading columns and rows, defaults to 0.
  *
  * Events: `selectionchange` and `lockedit` (`CustomEvent` with the `{ column, row }` of the locked cell).
  */
 export class WorksheetElement extends HTMLElement {
-  static observedAttributes = ['locked'];
+  static observedAttributes = ['locked', 'locked-column-count', 'locked-row-count'];
 
   static {
     getSelectionOf = element => ({ activeCell: element.#activeCell, selection: element.#selection });
@@ -180,10 +180,10 @@ export class WorksheetElement extends HTMLElement {
   #locked = false;
 
   /** Number of leading columns that are read-only and frozen while locked. */
-  #lockedColumnCount;
+  #lockedColumnCount = 0;
 
   /** Number of leading rows that are read-only and frozen while locked. */
-  #lockedRowCount;
+  #lockedRowCount = 0;
 
   /** Copies of the locked rows, shown in a sticky pane while locked. @type {{ header: HTMLElement; cells: HTMLElement[]; row: number }[]} */
   #frozenRows = [];
@@ -226,7 +226,69 @@ export class WorksheetElement extends HTMLElement {
    * @param {string | null} value
    */
   attributeChangedCallback(name, _oldValue, value) {
-    name === 'locked' && this.#initialized && this.#setLocked(value !== null);
+    if (!this.#initialized) {
+      return;
+    }
+
+    if (name === 'locked') {
+      this.#setLocked(value !== null);
+    } else {
+      this.#updateLockedCounts();
+    }
+  }
+
+  /** Reads `locked-column-count` and `locked-row-count`, and updates the lockable columns and rows. */
+  #updateLockedCounts() {
+    const lockedColumnCount = Math.max(
+      0,
+      Math.min(this.#columnCount, Math.floor(Number(this.getAttribute('locked-column-count'))) || 0)
+    );
+    const lockedRowCount = Math.max(
+      0,
+      Math.min(this.#rowCount, Math.floor(Number(this.getAttribute('locked-row-count'))) || 0)
+    );
+
+    if (lockedColumnCount === this.#lockedColumnCount && lockedRowCount === this.#lockedRowCount) {
+      return;
+    }
+
+    this.#lockedColumnCount = lockedColumnCount;
+    this.#lockedRowCount = lockedRowCount;
+    this.style.setProperty('--locked-row-count', String(lockedRowCount));
+
+    for (let column = 0; column < this.#columnCount; column++) {
+      for (const element of [this.#columnHeaders[column], ...this.#pool.map(({ cells }) => cells[column])]) {
+        this.#initLockableColumn(element, column);
+      }
+    }
+
+    for (const slot of this.#pool) {
+      slot.element.classList.toggle('grid__row--lockable', slot.row >= 0 && slot.row < lockedRowCount);
+    }
+
+    // Recreate the copies of the locked rows shown in the sticky pane.
+    this.#frozenRows = [];
+
+    for (let row = 0; row < lockedRowCount; row++) {
+      const slot = this.#createRow();
+
+      slot.element.classList.add('grid__row--lockable');
+      slot.element.setAttribute('aria-hidden', 'true');
+      slot.header.textContent = String(row + 1);
+      slot.row = row;
+      this.#frozenRows.push(slot);
+      this.#renderRowSelection(slot);
+    }
+
+    this.#frozen.replaceChildren(...this.#frozenRows.map(({ element }) => element));
+
+    if (this.#locked && this.#editMode && !this.#isEditable(this.#anchor.column, this.#anchor.row)) {
+      this.#cancelEdit();
+    }
+
+    this.#updateColumnLayout();
+    this.#contentDirty = true;
+    this.#scheduleRender();
   }
 
   #init() {
@@ -234,8 +296,6 @@ export class WorksheetElement extends HTMLElement {
     const rowHeight = 24;
     const rowHeaderWidth = 56;
     const { columnCount, rowCount } = this.#worksheet;
-    const lockedColumnCount = Number(this.getAttribute('locked-column-count')) || 0;
-    const lockedRowCount = Number(this.getAttribute('locked-row-count')) || 0;
 
     this.#columnWidth = columnWidth;
     this.#rowHeight = rowHeight;
@@ -243,8 +303,6 @@ export class WorksheetElement extends HTMLElement {
     this.#rowHeaderWidth = rowHeaderWidth;
     this.#columnCount = columnCount;
     this.#rowCount = rowCount;
-    this.#lockedColumnCount = Math.max(0, Math.min(columnCount, lockedColumnCount));
-    this.#lockedRowCount = Math.max(0, Math.min(rowCount, lockedRowCount));
 
     const scroller = this;
 
@@ -257,7 +315,7 @@ export class WorksheetElement extends HTMLElement {
     scroller.style.setProperty('--column-width', `${columnWidth}px`);
     scroller.style.setProperty('--row-height', `${rowHeight}px`);
     scroller.style.setProperty('--row-header-width', `${rowHeaderWidth}px`);
-    scroller.style.setProperty('--locked-row-count', String(this.#lockedRowCount));
+    scroller.style.setProperty('--locked-row-count', '0');
 
     const content = createElement('div', 'grid__content');
 
@@ -282,18 +340,7 @@ export class WorksheetElement extends HTMLElement {
 
     // Locked rows are frozen by showing copies of them in a sticky pane below the header, while the body is shifted up
     // underneath it so all other coordinates stay the same.
-    const frozen = createElement('div', 'grid__frozen');
-
-    for (let row = 0; row < this.#lockedRowCount; row++) {
-      const slot = this.#createRow();
-
-      slot.element.classList.add('grid__row--lockable');
-      slot.element.setAttribute('aria-hidden', 'true');
-      slot.header.textContent = String(row + 1);
-      slot.row = row;
-      frozen.append(slot.element);
-      this.#frozenRows.push(slot);
-    }
+    const frozen = (this.#frozen = createElement('div', 'grid__frozen'));
 
     const body = (this.#body = createElement('div', 'grid__body'));
 
@@ -337,11 +384,15 @@ export class WorksheetElement extends HTMLElement {
     new ResizeObserver(() => this.#scheduleRender()).observe(scroller);
 
     this.#attachWorksheet();
+    this.#updateLockedCounts();
     this.#setLocked(this.hasAttribute('locked'));
   }
 
   /** @type {HTMLElement} */
   #content;
+
+  /** Sticky pane showing copies of the locked rows. @type {HTMLElement} */
+  #frozen;
 
   /** @type {HTMLElement} */
   #body;
@@ -908,10 +959,15 @@ export class WorksheetElement extends HTMLElement {
    * @param {number} column
    */
   #initLockableColumn(element, column) {
-    if (column < this.#lockedColumnCount) {
-      element.classList.add('grid__lockable');
+    const lockable = column < this.#lockedColumnCount;
+
+    element.classList.toggle('grid__lockable', lockable);
+
+    if (lockable) {
       // Only applied while locked, otherwise it would offset relatively positioned cells (e.g. with borders).
       element.style.setProperty('--sticky-left', `${this.#rowHeaderWidth + this.#columnOffset(column)}px`);
+    } else {
+      element.style.removeProperty('--sticky-left');
     }
   }
 
