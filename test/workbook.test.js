@@ -836,25 +836,3 @@ test("Worksheet undo/redo formatting", async () => {
   assert.strictEqual(worksheet.getValue(0, 0), undefined);
   assert.strictEqual(worksheet.getFormattings(0, 0, 1, 1)[0][0].bold, false);
 });
-
-test("WorksheetHistory undo/redo can be refused by canApply", () => {
-  const worksheet = new Worksheet();
-  const history = new WorksheetHistory(worksheet);
-
-  worksheet.edit((edit) => edit.setValue(1, 2, "x"));
-
-  let seen;
-
-  assert.equal(history.undo((changes) => ((seen = changes), false)), false);
-  assert.deepEqual(seen, [{ type: "value", x: 1, y: 2, value: "x", previousValue: "" }]);
-  assert.equal(worksheet.getValue(1, 2), "x");
-  assert.equal(history.canUndo, true);
-  assert.equal(history.canRedo, false);
-
-  assert.equal(history.undo(() => true), true);
-  assert.equal(worksheet.getValue(1, 2), undefined);
-  assert.equal(history.redo(() => false), false);
-  assert.equal(history.canRedo, true);
-  assert.equal(history.redo(), true);
-  assert.equal(worksheet.getValue(1, 2), "x");
-});

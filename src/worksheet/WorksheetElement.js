@@ -597,7 +597,7 @@ export class WorksheetElement extends HTMLElement {
   /**
    * Reverts the last transaction made to the worksheet and selects the changed cells.
    *
-   * @returns {boolean} `false` if there is nothing to undo, or if locked cells would change.
+   * @returns {boolean} `false` if there is nothing to undo.
    */
   undo() {
     return this.#undoOrRedo('undo');
@@ -606,7 +606,7 @@ export class WorksheetElement extends HTMLElement {
   /**
    * Re-applies the last undone transaction and selects the changed cells.
    *
-   * @returns {boolean} `false` if there is nothing to redo, or if locked cells would change.
+   * @returns {boolean} `false` if there is nothing to redo.
    */
   redo() {
     return this.#undoOrRedo('redo');
@@ -1320,44 +1320,44 @@ export class WorksheetElement extends HTMLElement {
   };
 
   /**
-   * Undoes or redoes the next group of changes, then selects the changed cells. Refused (dispatching `lockedit`) if
-   * any changed cell is locked.
+   * Undoes or redoes the next group of changes, then selects the changed cells.
    *
    * @param {'undo' | 'redo'} action
-   * @returns {boolean} `false` if nothing was applied.
+   * @returns {boolean} `false` if there is nothing to undo or redo.
    */
   #undoOrRedo(action) {
+    if (!(action === 'undo' ? this.#history.canUndo : this.#history.canRedo)) {
+      return false;
+    }
+
+    this.#editMode && this.#cancelEdit();
+
     /** @type {CellPosition[]} */
     const cells = [];
 
-    /** @param {readonly import('../workbook/Worksheet.js').CellChange[]} changes */
-    const canApply = changes => {
-      for (const change of changes) {
+    /** @param {Event} event */
+    const handleChange = event => {
+      for (const change of /** @type {import('../workbook/private/WorksheetChangeEvent.js').WorksheetChangeEvent} */ (
+        event
+      ).changes) {
         if (change.type === 'merge') {
           // All cells of a merged cell are involved, not only the cells with content.
           const { width, height } = /** @type {{ width: number; height: number }} */ (change.merge || change.previousMerge);
 
           cells.push({ column: change.x, row: change.y }, { column: change.x + width - 1, row: change.y + height - 1 });
-        } else if (change.type !== 'border') {
+        } else if (change.type !== 'border' && change.type !== 'columnwidth') {
           cells.push({ column: change.x, row: change.y });
         }
       }
-
-      const locked = cells.find(({ column, row }) => !this.#isEditable(column, row));
-
-      if (locked) {
-        this.dispatchEvent(new CustomEvent('lockedit', { detail: locked }));
-
-        return false;
-      }
-
-      this.#editMode && this.#cancelEdit();
-
-      return true;
     };
 
-    if (!this.#history[action](canApply)) {
-      return false;
+    // The replay is a single transaction, dispatching a single `change` event synchronously.
+    this.#worksheet.addEventListener('change', handleChange);
+
+    try {
+      this.#history[action]();
+    } finally {
+      this.#worksheet.removeEventListener('change', handleChange);
     }
 
     this.#scheduleHistoryChange();

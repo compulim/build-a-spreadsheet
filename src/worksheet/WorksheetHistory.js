@@ -58,39 +58,32 @@ export class WorksheetHistory {
   /**
    * Reverts the last group of changes.
    *
-   * @param {(changes: readonly CellChange[]) => boolean} [canApply] Called with the changes before reverting them, return
-   *   `false` to refuse (the history is left as-is).
-   * @returns {boolean} `false` if there is nothing to undo, or if refused.
+   * @returns {boolean} `false` if there is nothing to undo.
    */
-  undo(canApply) {
-    return this.#apply(this.#undoStack, this.#redoStack, true, canApply);
+  undo() {
+    return this.#apply(this.#undoStack, this.#redoStack, true);
   }
 
   /**
    * Re-applies the last undone group of changes.
    *
-   * @param {(changes: readonly CellChange[]) => boolean} [canApply] Called with the changes before re-applying them,
-   *   return `false` to refuse (the history is left as-is).
-   * @returns {boolean} `false` if there is nothing to redo, or if refused.
+   * @returns {boolean} `false` if there is nothing to redo.
    */
-  redo(canApply) {
-    return this.#apply(this.#redoStack, this.#undoStack, false, canApply);
+  redo() {
+    return this.#apply(this.#redoStack, this.#undoStack, false);
   }
 
   /**
    * @param {CellChange[][]} from
    * @param {CellChange[][]} to
    * @param {boolean} isUndo
-   * @param {((changes: readonly CellChange[]) => boolean) | undefined} canApply
    */
-  #apply(from, to, isUndo, canApply) {
-    const changes = from.at(-1);
+  #apply(from, to, isUndo) {
+    const changes = from.pop();
 
-    if (!changes || (canApply && !canApply(changes))) {
+    if (!changes) {
       return false;
     }
-
-    from.pop();
 
     const worksheet = this.#worksheet;
 

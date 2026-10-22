@@ -84,7 +84,7 @@ The element keeps the undo history: it subscribes to the change events of its wo
 ```js
 import { WorksheetSelection } from './src/worksheet/WorksheetSelection.js';
 
-element.undo(); // true, reverted and selected the changed cells; false if nothing to undo or locked cells would change
+element.undo(); // true, reverted and selected the changed cells; false if nothing to undo
 element.redo();
 element.canUndo; // Re-check `canUndo` / `canRedo` on the element's `historychange` event
 
