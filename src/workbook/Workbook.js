@@ -212,9 +212,10 @@ export class Workbook extends EventTarget {
    * Loads a workbook from a ZIP file containing CSV files, one worksheet per CSV file (in the order stored in the ZIP).
    *
    * @param {ArrayBuffer | Uint8Array} data
+   * @param {() => Worksheet} [createWorksheet] Creates an empty worksheet for each CSV file, default to a new worksheet.
    * @returns {Promise<Workbook>}
    */
-  static async fromZip(data) {
+  static async fromZip(data, createWorksheet = () => new Worksheet()) {
     const decoder = new TextDecoder();
     const workbook = new Workbook();
 
@@ -229,10 +230,10 @@ export class Workbook extends EventTarget {
         break;
       }
 
-      workbook.addWorksheet(
-        workbook.getUniqueWorksheetName(fileName.replace(/\.csv$/i, '')),
-        Worksheet.fromCSV(decoder.decode(content))
-      );
+      const worksheet = createWorksheet();
+
+      worksheet.loadCSV(decoder.decode(content));
+      workbook.addWorksheet(workbook.getUniqueWorksheetName(fileName.replace(/\.csv$/i, '')), worksheet);
     }
 
     return workbook;

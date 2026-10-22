@@ -87,6 +87,15 @@ body {
   position: relative;
 }
 
+compulim-worksheet {
+  display: block;
+  height: 100%;
+}
+
+compulim-worksheet[hidden] {
+  display: none;
+}
+
 .grid {
   --grid-line-shadow: inset -1px -1px 0 0 #e2e2e2;
 

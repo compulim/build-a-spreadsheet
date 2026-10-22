@@ -1,11 +1,12 @@
-import { SpreadsheetGrid } from './grid.js';
 import { formatValue } from './csv.js';
 import { HIGHLIGHTS } from './highlights.js';
 import { cellsToPNG } from './printCells.js';
 import { MAX_WORKSHEETS } from './workbook/constants.js';
 import { getColumnName } from './workbook/getColumnName.js';
 import { Workbook } from './workbook/Workbook.js';
-import { Worksheet } from './workbook/Worksheet.js';
+import { getWorksheetGrid, WorksheetElement } from './WorksheetElement.js';
+
+/** @typedef {import('./workbook/Worksheet.js').Worksheet} Worksheet */
 
 /**
  * Number of leading rows and columns that become read-only, and frozen on screen, when the lock button is pressed.
@@ -63,10 +64,46 @@ const nameBox = /** @type {HTMLOutputElement} */ (document.getElementById('name-
 const valueBox = /** @type {HTMLOutputElement} */ (document.getElementById('value-box'));
 const status = /** @type {HTMLOutputElement} */ (document.getElementById('status'));
 
-const grid = new SpreadsheetGrid(gridContainer, {
-  lockedColumnCount: LOCKED_COLUMN_COUNT,
-  lockedRowCount: LOCKED_ROW_COUNT
-});
+/** One `<compulim-worksheet>` per worksheet, each owns its worksheet. @type {Map<Worksheet, WorksheetElement>} */
+const worksheetElements = new Map();
+
+/** Grid of the active worksheet. @type {import('./grid.js').SpreadsheetGrid} */
+let grid;
+
+let locked = false;
+
+/**
+ * Creates a `<compulim-worksheet>` and returns the worksheet it owns.
+ *
+ * @returns {Worksheet}
+ */
+function createWorksheet() {
+  const element = /** @type {WorksheetElement} */ (document.createElement('compulim-worksheet'));
+
+  element.setAttribute('locked-column-count', String(LOCKED_COLUMN_COUNT));
+  element.setAttribute('locked-row-count', String(LOCKED_ROW_COUNT));
+  element.hidden = true;
+  gridContainer.append(element);
+
+  const elementGrid = getWorksheetGrid(element);
+
+  elementGrid.locked = locked;
+  elementGrid.addEventListener('selectionchange', () => elementGrid === grid && updateSelectionInfo());
+  elementGrid.addEventListener('lockedit', () => showStatus('Some cells are locked and cannot be edited.'));
+  worksheetElements.set(element.worksheet, element);
+
+  return element.worksheet;
+}
+
+/** Removes elements of worksheets which are not in the workbook. */
+function removeOrphanWorksheetElements() {
+  for (const [worksheet, element] of worksheetElements) {
+    if (workbook?.indexOf(worksheet) === -1) {
+      element.remove();
+      worksheetElements.delete(worksheet);
+    }
+  }
+}
 
 /** @type {Workbook} */
 let workbook;
@@ -98,7 +135,7 @@ function download(blob, fileName) {
 }
 
 function renderTabs() {
-  const active = grid.worksheet;
+  const active = grid?.worksheet;
   const worksheets = workbook.worksheets;
 
   sheetTabs.replaceChildren(
@@ -143,7 +180,13 @@ function renderTabs() {
 
 /** @param {Worksheet} worksheet */
 function activateWorksheet(worksheet) {
-  grid.setWorksheet(worksheet);
+  const element = /** @type {WorksheetElement} */ (worksheetElements.get(worksheet));
+
+  for (const other of worksheetElements.values()) {
+    other.hidden = other !== element;
+  }
+
+  grid = getWorksheetGrid(element);
   renderTabs();
   updateUndoButtons();
   updateFormattingButtons();
@@ -183,12 +226,13 @@ function deleteWorksheet(worksheet) {
 /** @param {Workbook} nextWorkbook */
 function setWorkbook(nextWorkbook) {
   if (!nextWorkbook.worksheets.length) {
-    nextWorkbook.addWorksheet();
+    nextWorkbook.addWorksheet(undefined, createWorksheet());
   }
 
   if (workbook) {
     workbook.removeEventListener('worksheetadd', renderTabs);
     workbook.removeEventListener('worksheetremove', renderTabs);
+    workbook.removeEventListener('worksheetremove', removeOrphanWorksheetElements);
     workbook.removeEventListener('worksheetrename', renderTabs);
     workbook.removeEventListener('cellchange', updateUndoButtons);
     workbook.removeEventListener('cellchange', updateFormattingButtons);
@@ -197,14 +241,15 @@ function setWorkbook(nextWorkbook) {
   workbook = nextWorkbook;
   workbook.addEventListener('worksheetadd', renderTabs);
   workbook.addEventListener('worksheetremove', renderTabs);
+  workbook.addEventListener('worksheetremove', removeOrphanWorksheetElements);
   workbook.addEventListener('worksheetrename', renderTabs);
   workbook.addEventListener('cellchange', updateUndoButtons);
   workbook.addEventListener('cellchange', updateFormattingButtons);
 
   // Expose for scripting from the browser console, e.g. `app.workbook.worksheets[0].setValue(0, 0, 'Hello')`.
-  Object.assign(globalThis, { app: { workbook, grid } });
+  Object.assign(globalThis, { app: { workbook } });
 
-  grid.setWorksheet(undefined);
+  removeOrphanWorksheetElements();
   activateWorksheet(workbook.worksheets[0]);
 }
 
@@ -462,12 +507,10 @@ document.addEventListener('keydown', event => {
   }
 });
 
-grid.addEventListener('selectionchange', updateSelectionInfo);
-grid.addEventListener('lockedit', () => showStatus('Some cells are locked and cannot be edited.'));
 
 addSheetButton.addEventListener('click', () => {
   if (workbook.worksheets.length < MAX_WORKSHEETS) {
-    activateWorksheet(workbook.addWorksheet());
+    activateWorksheet(workbook.addWorksheet(undefined, createWorksheet()));
   }
 });
 
@@ -494,9 +537,14 @@ borderSelect.addEventListener('change', () => {
 });
 
 lockButton.addEventListener('click', () => {
-  grid.locked = !grid.locked;
-  lockButton.setAttribute('aria-pressed', String(grid.locked));
-  lockButton.textContent = grid.locked ? '🔒 Locked' : '🔓 Unlocked';
+  locked = !locked;
+
+  for (const element of worksheetElements.values()) {
+    getWorksheetGrid(element).locked = locked;
+  }
+
+  lockButton.setAttribute('aria-pressed', String(locked));
+  lockButton.textContent = locked ? '🔒 Locked' : '🔓 Unlocked';
   grid.focus();
 });
 
@@ -517,7 +565,7 @@ fileInput.addEventListener('change', async () => {
         return;
       }
 
-      setWorkbook(await Workbook.fromZip(await file.arrayBuffer()));
+      setWorkbook(await Workbook.fromZip(await file.arrayBuffer(), createWorksheet));
     } else {
       if (workbook.worksheets.length >= MAX_WORKSHEETS) {
         alert(`A workbook cannot have more than ${MAX_WORKSHEETS} sheets.`);
@@ -527,9 +575,14 @@ fileInput.addEventListener('change', async () => {
 
       const name = workbook.getUniqueWorksheetName(file.name.replace(/\.csv$/i, ''));
 
-      activateWorksheet(workbook.addWorksheet(name, Worksheet.fromCSV(await file.text())));
+      const worksheet = createWorksheet();
+
+      worksheet.loadCSV(await file.text());
+      activateWorksheet(workbook.addWorksheet(name, worksheet));
     }
   } catch (error) {
+    removeOrphanWorksheetElements();
+
     alert(`Failed to open "${file.name}": ${/** @type {Error} */ (error).message}`);
   }
 });

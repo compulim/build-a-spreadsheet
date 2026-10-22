@@ -838,11 +838,20 @@ export class Worksheet extends EventTarget {
   static fromCSV(text) {
     const worksheet = new Worksheet();
 
-    worksheet.setValues(parseCSV(text));
-    // Loading is not an undoable change.
-    worksheet.#undoStack = [];
-    worksheet.#pending = undefined;
+    worksheet.loadCSV(text);
 
     return worksheet;
+  }
+
+  /**
+   * Loads values from CSV into this worksheet. Loading is not an undoable change, the undo and redo history is cleared.
+   *
+   * @param {string} text
+   */
+  loadCSV(text) {
+    this.setValues(parseCSV(text));
+    this.#undoStack = [];
+    this.#redoStack = [];
+    this.#pending = undefined;
   }
 }

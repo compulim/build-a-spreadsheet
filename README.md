@@ -58,6 +58,18 @@ const zip = await workbook.toZip(); // Uint8Array, one "<sheet name>.csv" per wo
 const loaded = await Workbook.fromZip(zip);
 ```
 
+Each sheet is shown by a `<compulim-worksheet>` custom element ([`src/WorksheetElement.js`](src/WorksheetElement.js)), which wholly owns a newly constructed `Worksheet`. Its only public member is the read-only `worksheet` property:
+
+```js
+import './src/WorksheetElement.js';
+
+const element = document.createElement('compulim-worksheet');
+
+document.body.append(element);
+element.worksheet.setValue(0, 0, 'Hello'); // The grid updates
+workbook.addWorksheet('Hello', element.worksheet);
+```
+
 | Member | Description |
 | --- | --- |
 | `Worksheet#setValue(x, y, valueOrUpdater)` | Sets a cell (zero-based), or updates it with `(value, x, y) => nextValue`. Strings are trimmed. Blank strings, `null` or `undefined` clear it. Throws `RangeError` / `TypeError` on invalid input. |
