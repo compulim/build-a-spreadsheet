@@ -5,6 +5,7 @@ import { formatDisplayValue } from './numberFormats.js';
 import { getColumnName } from './workbook/getColumnName.js';
 import { Worksheet } from './workbook/Worksheet.js';
 import { WorksheetHistory } from './WorksheetHistory.js';
+import { WorksheetSelection } from './WorksheetSelection.js';
 
 /**
  * @typedef {import('./workbook/Worksheet.js').CellValue} CellValue
@@ -131,43 +132,25 @@ function escapeHTML(text) {
   );
 }
 
-/** @type {(element: WorksheetElement) => { activeCell: CellPosition; selection: CellRange }} */
-let getSelectionOf;
-
-/** @type {(element: WorksheetElement, anchor: CellPosition, focus?: CellPosition) => void} */
-let selectOf;
-
-/** @type {(element: WorksheetElement, action: 'undo' | 'redo') => boolean} */
-let undoOrRedoOf;
-
-/** @type {(element: WorksheetElement) => { canUndo: boolean; canRedo: boolean }} */
-let getHistoryOf;
-
 /**
  * `<compulim-worksheet>`, a virtualized spreadsheet grid showing the `Worksheet` it owns. Only the visible rows (plus a
  * few extra) are in the DOM, while the scrolling itself is handled by the browser using a native scrollbar on the element
  * sized to the full worksheet.
  *
- * The only public member is `worksheet`, a newly constructed `Worksheet` owned by the element.
+ * Public members:
+ * - `worksheet`: a newly constructed `Worksheet` owned by the element.
+ * - `selection`: the `WorksheetSelection`, set it to select cells.
+ * - `undo()` / `redo()` and `canUndo` / `canRedo`: the undo history of changes made to the worksheet.
  *
  * Attributes:
  * - `locked`: lockable rows and columns are read-only and frozen.
  * - `locked-column-count` and `locked-row-count`: number of lockable leading columns and rows, defaults to 0.
- *
- * Keeps an undo history of changes made to its worksheet, see `undoWorksheet()` and `redoWorksheet()`.
  *
  * Events: `selectionchange`, `historychange` (undo/redo availability may have changed) and `lockedit` (`CustomEvent`
  * with the `{ column, row }` of the locked cell).
  */
 export class WorksheetElement extends HTMLElement {
   static observedAttributes = ['locked', 'locked-column-count', 'locked-row-count'];
-
-  static {
-    getSelectionOf = element => ({ activeCell: element.#activeCell, selection: element.#selection });
-    selectOf = (element, anchor, focus) => element.#select(anchor, focus);
-    undoOrRedoOf = (element, action) => element.#undoOrRedo(action);
-    getHistoryOf = element => ({ canUndo: element.#history.canUndo, canRedo: element.#history.canRedo });
-  }
 
   /** @readonly */
   #worksheet = new Worksheet();
@@ -546,14 +529,47 @@ export class WorksheetElement extends HTMLElement {
     );
   }
 
-  /** @returns {CellPosition} */
-  get #activeCell() {
-    return { ...this.#anchor };
+  /** @returns {CellRange} */
+  get #selectedRange() {
+    return this.#rangeOf(this.#anchor, this.#focus);
   }
 
-  /** @returns {CellRange} */
-  get #selection() {
-    return this.#rangeOf(this.#anchor, this.#focus);
+  /** @returns {WorksheetSelection} */
+  get selection() {
+    return new WorksheetSelection(this.#anchor, this.#selectedRange);
+  }
+
+  /** @param {WorksheetSelection} selection */
+  set selection(selection) {
+    this.#select(selection.activeCell, selection.focus);
+  }
+
+  /** Whether there are changes to undo. */
+  get canUndo() {
+    return this.#history.canUndo;
+  }
+
+  /** Whether there are undone changes to redo. */
+  get canRedo() {
+    return this.#history.canRedo;
+  }
+
+  /**
+   * Reverts the last transaction made to the worksheet and selects the changed cells.
+   *
+   * @returns {boolean} `false` if there is nothing to undo, or if locked cells would change.
+   */
+  undo() {
+    return this.#undoOrRedo('undo');
+  }
+
+  /**
+   * Re-applies the last undone transaction and selects the changed cells.
+   *
+   * @returns {boolean} `false` if there is nothing to redo, or if locked cells would change.
+   */
+  redo() {
+    return this.#undoOrRedo('redo');
   }
 
   /**
@@ -1212,7 +1228,7 @@ export class WorksheetElement extends HTMLElement {
 
   /** @param {{ header: HTMLElement; row: number }} slot */
   #renderRowSelection({ header, row }) {
-    const { top, bottom } = this.#selection;
+    const { top, bottom } = this.#selectedRange;
 
     header.classList.toggle('grid__row-header--selected', row >= top && row <= bottom);
   }
@@ -1220,7 +1236,7 @@ export class WorksheetElement extends HTMLElement {
   #updateSelection() {
     const rowHeight = this.#rowHeight;
     const rowHeaderWidth = this.#rowHeaderWidth;
-    const { left, top, right, bottom } = this.#selection;
+    const { left, top, right, bottom } = this.#selectedRange;
     const rangeStyle = this.#rangeOverlay.style;
     const activeStyle = this.#activeOverlay.style;
     const anchorEnd = this.#toMergeEnd(this.#anchor);
@@ -1373,7 +1389,7 @@ export class WorksheetElement extends HTMLElement {
    * @returns {CellPosition}
    */
   #extendFocus(deltaColumn, deltaRow) {
-    const selection = this.#selection;
+    const selection = this.#selectedRange;
     let focus = this.#focus;
 
     for (;;) {
@@ -1405,7 +1421,7 @@ export class WorksheetElement extends HTMLElement {
    * @param {number} deltaRow
    */
   #moveWithinSelection(deltaColumn, deltaRow) {
-    const { left, top, right, bottom } = this.#selection;
+    const { left, top, right, bottom } = this.#selectedRange;
 
     const end = this.#toMergeEnd(this.#anchor);
 
@@ -1724,7 +1740,7 @@ export class WorksheetElement extends HTMLElement {
    * @returns {number[]}
    */
   #columnsToResize(column) {
-    const { left, top, right, bottom } = this.#selection;
+    const { left, top, right, bottom } = this.#selectedRange;
 
     if (top === 0 && bottom === this.#rowCount - 1 && column >= left && column <= right) {
       return Array.from({ length: right - left + 1 }, (_, index) => left + index);
@@ -1878,7 +1894,7 @@ export class WorksheetElement extends HTMLElement {
   #clearSelection() {
     const worksheet = this.#worksheet;
 
-    const { left, top, right, bottom } = this.#selection;
+    const { left, top, right, bottom } = this.#selectedRange;
     let skipped = false;
 
     worksheet.edit(edit => {
@@ -1903,7 +1919,7 @@ export class WorksheetElement extends HTMLElement {
   /** @returns {CellValue[][]} */
   #getSelectedValues() {
     const worksheet = this.#worksheet;
-    const { left, top, right, bottom } = this.#selection;
+    const { left, top, right, bottom } = this.#selectedRange;
 
     /** @type {CellValue[][]} */
     const values = [];
@@ -1935,7 +1951,7 @@ export class WorksheetElement extends HTMLElement {
     event.preventDefault();
 
     const values = this.#getSelectedValues();
-    const { left, top, right, bottom } = this.#selection;
+    const { left, top, right, bottom } = this.#selectedRange;
     // Formatting (excluding borders) is embedded in the HTML flavor only, so plain text editors get plain values.
     const formattings = this.#worksheet.getFormattings(left, top, right - left + 1, bottom - top + 1);
 
@@ -1985,7 +2001,7 @@ export class WorksheetElement extends HTMLElement {
 
     const dataRows = values.length;
     const dataColumns = Math.max(...values.map(row => row.length));
-    const { left, top, right, bottom } = this.#selection;
+    const { left, top, right, bottom } = this.#selectedRange;
     const selectedRows = bottom - top + 1;
     const selectedColumns = right - left + 1;
 
@@ -2029,52 +2045,3 @@ export class WorksheetElement extends HTMLElement {
 }
 
 customElements.get('compulim-worksheet') || customElements.define('compulim-worksheet', WorksheetElement);
-
-/**
- * Returns the active cell and the selection of a `<compulim-worksheet>`.
- *
- * @param {WorksheetElement} element
- */
-export function getWorksheetSelection(element) {
-  return getSelectionOf(element);
-}
-
-/**
- * Selects a cell or a range in a `<compulim-worksheet>`. The anchor is the active cell.
- *
- * @param {WorksheetElement} element
- * @param {CellPosition} anchor
- * @param {CellPosition} [focus]
- */
-export function selectWorksheetCells(element, anchor, focus) {
-  selectOf(element, anchor, focus);
-}
-
-/**
- * Reverts the last group of changes made to the worksheet of a `<compulim-worksheet>` and selects the changed cells.
- *
- * @param {WorksheetElement} element
- * @returns {boolean} `false` if there is nothing to undo, or if locked cells would change.
- */
-export function undoWorksheet(element) {
-  return undoOrRedoOf(element, 'undo');
-}
-
-/**
- * Re-applies the last undone group of changes of a `<compulim-worksheet>` and selects the changed cells.
- *
- * @param {WorksheetElement} element
- * @returns {boolean} `false` if there is nothing to redo, or if locked cells would change.
- */
-export function redoWorksheet(element) {
-  return undoOrRedoOf(element, 'redo');
-}
-
-/**
- * Returns whether undo and redo are available in a `<compulim-worksheet>`.
- *
- * @param {WorksheetElement} element
- */
-export function getWorksheetHistory(element) {
-  return getHistoryOf(element);
-}

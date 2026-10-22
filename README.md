@@ -64,7 +64,7 @@ const zip = await workbook.toZip(); // Uint8Array, one "<sheet name>.csv" per wo
 const loaded = await Workbook.fromZip(zip);
 ```
 
-In a browser where `<compulim-worksheet>` ([`src/WorksheetElement.js`](src/WorksheetElement.js)) is defined, the workbook instantiates one element per worksheet. The element renders the grid, handles user interactions, and wholly owns the worksheet. Its only public member is the read-only `worksheet` property:
+In a browser where `<compulim-worksheet>` ([`src/WorksheetElement.js`](src/WorksheetElement.js)) is defined, the workbook instantiates one element per worksheet. The element renders the grid, handles user interactions, and wholly owns the worksheet. Its public members are the read-only `worksheet` property, `selection`, `undo()`, `redo()`, `canUndo` and `canRedo`:
 
 ```js
 import './src/WorksheetElement.js';
@@ -79,14 +79,17 @@ element.toggleAttribute('locked', true); // Locks row 1
 worksheet.edit(edit => edit.setValue(0, 1, 'Hello')); // The grid updates
 ```
 
-The element keeps the undo history: it subscribes to the change events of its worksheet (which carry the new and previous values) and remembers each modification in a stack, one step per `edit()` transaction (column widths are not recorded). The history logic lives in [`src/WorksheetHistory.js`](src/WorksheetHistory.js), which has no DOM dependency:
+The element keeps the undo history: it subscribes to the change events of its worksheet (which carry the new and previous values) and remembers each modification in a stack, one step per `edit()` transaction (column widths are not recorded). The history logic lives in [`src/WorksheetHistory.js`](src/WorksheetHistory.js), which has no DOM dependency. The selection is an immutable [`WorksheetSelection`](src/WorksheetSelection.js):
 
 ```js
-import { getWorksheetHistory, redoWorksheet, undoWorksheet } from './src/WorksheetElement.js';
+import { WorksheetSelection } from './src/WorksheetSelection.js';
 
-undoWorksheet(element); // true, reverted and selected the changed cells; false if nothing to undo or locked cells would change
-redoWorksheet(element);
-getWorksheetHistory(element); // { canUndo, canRedo }, re-check on the element's `historychange` event
+element.undo(); // true, reverted and selected the changed cells; false if nothing to undo or locked cells would change
+element.redo();
+element.canUndo; // Re-check `canUndo` / `canRedo` on the element's `historychange` event
+
+element.selection; // WorksheetSelection { activeCell: { column, row }, range: { left, top, right, bottom } }
+element.selection = new WorksheetSelection({ column: 0, row: 0 }, { left: 0, top: 0, right: 2, bottom: 1 }); // Selects A1:C2
 ```
 
 | Member | Description |

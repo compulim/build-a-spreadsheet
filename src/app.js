@@ -4,14 +4,8 @@ import { cellsToPNG } from './printCells.js';
 import { MAX_WORKSHEETS } from './workbook/constants.js';
 import { getColumnName } from './workbook/getColumnName.js';
 import { Workbook } from './workbook/Workbook.js';
-import {
-  getWorksheetHistory,
-  getWorksheetSelection,
-  redoWorksheet,
-  selectWorksheetCells,
-  undoWorksheet,
-  WorksheetElement
-} from './WorksheetElement.js';
+import { WorksheetElement } from './WorksheetElement.js';
+import { WorksheetSelection } from './WorksheetSelection.js';
 
 /** @typedef {import('./workbook/Worksheet.js').Worksheet} Worksheet */
 
@@ -107,8 +101,8 @@ function handleWorksheetAdd(event) {
 /** Active cell and selection of the active worksheet. */
 function getSelection() {
   return activeElement
-    ? getWorksheetSelection(activeElement)
-    : { activeCell: { column: 0, row: 0 }, selection: { left: 0, top: 0, right: 0, bottom: 0 } };
+    ? activeElement.selection
+    : new WorksheetSelection({ column: 0, row: 0 });
 }
 
 /**
@@ -271,7 +265,7 @@ function setWorkbook(nextWorkbook) {
 }
 
 function updateSelectionInfo() {
-  const { left, top, right, bottom } = getSelection().selection;
+  const { left, top, right, bottom } = getSelection().range;
   const { column, row } = getSelection().activeCell;
   const topLeft = `${getColumnName(left)}${top + 1}`;
 
@@ -311,7 +305,7 @@ function isSelectionMerged() {
     return false;
   }
 
-  const { left, top, right, bottom } = getSelection().selection;
+  const { left, top, right, bottom } = getSelection().range;
 
   let covered = 0;
 
@@ -329,7 +323,7 @@ function formatSelection(updater) {
   const worksheet = activeElement?.worksheet;
 
   if (worksheet) {
-    const { left, top, right, bottom } = getSelection().selection;
+    const { left, top, right, bottom } = getSelection().range;
 
     worksheet.edit(edit => edit.setFormattings(updater, left, top, right - left + 1, bottom - top + 1));
     updateFormattingButtons();
@@ -409,7 +403,7 @@ mergeButton.addEventListener('click', () => {
   const worksheet = activeElement?.worksheet;
 
   if (worksheet) {
-    const { left, top, right, bottom } = getSelection().selection;
+    const { left, top, right, bottom } = getSelection().range;
     // Unmerges only if all selected cells are merged, otherwise merges all of them.
     const unmerge = isSelectionMerged();
     let skipped = false;
@@ -423,7 +417,10 @@ mergeButton.addEventListener('click', () => {
       );
 
       // Keeps all cells of the unmerged cells selected, the selection may be only the merged cell itself.
-      selectWorksheetCells(/** @type {WorksheetElement} */ (activeElement), { column: left, row: top }, { column: right, row: bottom });
+      /** @type {WorksheetElement} */ (activeElement).selection = new WorksheetSelection(
+        { column: left, row: top },
+        { left, top, right, bottom }
+      );
     } else {
       worksheet.edit(edit => edit.mergeCells(left, top, right - left + 1, bottom - top + 1));
     }
@@ -437,7 +434,7 @@ mergeButton.addEventListener('click', () => {
 });
 
 function updateUndoButtons() {
-  const { canUndo, canRedo } = activeElement ? getWorksheetHistory(activeElement) : { canUndo: false, canRedo: false };
+  const { canUndo, canRedo } = activeElement ?? { canUndo: false, canRedo: false };
 
   undoButton.disabled = !canUndo;
   redoButton.disabled = !canRedo;
@@ -445,7 +442,7 @@ function updateUndoButtons() {
 
 /** @param {'undo' | 'redo'} action */
 function undoOrRedo(action) {
-  if (activeElement && (action === 'undo' ? undoWorksheet : redoWorksheet)(activeElement)) {
+  if (activeElement && activeElement[action]()) {
     updateFormattingButtons();
     updateSelectionInfo();
   }
@@ -495,7 +492,7 @@ borderSelect.addEventListener('change', () => {
   borderSelect.value = '';
 
   if (worksheet) {
-    const { left, top, right, bottom } = getSelection().selection;
+    const { left, top, right, bottom } = getSelection().range;
     const range = { x: left, y: top, width: right - left + 1, height: bottom - top + 1 };
 
     worksheet.edit(edit => {
@@ -586,7 +583,7 @@ printButton.addEventListener('click', async () => {
     return;
   }
 
-  const { left, top, right, bottom } = getSelection().selection;
+  const { left, top, right, bottom } = getSelection().range;
   const rows = worksheet.getValues(left, top, right - left + 1, bottom - top + 1);
 
   try {
