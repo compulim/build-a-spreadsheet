@@ -6,6 +6,7 @@ import { getColumnName } from './worksheet/getColumnName.js';
 import { Workbook } from './workbook/Workbook.js';
 import { WorksheetElement } from './worksheet/WorksheetElement.js';
 import { WorksheetSelection } from './worksheet/WorksheetSelection.js';
+import { mountUI } from './ui/mountUI.jsx';
 
 /** @typedef {import('./worksheet/Worksheet.js').Worksheet} Worksheet */
 
@@ -16,54 +17,65 @@ import { WorksheetSelection } from './worksheet/WorksheetSelection.js';
 const LOCKED_ROW_COUNT = 1;
 const LOCKED_COLUMN_COUNT = 1;
 
+/** @typedef {import('./ui/Toolbar.jsx').ToolbarActions} ToolbarActions */
+
+const fileInput = /** @type {HTMLInputElement} */ (document.getElementById('file-input'));
+/** @type {Record<import('./ui/Toolbar.jsx').CellStyle, boolean>} */
+const NO_STYLES = { bold: false, italic: false, underline: false, strikethrough: false };
+/** @type {readonly import('./worksheet/Worksheet.js').CellAlign[]} */
+const ALIGNS = ['left', 'center', 'right'];
+/** @type {readonly import('./worksheet/Worksheet.js').CellNumberFormat[]} */
+const FORMATS = ['currency', 'percent', 'date', 'datetime', 'duration'];
+
+/** @type {ToolbarActions} */
+const toolbarActions = {
+  merge: () => mergeSelection(),
+  open: () => fileInput.click(),
+  print: () => printSelection(),
+  redo: () => undoOrRedo('redo'),
+  saveCSV: () => saveCSV(),
+  saveZip: () => saveZip(),
+  setAlign: align => formatSelection(formatting => ({ ...formatting, align })),
+  setBorder: preset => setBorder(preset),
+  setFormat: format => formatSelection(formatting => ({ ...formatting, format })),
+  setHighlight: highlight => formatSelection(formatting => ({ ...formatting, highlight })),
+  setLocked: nextLocked => setLocked(nextLocked),
+  toggleStyle: style => {
+    const value = !isFormattingAppliedToSelection(formatting => !!formatting?.[style]);
+
+    formatSelection(formatting => ({ ...formatting, [style]: value }));
+  },
+  undo: () => undoOrRedo('undo'),
+  unformat: () => formatSelection(() => null)
+};
+
+const ui = mountUI(
+  /** @type {HTMLElement} */ (document.getElementById('root')),
+  toolbarActions,
+  {
+    align: undefined,
+    canRedo: false,
+    canUndo: false,
+    format: undefined,
+    highlight: undefined,
+    locked: false,
+    merged: false,
+    nameBox: 'A1',
+    status: '',
+    styles: NO_STYLES,
+    valueBox: ''
+  },
+  // Menus return focus to the grid after closing.
+  {
+    get current() {
+      return activeElement ?? null;
+    }
+  }
+);
+
 const gridContainer = /** @type {HTMLElement} */ (document.getElementById('grid-container'));
 const sheetTabs = /** @type {HTMLElement} */ (document.getElementById('sheet-tabs'));
 const addSheetButton = /** @type {HTMLButtonElement} */ (document.getElementById('add-sheet-button'));
-const openButton = /** @type {HTMLButtonElement} */ (document.getElementById('open-button'));
-const fileInput = /** @type {HTMLInputElement} */ (document.getElementById('file-input'));
-const saveCSVButton = /** @type {HTMLButtonElement} */ (document.getElementById('save-csv-button'));
-const saveZipButton = /** @type {HTMLButtonElement} */ (document.getElementById('save-zip-button'));
-const printButton = /** @type {HTMLButtonElement} */ (document.getElementById('print-button'));
-const undoButton = /** @type {HTMLButtonElement} */ (document.getElementById('undo-button'));
-const redoButton = /** @type {HTMLButtonElement} */ (document.getElementById('redo-button'));
-const borderSelect = /** @type {HTMLSelectElement} */ (document.getElementById('border-select'));
-const lockButton = /** @type {HTMLButtonElement} */ (document.getElementById('lock-button'));
-const unformatButton = /** @type {HTMLButtonElement} */ (document.getElementById('unformat-button'));
-const mergeButton = /** @type {HTMLButtonElement} */ (document.getElementById('merge-button'));
-const styleButtons = /** @type {const} */ (['bold', 'italic', 'underline', 'strikethrough']).map(style => ({
-  style,
-  button: /** @type {HTMLButtonElement} */ (document.getElementById(`${style}-button`))
-}));
-const alignButtons = /** @type {const} */ (['left', 'center', 'right']).map(align => ({
-  align,
-  button: /** @type {HTMLButtonElement} */ (document.getElementById(`align-${align}-button`))
-}));
-const formatButtons = /** @type {const} */ (['currency', 'percent', 'date', 'datetime', 'duration']).map(format => ({
-  format,
-  button: /** @type {HTMLButtonElement} */ (document.getElementById(`format-${format}-button`))
-}));
-const highlightButtons = HIGHLIGHTS.map(({ name, label, background, color }) => {
-  const button = document.createElement('button');
-
-  button.type = 'button';
-  button.className = 'toolbar__highlight-button';
-  button.title = label;
-  const icon = document.createElement('span');
-
-  icon.className = 'grid__cell-text--marker';
-  icon.textContent = 'A';
-  button.append(icon);
-  button.setAttribute('aria-label', label);
-  button.setAttribute('aria-pressed', 'false');
-  background && button.style.setProperty('--marker-color', background);
-  color && button.style.setProperty('--highlight-color', color);
-  unformatButton.before(button);
-
-  return { name, button };
-});
-const nameBox = /** @type {HTMLOutputElement} */ (document.getElementById('name-box'));
-const valueBox = /** @type {HTMLOutputElement} */ (document.getElementById('value-box'));
-const status = /** @type {HTMLOutputElement} */ (document.getElementById('status'));
 
 /** `<compulim-worksheet>` of the active worksheet. @type {WorksheetElement | undefined} */
 let activeElement;
@@ -100,9 +112,7 @@ function handleWorksheetAdd(event) {
 
 /** Active cell and selection of the active worksheet. */
 function getSelection() {
-  return activeElement
-    ? activeElement.selection
-    : new WorksheetSelection({ column: 0, row: 0 });
+  return activeElement ? activeElement.selection : new WorksheetSelection({ column: 0, row: 0 });
 }
 
 /**
@@ -124,8 +134,8 @@ let statusTimeout;
 /** @param {string} message */
 function showStatus(message) {
   clearTimeout(statusTimeout);
-  status.value = message;
-  statusTimeout = setTimeout(() => (status.value = ''), 4000);
+  ui.update({ status: message });
+  statusTimeout = setTimeout(() => ui.update({ status: '' }), 4000);
 }
 
 /**
@@ -269,8 +279,10 @@ function updateSelectionInfo() {
   const { column, row } = getSelection().activeCell;
   const topLeft = `${getColumnName(left)}${top + 1}`;
 
-  nameBox.value = left === right && top === bottom ? topLeft : `${topLeft}:${getColumnName(right)}${bottom + 1}`;
-  valueBox.value = activeElement ? formatValue(activeElement.worksheet.getValue(column, row)) : '';
+  ui.update({
+    nameBox: left === right && top === bottom ? topLeft : `${topLeft}:${getColumnName(right)}${bottom + 1}`,
+    valueBox: activeElement ? formatValue(activeElement.worksheet.getValue(column, row)) : ''
+  });
   updateFormattingButtons();
 }
 
@@ -309,29 +321,22 @@ function isFormattingAppliedToSelection(predicate) {
 }
 
 function updateFormattingButtons() {
-  for (const { style, button } of styleButtons) {
-    button.setAttribute('aria-pressed', String(isFormattingAppliedToSelection(formatting => !!formatting?.[style])));
+  /** @type {Record<import('./ui/Toolbar.jsx').CellStyle, boolean>} */
+  const styles = { ...NO_STYLES };
+
+  for (const style of /** @type {const} */ (['bold', 'italic', 'underline', 'strikethrough'])) {
+    styles[style] = isFormattingAppliedToSelection(formatting => !!formatting?.[style]);
   }
 
-  for (const { align, button } of alignButtons) {
-    button.setAttribute('aria-pressed', String(isFormattingAppliedToSelection(formatting => formatting?.align === align)));
-  }
-
-  for (const { format, button } of formatButtons) {
-    button.setAttribute(
-      'aria-pressed',
-      String(isFormattingAppliedToSelection(formatting => formatting?.format === format))
-    );
-  }
-
-  for (const { name, button } of highlightButtons) {
-    button.setAttribute(
-      'aria-pressed',
-      String(isFormattingAppliedToSelection(formatting => formatting?.highlight === name))
-    );
-  }
-
-  mergeButton.setAttribute('aria-pressed', String(isSelectionMerged()));
+  ui.update({
+    align: ALIGNS.find(align => isFormattingAppliedToSelection(formatting => formatting?.align === align)),
+    format: FORMATS.find(format => isFormattingAppliedToSelection(formatting => formatting?.format === format)),
+    highlight: HIGHLIGHTS.find(({ name }) =>
+      isFormattingAppliedToSelection(formatting => formatting?.highlight === name)
+    )?.name,
+    merged: isSelectionMerged(),
+    styles
+  });
 }
 
 /** Whether every selected cell is in a merged cell. */
@@ -348,7 +353,8 @@ function isSelectionMerged() {
 
   for (const { x, y, width, height } of worksheet.getMerges(left, top, right - left + 1, bottom - top + 1)) {
     covered +=
-      (Math.min(x + width - 1, right) - Math.max(x, left) + 1) * (Math.min(y + height - 1, bottom) - Math.max(y, top) + 1);
+      (Math.min(x + width - 1, right) - Math.max(x, left) + 1) *
+      (Math.min(y + height - 1, bottom) - Math.max(y, top) + 1);
   }
 
   // Merged cells never overlap, so all cells are merged if they cover the whole selection.
@@ -370,50 +376,23 @@ function formatSelection(updater) {
   activeElement?.focus();
 }
 
-for (const { style, button } of styleButtons) {
-  button.addEventListener('click', () => {
-    const value = !isFormattingAppliedToSelection(formatting => !!formatting?.[style]);
+/** @param {import('./worksheet/Worksheet.js').CellAlign} align */
+function toggleAlign(align) {
+  // Toggling a pushed alignment goes back to the default (type-based) alignment.
+  const nextAlign = isFormattingAppliedToSelection(formatting => formatting?.align === align) ? undefined : align;
 
-    formatSelection(formatting => ({ ...formatting, [style]: value }));
-  });
+  formatSelection(formatting => ({ ...formatting, align: nextAlign }));
 }
 
-for (const { align, button } of alignButtons) {
-  button.addEventListener('click', () => {
-    // Clicking a pushed align button unpushes it, back to the default (type-based) alignment.
-    const nextAlign = button.getAttribute('aria-pressed') === 'true' ? undefined : align;
-
-    formatSelection(formatting => ({ ...formatting, align: nextAlign }));
-  });
-}
-
-for (const { format, button } of formatButtons) {
-  button.addEventListener('click', () => {
-    // Only one number format at a time, clicking a pushed format button unpushes it, back to the default format.
-    const nextFormat = button.getAttribute('aria-pressed') === 'true' ? undefined : format;
-
-    formatSelection(formatting => ({ ...formatting, format: nextFormat }));
-  });
-}
-
-for (const { name, button } of highlightButtons) {
-  button.addEventListener('click', () => {
-    // Only one highlight at a time, clicking a pushed highlight button unpushes it.
-    const nextHighlight = button.getAttribute('aria-pressed') === 'true' ? undefined : name;
-
-    formatSelection(formatting => ({ ...formatting, highlight: nextHighlight }));
-  });
-}
-
-/** @type {Record<string, HTMLButtonElement>} */
+/** @type {Record<string, () => void>} */
 const formattingHotkeys = {
-  b: styleButtons[0].button,
-  i: styleButtons[1].button,
-  u: styleButtons[2].button,
-  l: alignButtons[0].button,
-  e: alignButtons[1].button,
-  r: alignButtons[2].button,
-  m: mergeButton
+  b: () => toolbarActions.toggleStyle('bold'),
+  i: () => toolbarActions.toggleStyle('italic'),
+  u: () => toolbarActions.toggleStyle('underline'),
+  l: () => toggleAlign('left'),
+  e: () => toggleAlign('center'),
+  r: () => toggleAlign('right'),
+  m: () => mergeSelection()
 };
 
 gridContainer.addEventListener('keydown', event => {
@@ -425,18 +404,16 @@ gridContainer.addEventListener('keydown', event => {
     !event.shiftKey &&
     !(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target.isContentEditable)
   ) {
-    const button = formattingHotkeys[event.key.toLowerCase()];
+    const action = formattingHotkeys[event.key.toLowerCase()];
 
-    if (button) {
+    if (action) {
       event.preventDefault();
-      button.click();
+      action();
     }
   }
 });
 
-unformatButton.addEventListener('click', () => formatSelection(() => null));
-
-mergeButton.addEventListener('click', () => {
+function mergeSelection() {
   const worksheet = activeElement?.worksheet;
 
   if (worksheet) {
@@ -450,7 +427,9 @@ mergeButton.addEventListener('click', () => {
       skipped = true;
     } else if (unmerge) {
       worksheet.edit(edit =>
-        worksheet.getMerges(left, top, right - left + 1, bottom - top + 1).forEach(({ x, y }) => edit.unmergeCells(x, y))
+        worksheet
+          .getMerges(left, top, right - left + 1, bottom - top + 1)
+          .forEach(({ x, y }) => edit.unmergeCells(x, y))
       );
 
       // Keeps all cells of the unmerged cells selected, the selection may be only the merged cell itself.
@@ -468,13 +447,12 @@ mergeButton.addEventListener('click', () => {
   }
 
   activeElement?.focus();
-});
+}
 
 function updateUndoButtons() {
   const { canUndo, canRedo } = activeElement ?? { canUndo: false, canRedo: false };
 
-  undoButton.disabled = !canUndo;
-  redoButton.disabled = !canRedo;
+  ui.update({ canRedo, canUndo });
 }
 
 /** @param {'undo' | 'redo'} action */
@@ -486,9 +464,6 @@ function undoOrRedo(action) {
 
   activeElement?.focus();
 }
-
-undoButton.addEventListener('click', () => undoOrRedo('undo'));
-redoButton.addEventListener('click', () => undoOrRedo('redo'));
 
 document.addEventListener('keydown', event => {
   const target = /** @type {HTMLElement} */ (event.target);
@@ -515,18 +490,15 @@ document.addEventListener('keydown', event => {
   }
 });
 
-
 addSheetButton.addEventListener('click', () => {
   if (workbook.worksheets.length < MAX_WORKSHEETS) {
     activateWorksheet(workbook.addWorksheet());
   }
 });
 
-borderSelect.addEventListener('change', () => {
-  const preset = borderSelect.value;
+/** @param {import('./ui/Toolbar.jsx').BorderPreset} preset */
+function setBorder(preset) {
   const worksheet = activeElement?.worksheet;
-
-  borderSelect.value = '';
 
   if (worksheet) {
     const { left, top, right, bottom } = getSelection().range;
@@ -544,21 +516,19 @@ borderSelect.addEventListener('change', () => {
   }
 
   activeElement?.focus();
-});
+}
 
-lockButton.addEventListener('click', () => {
-  locked = !locked;
+/** @param {boolean} nextLocked */
+function setLocked(nextLocked) {
+  locked = nextLocked;
 
   for (const worksheet of workbook.worksheets) {
     getElement(worksheet).toggleAttribute('locked', locked);
   }
 
-  lockButton.setAttribute('aria-pressed', String(locked));
-  lockButton.textContent = locked ? '🔒 Locked' : '🔓 Unlocked';
+  ui.update({ locked });
   activeElement?.focus();
-});
-
-openButton.addEventListener('click', () => fileInput.click());
+}
 
 fileInput.addEventListener('change', async () => {
   const file = fileInput.files?.[0];
@@ -596,24 +566,27 @@ fileInput.addEventListener('change', async () => {
   }
 });
 
-saveCSVButton.addEventListener('click', () => {
+function saveCSV() {
   const worksheet = activeElement?.worksheet;
 
   if (worksheet) {
     // Byte order mark so Excel recognizes the file as UTF-8.
-    download(new Blob(['\ufeff', worksheet.toCSV()], { type: 'text/csv' }), `${workbook.getWorksheetName(worksheet)}.csv`);
+    download(
+      new Blob(['\ufeff', worksheet.toCSV()], { type: 'text/csv' }),
+      `${workbook.getWorksheetName(worksheet)}.csv`
+    );
   }
-});
+}
 
-saveZipButton.addEventListener('click', async () => {
+async function saveZip() {
   try {
     download(new Blob([await workbook.toZip()], { type: 'application/zip' }), 'workbook.zip');
   } catch (error) {
     alert(`Failed to save workbook: ${/** @type {Error} */ (error).message}`);
   }
-});
+}
 
-printButton.addEventListener('click', async () => {
+async function printSelection() {
   const worksheet = activeElement?.worksheet;
 
   if (!worksheet) {
@@ -625,10 +598,7 @@ printButton.addEventListener('click', async () => {
 
   try {
     const getBorder = (/** @type {number} */ column, /** @type {number} */ row) =>
-      left + column >= 0 &&
-      top + row >= 0 &&
-      left + column < worksheet.columnCount &&
-      top + row < worksheet.rowCount
+      left + column >= 0 && top + row >= 0 && left + column < worksheet.columnCount && top + row < worksheet.rowCount
         ? worksheet.getBorder(left + column, top + row)
         : undefined;
 
@@ -656,13 +626,17 @@ printButton.addEventListener('click', async () => {
 
     const getColumnSpan = (/** @type {number} */ column, /** @type {number} */ row) =>
       spans.get(`${row},${column}`)?.columns ?? 1;
-    const getRowSpan = (/** @type {number} */ column, /** @type {number} */ row) => spans.get(`${row},${column}`)?.rows ?? 1;
+    const getRowSpan = (/** @type {number} */ column, /** @type {number} */ row) =>
+      spans.get(`${row},${column}`)?.rows ?? 1;
     const getFormatting = (/** @type {number} */ column, /** @type {number} */ row) => formattings[row]?.[column];
 
-    download(await cellsToPNG(rows, { columnWidths, getBorder, getColumnSpan, getFormatting, getRowSpan }), `${workbook.getWorksheetName(worksheet)}.png`);
+    download(
+      await cellsToPNG(rows, { columnWidths, getBorder, getColumnSpan, getFormatting, getRowSpan }),
+      `${workbook.getWorksheetName(worksheet)}.png`
+    );
   } catch (error) {
     alert(`Failed to print selected cells: ${/** @type {Error} */ (error).message}`);
   }
-});
+}
 
 setWorkbook(new Workbook());

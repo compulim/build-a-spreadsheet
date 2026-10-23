@@ -1,7 +1,7 @@
 # build-a-spreadsheet
 
-A high-performance spreadsheet web app that runs entirely in the browser — no server, no build step, no dependencies.
-Written in plain HTML, CSS and JavaScript (ES modules), so it can be served as static files from GitHub Pages or any CDN.
+A high-performance spreadsheet web app that runs entirely in the browser — no server required.
+The grid is written in plain JavaScript (ES modules). The page layout and toolbar use [GitHub Primer](https://primer.style/) React components. Everything is bundled with tsup into static files that can be served from GitHub Pages or any CDN.
 
 ## Features
 
@@ -15,20 +15,18 @@ Written in plain HTML, CSS and JavaScript (ES modules), so it can be served as s
 - Copy, cut and paste with Excel and Excel Web App (tab-separated text and HTML table on the clipboard). Pasting a single value into a larger selection fills it.
 - Values are booleans, numbers or strings. Formulas are not supported.
 - Up to 50 named sheets in the bottom bar: <kbd>+</kbd> to add, double-click to rename, × to delete.
-- Lock button: makes the rows/columns listed in `LOCKED_ROWS` and `LOCKED_COLUMNS` in [`src/app.js`](src/app.js) read-only.
+- Toolbar built with Primer: `ActionBar` for file, undo/redo, bold/italic/underline/strikethrough, border, merge and unformat; `SegmentedControl` for alignment (Auto/Left/Center/Right) and the highlight marker (None or a colour); `ActionMenu` for the number format; `PageLayout` for the overall page.
+- Lock switch: makes the rows/columns listed in `LOCKED_ROWS` and `LOCKED_COLUMNS` in [`src/app.js`](src/app.js) read-only.
 - Open a CSV file (added as a new sheet) or a ZIP file of CSV files (replaces the workbook). Save the current sheet as CSV, or the whole workbook as a ZIP of CSV files.
 
 ## Running locally
 
-ES modules must be served over HTTP:
-
 ```sh
-npx serve .
-# or
-python3 -m http.server
+npm install
+npm start # Builds on change and serves ./public/
 ```
 
-To deploy, publish the repository root (e.g. enable GitHub Pages for the branch). All paths are relative.
+To deploy, run `npm run build` and publish the `public/` folder. All paths are relative.
 
 ## Programming interface
 

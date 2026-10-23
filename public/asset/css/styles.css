@@ -11,70 +11,90 @@ body {
 }
 
 body {
-  display: flex;
-  flex-direction: column;
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-family:
+    'Segoe UI',
+    system-ui,
+    -apple-system,
+    sans-serif;
   font-size: 14px;
   color: #222;
 }
 
+/* #region Layout */
+
+/* Root of ThemeProvider, BaseStyles and PageLayout. */
+.root,
+.root > *,
+.app,
+.app__layout {
+  height: 100%;
+}
+
+/* Stacks header, content and footer of the page layout vertically, the content takes the remaining height. */
+.app__layout > * {
+  flex-direction: column;
+  flex-wrap: nowrap;
+}
+
+.app__content,
+.app__content > * {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.app__header,
+.app__footer {
+  flex: none;
+  margin: 0;
+}
+
+/* #endregion */
+
 /* #region Toolbar */
 
 .toolbar {
-  align-items: center;
-  background: #f3f3f3;
-  border-bottom: 1px solid #ccc;
   display: flex;
-  flex: none;
-  gap: 6px;
-  padding: 6px 8px;
+  flex-direction: column;
+  gap: var(--base-size-8);
 }
 
-.toolbar button,
-.toolbar select {
-  background: #fff;
-  border: 1px solid #bbb;
-  border-radius: 4px;
-  cursor: pointer;
-  font: inherit;
-  padding: 3px 10px;
+.toolbar__row {
+  align-items: center;
+  display: flex;
+  gap: var(--base-size-8);
 }
 
-.toolbar button:hover {
-  background: #e8f0fe;
+/* Takes its natural width and shrinks into the overflow menu when the toolbar is too narrow. */
+.toolbar__action-bar {
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
-.toolbar button[aria-pressed='true'] {
-  background: #fde7e9;
-  border-color: #c42b1c;
+.toolbar__action-bar [aria-pressed='true'] {
+  background-color: var(--button-invisible-bgColor-active);
+  color: var(--fgColor-accent);
 }
 
-.toolbar__separator {
-  align-self: stretch;
-  border-left: 1px solid #ccc;
+.toolbar__marker-icon {
+  font-weight: bold;
+}
+
+.toolbar__lock {
+  align-items: center;
+  display: flex;
+  gap: var(--base-size-8);
 }
 
 .toolbar__name-box {
-  background: #fff;
-  border: 1px solid #bbb;
-  min-width: 90px;
-  padding: 3px 6px;
-}
-
-.toolbar__value-box {
-  background: #fff;
-  border: 1px solid #bbb;
-  flex: 1;
-  min-height: 1.6em;
-  overflow: hidden;
-  padding: 3px 6px;
-  text-overflow: ellipsis;
-  white-space: pre;
+  flex: none;
+  width: 120px;
 }
 
 .toolbar__status {
-  color: #c42b1c;
-  min-width: 0;
+  color: var(--fgColor-danger);
+  flex: none;
 }
 
 /* #endregion */
@@ -224,16 +244,6 @@ compulim-worksheet[hidden] {
   box-decoration-break: clone;
   margin: 0 -0.2em;
   padding: 0 0.2em;
-}
-
-.toolbar .toolbar__highlight-button,
-.toolbar .toolbar__highlight-button:hover {
-  color: var(--highlight-color, inherit);
-  font-weight: bold;
-}
-
-.toolbar .toolbar__highlight-button[aria-pressed='true'] {
-  outline: 2px solid #c42b1c;
 }
 
 .grid__cell[data-align='left'] {
@@ -387,7 +397,6 @@ compulim-worksheet[hidden] {
 .sheet-bar {
   align-items: stretch;
   background: #f3f3f3;
-  border-top: 1px solid #ccc;
   display: flex;
   flex: none;
   height: 32px;
