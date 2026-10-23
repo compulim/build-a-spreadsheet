@@ -6,11 +6,15 @@
   "type": "module",
   "scripts": {
     "build": "tsup",
-    "start": "npx --yes serve ./public/",
+    "start": "concurrently --color --kill-others \"npm run start:*\"",
+    "start:build": "nodemon --exec \"npm run build\" --watch \"./package.json\" --watch \"./src/**/*\"",
+    "start:serve": "npx --yes serve ./public/",
     "test": "node --test"
   },
   "devDependencies": {
+    "concurrently": "^10.0.6",
     "esbuild": "^0.28.2",
+    "nodemon": "^3.1.14",
     "serve": "^14.2.6",
     "tsup": "^9.0.0",
     "typescript": "^7.0.2"
