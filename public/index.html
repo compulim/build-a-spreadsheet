@@ -1,68 +1,16 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-color-mode="light" data-light-theme="light" data-dark-theme="dark">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Spreadsheet</title>
     <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./asset/js/app.css" />
     <link rel="stylesheet" href="./asset/css/styles.css" />
     <script type="module" src="./asset/js/app.js"></script>
   </head>
   <body>
-    <header class="toolbar" role="toolbar" aria-label="Workbook">
-      <button type="button" id="open-button" title="Open a CSV file (as a new sheet) or a ZIP file of CSV files (as a workbook)">
-        Open…
-      </button>
-      <input type="file" id="file-input" accept=".csv,.zip,text/csv,application/zip" hidden />
-      <button type="button" id="save-csv-button" title="Save the current sheet as a CSV file">Save sheet (CSV)</button>
-      <button type="button" id="save-zip-button" title="Save all sheets as CSV files in a ZIP file">Save workbook (ZIP)</button>
-      <button type="button" id="print-button" title="Save the selected cells as a PNG image for printing">Print selected cells</button>
-      <span class="toolbar__separator"></span>
-      <button type="button" id="undo-button" title="Undo (Ctrl+Z)" disabled>↶ Undo</button>
-      <button type="button" id="redo-button" title="Redo (Ctrl+Y)" disabled>↷ Redo</button>
-      <span class="toolbar__separator"></span>
-      <select id="border-select" title="Set the border of the selected cells" aria-label="Border">
-        <option value="" selected disabled>Border…</option>
-        <option value="left">Left</option>
-        <option value="right">Right</option>
-        <option value="top">Top</option>
-        <option value="bottom">Bottom</option>
-        <option value="outside">Surround</option>
-        <option value="all">Surround and inside</option>
-        <option value="none">Unset surround and inside</option>
-      </select>
-      <span class="toolbar__separator"></span>
-      <button type="button" id="bold-button" aria-pressed="false" title="Bold" aria-label="Bold"><b>B</b></button>
-      <button type="button" id="italic-button" aria-pressed="false" title="Italic" aria-label="Italic"><i>I</i></button>
-      <button type="button" id="underline-button" aria-pressed="false" title="Underline" aria-label="Underline"><u>U</u></button>
-      <button type="button" id="strikethrough-button" aria-pressed="false" title="Strikethrough" aria-label="Strikethrough">
-        <s>S</s>
-      </button>
-      <button type="button" id="align-left-button" aria-pressed="false" title="Align left" aria-label="Align left">⯇</button>
-      <button type="button" id="align-center-button" aria-pressed="false" title="Align center" aria-label="Align center">≡</button>
-      <button type="button" id="align-right-button" aria-pressed="false" title="Align right" aria-label="Align right">⯈</button>
-      <button type="button" id="format-currency-button" aria-pressed="false" title="Currency (accounting)">$</button>
-      <button type="button" id="format-percent-button" aria-pressed="false" title="Percentage (1 is 100%)">%</button>
-      <button type="button" id="format-date-button" aria-pressed="false" title="Date (Unix epoch in milliseconds)">Date</button>
-      <button type="button" id="format-datetime-button" aria-pressed="false" title="Date and time (Unix epoch in milliseconds)">
-        Date/time
-      </button>
-      <button type="button" id="format-duration-button" aria-pressed="false" title="Duration (milliseconds)">Duration</button>
-      <button type="button" id="unformat-button" title="Remove all formatting">Unformat</button>
-      <button type="button" id="merge-button" aria-pressed="false" title="Merge the selected cells of each row, click again to unmerge (Ctrl+M)">Merge</button>
-      <span class="toolbar__separator"></span>
-      <button type="button" id="lock-button" aria-pressed="false" title="Lock editing of protected rows and columns">
-        🔓 Unlocked
-      </button>
-      <span class="toolbar__separator"></span>
-      <output id="name-box" class="toolbar__name-box" aria-label="Selected cells">A1</output>
-      <output id="value-box" class="toolbar__value-box" aria-label="Value of active cell"></output>
-      <output id="status" class="toolbar__status" role="status"></output>
-    </header>
-    <main id="grid-container" class="grid-container"></main>
-    <footer class="sheet-bar">
-      <button type="button" id="add-sheet-button" class="sheet-bar__add" title="Add sheet" aria-label="Add sheet">+</button>
-      <div id="sheet-tabs" class="sheet-bar__tabs" role="tablist" aria-label="Sheets"></div>
-    </footer>
+    <input type="file" id="file-input" accept=".csv,.zip,text/csv,application/zip" hidden />
+    <div id="root" class="root"></div>
   </body>
 </html>
