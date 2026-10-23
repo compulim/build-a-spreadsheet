@@ -1,11 +1,21 @@
 {
-  "name": "build-a-spreadsheet",
+  "name": "@compulm/build-a-spreadsheet",
   "version": "0.0.0",
   "private": true,
   "description": "A high-performance, purely client-side spreadsheet web app with no dependencies.",
   "type": "module",
   "scripts": {
-    "start": "npx --yes serve .",
+    "build": "tsup",
+    "start": "npx --yes serve ./public/",
     "test": "node --test"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "serve": "^14.2.6",
+    "tsup": "^9.0.0",
+    "typescript": "^7.0.2"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
   }
 }

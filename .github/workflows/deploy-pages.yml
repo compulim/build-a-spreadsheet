@@ -24,19 +24,20 @@ jobs:
         with:
           node-version: lts/*
 
+      - name: Clean install
+        run: npm clean-install
+
+      - name: Build
+        run: npm run build
+
       - name: Run tests
         run: npm test
-
-      - name: Prepare site
-        run: |
-          mkdir _site
-          cp -r index.html styles.css src .nojekyll _site/
 
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: _site
+          path: ./public/
 
   deploy:
     needs: build
