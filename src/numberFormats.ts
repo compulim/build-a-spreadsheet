@@ -1,16 +1,14 @@
 import { formatValue } from './csv.ts';
-
-/** @typedef {import('./worksheet/Worksheet.ts').CellNumberFormat} CellNumberFormat */
+import type { CellNumberFormat, CellValue } from './worksheet/Worksheet.ts';
 
 /**
  * Formats a cell value for display. Only finite numbers are affected by `format`. Decorations (the currency sign,
  * parentheses around negative currency and the percent sign) are not part of `text`, they are added by CSS.
- *
- * @param {import('./worksheet/Worksheet.ts').CellValue | undefined} value
- * @param {CellNumberFormat | undefined} format
- * @returns {{ text: string; negative: boolean }}
  */
-export function formatDisplayValue(value, format) {
+export function formatDisplayValue(
+  value: CellValue | undefined,
+  format: CellNumberFormat | undefined
+): { text: string; negative: boolean } {
   if (typeof value !== 'number' || !Number.isFinite(value) || !format) {
     return { text: formatValue(value), negative: false };
   }
@@ -45,7 +43,7 @@ export function formatDisplayValue(value, format) {
       const hours = Math.floor(totalSeconds / 3600);
       const minutes = Math.floor(totalSeconds / 60) % 60;
       const seconds = totalSeconds % 60;
-      const pad = (/** @type {number} */ number) => String(number).padStart(2, '0');
+      const pad = (number: number) => String(number).padStart(2, '0');
       const text = hours ? `${pad(hours)}:${pad(minutes)}:${pad(seconds)}` : `${pad(minutes)}:${pad(seconds)}`;
 
       return { text: value < 0 && totalSeconds ? `-${text}` : text, negative: false };

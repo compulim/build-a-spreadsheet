@@ -1,23 +1,28 @@
-/** @typedef {import('./Worksheet.ts').Worksheet} Worksheet */
-/** @typedef {import('./Worksheet.ts').WorksheetChange} WorksheetChange */
-/** @typedef {import('./Worksheet.ts').WorksheetUndo} WorksheetUndo */
+import type { Worksheet, WorksheetChange, WorksheetUndo } from './Worksheet.ts';
 
 /** Dispatched once per `Worksheet#edit()` transaction, with all of its changes in order. */
 export class WorksheetChangeEvent extends Event {
-  /**
-   * @param {string} type
-   * @param {{ changes: readonly WorksheetChange[]; load: boolean; undo?: WorksheetUndo | undefined; worksheet: Worksheet }} init
-   */
-  constructor(type, { changes, load, undo, worksheet }) {
+  readonly changes: readonly WorksheetChange[];
+  /** `true` if the transaction loaded CSV, which is not meant to be undoable. */
+  readonly load: boolean;
+  /** Undoes the transaction, `undefined` if the event is from an undo or redo. */
+  readonly undo: WorksheetUndo | undefined;
+  readonly worksheet: Worksheet;
+
+  constructor(
+    type: string,
+    {
+      changes,
+      load,
+      undo,
+      worksheet
+    }: { changes: readonly WorksheetChange[]; load: boolean; undo?: WorksheetUndo | undefined; worksheet: Worksheet }
+  ) {
     super(type);
 
-    /** @readonly */ this.changes = changes;
-    /** `true` if the transaction loaded CSV, which is not meant to be undoable. @readonly */ this.load = load;
-    /**
-     * Undoes the transaction, `undefined` if the event is from an undo or redo.
-     * @readonly
-     */
+    this.changes = changes;
+    this.load = load;
     this.undo = undo;
-    /** @readonly */ this.worksheet = worksheet;
+    this.worksheet = worksheet;
   }
 }

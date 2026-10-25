@@ -1,15 +1,15 @@
-/** @typedef {import('./Worksheet.ts').Worksheet} Worksheet */
+import type { Worksheet } from './Worksheet.ts';
 
 export class WorksheetEvent extends Event {
-  /**
-   * @param {string} type
-   * @param {{ worksheet: Worksheet; index: number; previousName?: string }} init
-   */
-  constructor(type, { worksheet, index, previousName }) {
+  readonly worksheet: Worksheet;
+  readonly index: number;
+  readonly previousName: string | undefined;
+
+  constructor(type: string, { worksheet, index, previousName }: { worksheet: Worksheet; index: number; previousName?: string }) {
     super(type);
 
-    /** @readonly */ this.worksheet = worksheet;
-    /** @readonly */ this.index = index;
-    /** @readonly */ this.previousName = previousName;
+    this.worksheet = worksheet;
+    this.index = index;
+    this.previousName = previousName;
   }
 }

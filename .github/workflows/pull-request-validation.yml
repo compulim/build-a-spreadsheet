@@ -18,5 +18,10 @@ jobs:
         with:
           node-version: lts/*
 
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
       - name: Run tests
         run: npm test

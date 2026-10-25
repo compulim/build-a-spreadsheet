@@ -9,7 +9,8 @@
     "start": "concurrently --color --kill-others \"npm run start:*\"",
     "start:build": "nodemon --exec \"npm run build\" --watch \"./package.json\" --watch \"./src/**/*\"",
     "start:serve": "npx --yes serve ./public/",
-    "test": "node --test"
+    "test": "node --test",
+    "typecheck": "tsc -p ."
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

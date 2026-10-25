@@ -1,11 +1,11 @@
 import { formatValue } from './csv.ts';
+import type { CellValue } from './csv.ts';
 import { getHighlight } from './highlights.ts';
+import type { CellBorder, CellFormatting } from './worksheet/Worksheet.ts';
 
-/** @typedef {import('./worksheet/Worksheet.ts').CellBorder} CellBorder */
-/** @typedef {import('./worksheet/Worksheet.ts').CellFormatting} CellFormatting */
-/** @typedef {(column: number, row: number) => Partial<CellFormatting> | undefined} GetFormatting */
-/** @typedef {(column: number, row: number) => number} GetColumnSpan */
-/** @typedef {(column: number, row: number) => number} GetRowSpan */
+export type GetFormatting = (column: number, row: number) => Partial<CellFormatting> | undefined;
+export type GetColumnSpan = (column: number, row: number) => number;
+export type GetRowSpan = (column: number, row: number) => number;
 
 /** Target print resolution of the generated PNG. Change to e.g. 300 for smaller files. */
 export const PRINT_DPI = 600;
@@ -24,8 +24,7 @@ const BORDER_WIDTH = 3;
 /** Width of a thin space (U+2009), which pads the marker by 20% of the font size on each side. */
 const MARKER_EXTEND = FONT_SIZE * 0.2;
 
-/** @param {string} text */
-function escapeXML(text) {
+function escapeXML(text: string) {
   return text.replace(/[&<>"']/g, char => `&#${char.charCodeAt(0)};`);
 }
 
@@ -34,25 +33,31 @@ function escapeXML(text) {
  *
  * Borders are centered on the grid lines, the same as in the grid.
  *
- * @param {readonly (readonly unknown[])[]} rows Values, row by row.
- * @param {{ columnWidths?: readonly number[], getBorder?: (column: number, row: number) => Partial<CellBorder> | undefined, getColumnSpan?: GetColumnSpan, getFormatting?: GetFormatting, getRowSpan?: GetRowSpan }} [options]
+ * `rows` are the values, row by row.
+ *
+ * Options:
  *   `columnWidths` are the widths of each column in CSS pixels, defaulting to `CELL_WIDTH`.
  *   `getColumnSpan` returns the number of columns a merged cell spans (relative to the first cell), 0 for cells of a merged cell not in its first column, defaulting to 1.
  *   `getRowSpan` returns the number of rows a merged cell spans (relative to the first cell), 0 for cells of a merged cell not in its first row, defaulting to 1.
  *   `getBorder` returns the border of a cell relative to the first cell, called with -1 and the column/row count for neighbors.
  *   `getFormatting` returns the formatting of a cell relative to the first cell.
- * @returns {{ height: number, svg: string, width: number }}
  */
 export function cellsToSVG(
-  rows,
+  rows: readonly (readonly unknown[])[],
   {
     columnWidths = [],
     getBorder = () => undefined,
     getColumnSpan = () => 1,
     getFormatting = () => undefined,
     getRowSpan = () => 1
+  }: {
+    columnWidths?: readonly number[];
+    getBorder?: (column: number, row: number) => Partial<CellBorder> | undefined;
+    getColumnSpan?: GetColumnSpan;
+    getFormatting?: GetFormatting;
+    getRowSpan?: GetRowSpan;
   } = {}
-) {
+): { height: number; svg: string; width: number } {
   const rowCount = rows.length;
   const columnCount = Math.max(0, ...rows.map(row => row.length));
   const widths = Array.from({ length: columnCount }, (_, index) => columnWidths[index] ?? CELL_WIDTH);
@@ -96,7 +101,7 @@ export function cellsToSVG(
   const height = rowCount * CELL_HEIGHT + 1 + margin * 2;
   const parts = [];
   /** Filter ID of each marker color. */
-  const markerIds = new Map();
+  const markerIds = new Map<string, string>();
 
   rows.forEach((row, rowIndex) => {
     for (let columnIndex = 0; columnIndex < columnCount; columnIndex++) {
@@ -112,7 +117,7 @@ export function cellsToSVG(
       const y = margin + rowIndex * CELL_HEIGHT + 0.5;
       const cellHeight = rowSpan * CELL_HEIGHT;
       const value = row[columnIndex];
-      const text = value === undefined ? '' : formatValue(value);
+      const text = value === undefined ? '' : formatValue(value as CellValue);
       const formatting = getFormatting(columnIndex, rowIndex);
       const highlight = getHighlight(formatting?.highlight);
       // Same as the grid: text is aligned left, numbers right and booleans center unless set.
@@ -189,12 +194,25 @@ export function cellsToSVG(
 
 /**
  * Renders the cells into a PNG suitable for printing at the given DPI.
- *
- * @param {readonly (readonly unknown[])[]} rows
- * @param {{ columnWidths?: readonly number[], dpi?: number, getBorder?: (column: number, row: number) => Partial<CellBorder> | undefined, getColumnSpan?: GetColumnSpan, getFormatting?: GetFormatting, getRowSpan?: GetRowSpan }} [options]
- * @returns {Promise<Blob>}
  */
-export async function cellsToPNG(rows, { columnWidths, dpi = PRINT_DPI, getBorder, getColumnSpan, getFormatting, getRowSpan } = {}) {
+export async function cellsToPNG(
+  rows: readonly (readonly unknown[])[],
+  {
+    columnWidths,
+    dpi = PRINT_DPI,
+    getBorder,
+    getColumnSpan,
+    getFormatting,
+    getRowSpan
+  }: {
+    columnWidths?: readonly number[];
+    dpi?: number;
+    getBorder?: (column: number, row: number) => Partial<CellBorder> | undefined;
+    getColumnSpan?: GetColumnSpan;
+    getFormatting?: GetFormatting;
+    getRowSpan?: GetRowSpan;
+  } = {}
+): Promise<Blob> {
   const { height, svg, width } = cellsToSVG(rows, { columnWidths, getBorder, getColumnSpan, getFormatting, getRowSpan });
   const scale = dpi / CSS_DPI;
   const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
@@ -222,7 +240,7 @@ export async function cellsToPNG(rows, { columnWidths, dpi = PRINT_DPI, getBorde
 
     context.drawImage(image, 0, 0, canvas.width, canvas.height);
 
-    return await new Promise((resolve, reject) =>
+    return await new Promise<Blob>((resolve, reject) =>
       canvas.toBlob(blob => (blob ? resolve(blob) : reject(new Error('Failed to encode PNG.'))), 'image/png')
     );
   } finally {
