@@ -1,14 +1,14 @@
-import { calculate } from '../calculator.js';
-import { formatValue, inferValue, parseTSV, stringifyTSV } from '../csv.js';
-import { getHighlight } from '../highlights.js';
-import { formatDisplayValue } from '../numberFormats.js';
-import { getColumnName } from './getColumnName.js';
-import { Worksheet } from './Worksheet.js';
-import { WorksheetHistory } from './WorksheetHistory.js';
-import { WorksheetSelection } from './WorksheetSelection.js';
+import { calculate } from '../calculator.ts';
+import { formatValue, inferValue, parseTSV, stringifyTSV } from '../csv.ts';
+import { getHighlight } from '../highlights.ts';
+import { formatDisplayValue } from '../numberFormats.ts';
+import { getColumnName } from './getColumnName.ts';
+import { Worksheet } from './Worksheet.ts';
+import { WorksheetHistory } from './WorksheetHistory.ts';
+import { WorksheetSelection } from './WorksheetSelection.ts';
 
 /**
- * @typedef {import('./Worksheet.js').CellValue} CellValue
+ * @typedef {import('./Worksheet.ts').CellValue} CellValue
  * @typedef {{ readonly column: number; readonly row: number }} CellPosition
  * @typedef {{ readonly left: number; readonly top: number; readonly right: number; readonly bottom: number }} CellRange
  */
@@ -104,7 +104,7 @@ function createElement(tagName, className) {
  * Returns formattings embedded by this app in clipboard HTML, or `undefined` if the HTML is not from this app.
  *
  * @param {string} html
- * @returns {Partial<import('./Worksheet.js').CellFormatting>[][] | undefined}
+ * @returns {Partial<import('./Worksheet.ts').CellFormatting>[][] | undefined}
  */
 function parseClipboardFormattings(html) {
   if (!html) {
@@ -425,7 +425,7 @@ export class WorksheetElement extends HTMLElement {
    * @param {Event} event
    */
   #handleChange = event => {
-    const { changes } = /** @type {import('./WorksheetChangeEvent.js').WorksheetChangeEvent} */ (event);
+    const { changes } = /** @type {import('./WorksheetChangeEvent.ts').WorksheetChangeEvent} */ (event);
     let anchorChanged = false;
     let mergeChanged = false;
 
@@ -1350,7 +1350,7 @@ export class WorksheetElement extends HTMLElement {
 
     /** @param {Event} event */
     const handleChange = event => {
-      for (const change of /** @type {import('./WorksheetChangeEvent.js').WorksheetChangeEvent} */ (
+      for (const change of /** @type {import('./WorksheetChangeEvent.ts').WorksheetChangeEvent} */ (
         event
       ).changes) {
         if (change.type === 'merge') {

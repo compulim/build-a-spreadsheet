@@ -1,7 +1,7 @@
-/** @typedef {import('./Worksheet.js').Worksheet} Worksheet */
-/** @typedef {import('./Worksheet.js').WorksheetUndo} WorksheetUndo */
-/** @typedef {import('./Worksheet.js').WorksheetRedo} WorksheetRedo */
-/** @typedef {import('./WorksheetChangeEvent.js').WorksheetChangeEvent} WorksheetChangeEvent */
+/** @typedef {import('./Worksheet.ts').Worksheet} Worksheet */
+/** @typedef {import('./Worksheet.ts').WorksheetUndo} WorksheetUndo */
+/** @typedef {import('./Worksheet.ts').WorksheetRedo} WorksheetRedo */
+/** @typedef {import('./WorksheetChangeEvent.ts').WorksheetChangeEvent} WorksheetChangeEvent */
 
 /**
  * Undo/redo history of a `Worksheet`. It remembers the `undo()` objects of `edit()` transactions (from the `change`

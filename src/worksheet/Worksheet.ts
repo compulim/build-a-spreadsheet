@@ -1,6 +1,6 @@
-import { formatValue, parseCSV, stringifyCSV } from '../csv.js';
-import { WorksheetChangeEvent } from './WorksheetChangeEvent.js';
-import { COLUMN_COUNT, COLUMN_WIDTH, ROW_COUNT } from './constants.js';
+import { formatValue, parseCSV, stringifyCSV } from '../csv.ts';
+import { WorksheetChangeEvent } from './WorksheetChangeEvent.ts';
+import { COLUMN_COUNT, COLUMN_WIDTH, ROW_COUNT } from './constants.ts';
 
 /** @typedef {boolean | number | string} CellValue */
 /** @typedef {{ top: boolean; right: boolean; bottom: boolean; left: boolean }} CellBorder */

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { calculate } from '../src/calculator.js';
+import { calculate } from '../src/calculator.ts';
 
 test('calculates valid expressions', () => {
   assert.equal(calculate('123+456'), 579);

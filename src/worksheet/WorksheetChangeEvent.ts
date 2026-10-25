@@ -1,6 +1,6 @@
-/** @typedef {import('./Worksheet.js').Worksheet} Worksheet */
-/** @typedef {import('./Worksheet.js').WorksheetChange} WorksheetChange */
-/** @typedef {import('./Worksheet.js').WorksheetUndo} WorksheetUndo */
+/** @typedef {import('./Worksheet.ts').Worksheet} Worksheet */
+/** @typedef {import('./Worksheet.ts').WorksheetChange} WorksheetChange */
+/** @typedef {import('./Worksheet.ts').WorksheetUndo} WorksheetUndo */
 
 /** Dispatched once per `Worksheet#edit()` transaction, with all of its changes in order. */
 export class WorksheetChangeEvent extends Event {

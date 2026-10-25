@@ -16,11 +16,11 @@ import {
 } from '@primer/octicons-react';
 import { ActionBar, ActionList, ActionMenu, SegmentedControl, Text, TextInput, ToggleSwitch } from '@primer/react';
 import { useSyncExternalStore } from 'react';
-import { HIGHLIGHTS } from '../highlights.js';
-import { MarkerIcon, UnderlineIcon } from './icons.jsx';
+import { HIGHLIGHTS } from '../highlights.ts';
+import { MarkerIcon, UnderlineIcon } from './icons.tsx';
 
-/** @typedef {import('../worksheet/Worksheet.js').CellAlign} CellAlign */
-/** @typedef {import('../worksheet/Worksheet.js').CellNumberFormat} CellNumberFormat */
+/** @typedef {import('../worksheet/Worksheet.ts').CellAlign} CellAlign */
+/** @typedef {import('../worksheet/Worksheet.ts').CellNumberFormat} CellNumberFormat */
 /** @typedef {'bold' | 'italic' | 'underline' | 'strikethrough'} CellStyle */
 /** @typedef {'left' | 'right' | 'top' | 'bottom' | 'outside' | 'all' | 'none'} BorderPreset */
 

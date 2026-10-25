@@ -2,7 +2,7 @@ import { defineConfig } from 'tsup';
 
 export default defineConfig({
   entry: {
-    app: './src/app.js'
+    app: './src/app.ts'
   },
   env: {
     NODE_ENV: 'production'

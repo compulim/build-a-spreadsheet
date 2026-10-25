@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { crc32, createZip, readZip } from '../src/zip.js';
+import { crc32, createZip, readZip } from '../src/zip.ts';
 
 const encoder = new TextEncoder();
 

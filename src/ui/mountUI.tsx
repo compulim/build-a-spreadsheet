@@ -3,10 +3,10 @@ import '@primer/primitives/dist/css/functional/themes/light.css';
 import { BaseStyles, PageLayout, ThemeProvider } from '@primer/react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { Toolbar } from './Toolbar.jsx';
+import { Toolbar } from './Toolbar.tsx';
 
-/** @typedef {import('./Toolbar.jsx').ToolbarActions} ToolbarActions */
-/** @typedef {import('./Toolbar.jsx').ToolbarState} ToolbarState */
+/** @typedef {import('./Toolbar.tsx').ToolbarActions} ToolbarActions */
+/** @typedef {import('./Toolbar.tsx').ToolbarState} ToolbarState */
 
 /**
  * Renders the page layout synchronously, so `#grid-container`, `#add-sheet-button` and `#sheet-tabs` are in the DOM

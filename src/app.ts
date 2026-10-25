@@ -1,14 +1,14 @@
-import { formatValue } from './csv.js';
-import { HIGHLIGHTS } from './highlights.js';
-import { cellsToPNG } from './printCells.js';
-import { MAX_WORKSHEETS } from './workbook/constants.js';
-import { getColumnName } from './worksheet/getColumnName.js';
-import { Workbook } from './workbook/Workbook.js';
-import { WorksheetElement } from './worksheet/WorksheetElement.js';
-import { WorksheetSelection } from './worksheet/WorksheetSelection.js';
-import { mountUI } from './ui/mountUI.jsx';
+import { formatValue } from './csv.ts';
+import { HIGHLIGHTS } from './highlights.ts';
+import { cellsToPNG } from './printCells.ts';
+import { MAX_WORKSHEETS } from './workbook/constants.ts';
+import { getColumnName } from './worksheet/getColumnName.ts';
+import { Workbook } from './workbook/Workbook.ts';
+import { WorksheetElement } from './worksheet/WorksheetElement.ts';
+import { WorksheetSelection } from './worksheet/WorksheetSelection.ts';
+import { mountUI } from './ui/mountUI.tsx';
 
-/** @typedef {import('./worksheet/Worksheet.js').Worksheet} Worksheet */
+/** @typedef {import('./worksheet/Worksheet.ts').Worksheet} Worksheet */
 
 /**
  * Number of leading rows and columns that become read-only, and frozen on screen, when the lock button is pressed.
@@ -17,14 +17,14 @@ import { mountUI } from './ui/mountUI.jsx';
 const LOCKED_ROW_COUNT = 1;
 const LOCKED_COLUMN_COUNT = 1;
 
-/** @typedef {import('./ui/Toolbar.jsx').ToolbarActions} ToolbarActions */
+/** @typedef {import('./ui/Toolbar.tsx').ToolbarActions} ToolbarActions */
 
 const fileInput = /** @type {HTMLInputElement} */ (document.getElementById('file-input'));
-/** @type {Record<import('./ui/Toolbar.jsx').CellStyle, boolean>} */
+/** @type {Record<import('./ui/Toolbar.tsx').CellStyle, boolean>} */
 const NO_STYLES = { bold: false, italic: false, underline: false, strikethrough: false };
-/** @type {readonly import('./worksheet/Worksheet.js').CellAlign[]} */
+/** @type {readonly import('./worksheet/Worksheet.ts').CellAlign[]} */
 const ALIGNS = ['left', 'center', 'right'];
-/** @type {readonly import('./worksheet/Worksheet.js').CellNumberFormat[]} */
+/** @type {readonly import('./worksheet/Worksheet.ts').CellNumberFormat[]} */
 const FORMATS = ['currency', 'percent', 'date', 'datetime', 'duration'];
 
 /** @type {ToolbarActions} */
@@ -107,7 +107,7 @@ function mountWorksheet(worksheet) {
 
 /** @param {Event} event */
 function handleWorksheetAdd(event) {
-  mountWorksheet(/** @type {import('./worksheet/WorksheetEvent.js').WorksheetEvent} */ (event).worksheet);
+  mountWorksheet(/** @type {import('./worksheet/WorksheetEvent.ts').WorksheetEvent} */ (event).worksheet);
 }
 
 /** Active cell and selection of the active worksheet. */
@@ -290,7 +290,7 @@ function updateSelectionInfo() {
  * Whether the predicate holds for the formatting of every contentful cell in the selection.
  * If the selection has no contentful cells, checks the active cell instead.
  *
- * @param {(formatting: import('./worksheet/Worksheet.js').CellFormatting | undefined) => boolean} predicate
+ * @param {(formatting: import('./worksheet/Worksheet.ts').CellFormatting | undefined) => boolean} predicate
  */
 function isFormattingAppliedToSelection(predicate) {
   const worksheet = activeElement?.worksheet;
@@ -321,7 +321,7 @@ function isFormattingAppliedToSelection(predicate) {
 }
 
 function updateFormattingButtons() {
-  /** @type {Record<import('./ui/Toolbar.jsx').CellStyle, boolean>} */
+  /** @type {Record<import('./ui/Toolbar.tsx').CellStyle, boolean>} */
   const styles = { ...NO_STYLES };
 
   for (const style of /** @type {const} */ (['bold', 'italic', 'underline', 'strikethrough'])) {
@@ -361,7 +361,7 @@ function isSelectionMerged() {
   return covered === (right - left + 1) * (bottom - top + 1);
 }
 
-/** @param {import('./worksheet/Worksheet.js').FormattingUpdater} updater */
+/** @param {import('./worksheet/Worksheet.ts').FormattingUpdater} updater */
 function formatSelection(updater) {
   const worksheet = activeElement?.worksheet;
 
@@ -376,7 +376,7 @@ function formatSelection(updater) {
   activeElement?.focus();
 }
 
-/** @param {import('./worksheet/Worksheet.js').CellAlign} align */
+/** @param {import('./worksheet/Worksheet.ts').CellAlign} align */
 function toggleAlign(align) {
   // Toggling a pushed alignment goes back to the default (type-based) alignment.
   const nextAlign = isFormattingAppliedToSelection(formatting => formatting?.align === align) ? undefined : align;
@@ -496,7 +496,7 @@ addSheetButton.addEventListener('click', () => {
   }
 });
 
-/** @param {import('./ui/Toolbar.jsx').BorderPreset} preset */
+/** @param {import('./ui/Toolbar.tsx').BorderPreset} preset */
 function setBorder(preset) {
   const worksheet = activeElement?.worksheet;
 
@@ -508,7 +508,7 @@ function setBorder(preset) {
       if (preset === 'all' || preset === 'none') {
         edit.setBorder(range, new Set(['outside', 'inside']), preset === 'all');
       } else {
-        edit.setBorder(range, new Set([/** @type {import('./worksheet/Worksheet.js').BorderEdges} */ (preset)]));
+        edit.setBorder(range, new Set([/** @type {import('./worksheet/Worksheet.ts').BorderEdges} */ (preset)]));
       }
     });
 

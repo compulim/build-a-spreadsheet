@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { cellsToSVG } from '../src/printCells.js';
-import { getHighlight } from '../src/highlights.js';
+import { cellsToSVG } from '../src/printCells.ts';
+import { getHighlight } from '../src/highlights.ts';
 
 test('cellsToSVG sizes the SVG to the cells and escapes text', () => {
   const { svg, width, height } = cellsToSVG([
