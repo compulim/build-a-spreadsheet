@@ -224,7 +224,7 @@ function deleteWorksheet(worksheet: Worksheet) {
   workbook.removeWorksheet(worksheet);
 
   if (activeElement?.worksheet === worksheet) {
-    activateWorksheet(workbook.worksheets[Math.min(index, workbook.worksheets.length - 1)]);
+    activateWorksheet(workbook.worksheets[Math.min(index, workbook.worksheets.length - 1)]!);
   }
 }
 
@@ -255,7 +255,7 @@ function setWorkbook(nextWorkbook: Workbook) {
 
   gridContainer.replaceChildren();
   workbook.worksheets.forEach(mountWorksheet);
-  activateWorksheet(workbook.worksheets[0]);
+  activateWorksheet(workbook.worksheets[0]!);
 }
 
 function updateSelectionInfo() {
@@ -299,7 +299,7 @@ function isFormattingAppliedToSelection(predicate: (formatting: CellFormatting |
     }
   }
 
-  return hasContent || predicate(worksheet.getFormattings(activeCell.column, activeCell.row, 1, 1)[0][0]);
+  return hasContent || predicate(worksheet.getFormattings(activeCell.column, activeCell.row, 1, 1)[0]![0]);
 }
 
 function updateFormattingButtons() {

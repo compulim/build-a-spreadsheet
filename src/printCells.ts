@@ -65,7 +65,7 @@ export function cellsToSVG(
   const columnLefts = [0];
 
   for (const columnWidth of widths) {
-    columnLefts.push(columnLefts[columnLefts.length - 1] + columnWidth);
+    columnLefts.push(columnLefts[columnLefts.length - 1]! + columnWidth);
   }
   const borderLines = [];
 
@@ -97,7 +97,7 @@ export function cellsToSVG(
 
   // Room for the half of the borders on the outer grid lines that is outside of the cells.
   const margin = borderLines.length ? Math.ceil((BORDER_WIDTH - 1) / 2) : 0;
-  const width = columnLefts[columnCount] + 1 + margin * 2;
+  const width = columnLefts[columnCount]! + 1 + margin * 2;
   const height = rowCount * CELL_HEIGHT + 1 + margin * 2;
   const parts = [];
   /** Filter ID of each marker color. */
@@ -112,8 +112,8 @@ export function cellsToSVG(
         continue;
       }
 
-      const x = margin + columnLefts[columnIndex] + 0.5;
-      const cellWidth = columnLefts[columnIndex + span] - columnLefts[columnIndex];
+      const x = margin + columnLefts[columnIndex]! + 0.5;
+      const cellWidth = columnLefts[columnIndex + span]! - columnLefts[columnIndex]!;
       const y = margin + rowIndex * CELL_HEIGHT + 0.5;
       const cellHeight = rowSpan * CELL_HEIGHT;
       const value = row[columnIndex];
@@ -180,7 +180,7 @@ export function cellsToSVG(
   // Drawn after all cells so they are not covered by neighbors. Square caps fill the corners where borders meet.
   for (const { x1, y1, x2, y2 } of borderLines) {
     parts.push(
-      `<line x1="${margin + columnLefts[x1] + 0.5}" y1="${margin + y1 * CELL_HEIGHT + 0.5}" x2="${margin + columnLefts[x2] + 0.5}" y2="${margin + y2 * CELL_HEIGHT + 0.5}" stroke="#000" stroke-width="${BORDER_WIDTH}" stroke-linecap="square"/>`
+      `<line x1="${margin + columnLefts[x1]! + 0.5}" y1="${margin + y1 * CELL_HEIGHT + 0.5}" x2="${margin + columnLefts[x2]! + 0.5}" y2="${margin + y2 * CELL_HEIGHT + 0.5}" stroke="#000" stroke-width="${BORDER_WIDTH}" stroke-linecap="square"/>`
     );
   }
 
@@ -198,12 +198,8 @@ export function cellsToSVG(
 export async function cellsToPNG(
   rows: readonly (readonly unknown[])[],
   {
-    columnWidths,
     dpi = PRINT_DPI,
-    getBorder,
-    getColumnSpan,
-    getFormatting,
-    getRowSpan
+    ...options
   }: {
     columnWidths?: readonly number[];
     dpi?: number;
@@ -213,7 +209,7 @@ export async function cellsToPNG(
     getRowSpan?: GetRowSpan;
   } = {}
 ): Promise<Blob> {
-  const { height, svg, width } = cellsToSVG(rows, { columnWidths, getBorder, getColumnSpan, getFormatting, getRowSpan });
+  const { height, svg, width } = cellsToSVG(rows, options);
   const scale = dpi / CSS_DPI;
   const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
 

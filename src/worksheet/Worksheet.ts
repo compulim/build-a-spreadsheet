@@ -174,7 +174,7 @@ export class Worksheet extends EventTarget {
   getColumnWidth(x: number): number {
     this.#assertCell(x, 0);
 
-    return this.#columnWidths[x];
+    return this.#columnWidths[x]!;
   }
 
   /**
@@ -712,7 +712,7 @@ export class Worksheet extends EventTarget {
 
         if (value !== undefined && value !== '') {
           values.push(value);
-          formatting ||= this.getFormattings(column, row, 1, 1)[0][0];
+          formatting ||= this.getFormattings(column, row, 1, 1)[0]![0];
         }
       }
     }

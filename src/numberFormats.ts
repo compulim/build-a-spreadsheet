@@ -49,6 +49,4 @@ export function formatDisplayValue(
       return { text: value < 0 && totalSeconds ? `-${text}` : text, negative: false };
     }
   }
-
-  return { text: formatValue(value), negative: false };
 }

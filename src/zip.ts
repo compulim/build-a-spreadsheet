@@ -35,7 +35,7 @@ export function crc32(data: Uint8Array): number {
   let crc = 0xffffffff;
 
   for (let index = 0; index < data.length; index++) {
-    crc = CRC_TABLE[(crc ^ data[index]) & 0xff] ^ (crc >>> 8);
+    crc = CRC_TABLE[(crc ^ data[index]!) & 0xff]! ^ (crc >>> 8);
   }
 
   return (crc ^ 0xffffffff) >>> 0;

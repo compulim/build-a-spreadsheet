@@ -215,7 +215,7 @@ export function Toolbar({
             />
           </ActionBar.Group>
         </ActionBar>
-        <SegmentedControl aria-label="Alignment" onChange={index => actions.setAlign(ALIGNS[index].align)} size="small">
+        <SegmentedControl aria-label="Alignment" onChange={index => actions.setAlign(ALIGNS[index]!.align)} size="small">
           {ALIGNS.map(({ align, description, label }) => (
             <SegmentedControl.Button key={label} selected={align === state.align} title={description}>
               {label}
@@ -224,7 +224,7 @@ export function Toolbar({
         </SegmentedControl>
         <SegmentedControl
           aria-label="Highlight"
-          onChange={index => actions.setHighlight(MARKERS[index].name)}
+          onChange={index => actions.setHighlight(MARKERS[index]!.name)}
           size="small"
         >
           {MARKERS.map(({ icon, label, name }) => (

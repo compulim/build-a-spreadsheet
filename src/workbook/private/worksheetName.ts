@@ -16,6 +16,8 @@ export function validateWorksheetName(name: string): string | undefined {
   } else if (name.startsWith("'") || name.endsWith("'")) {
     return 'Sheet name cannot begin or end with an apostrophe.';
   }
+
+  return undefined;
 }
 
 /**

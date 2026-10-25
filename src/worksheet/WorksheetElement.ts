@@ -231,7 +231,7 @@ export class WorksheetElement extends HTMLElement {
     this.style.setProperty('--locked-row-count', String(lockedRowCount));
 
     for (let column = 0; column < this.#columnCount; column++) {
-      for (const element of [this.#columnHeaders[column], ...this.#pool.map(({ cells }) => cells[column])]) {
+      for (const element of [this.#columnHeaders[column]!, ...this.#pool.map(({ cells }) => cells[column]!)]) {
         this.#initLockableColumn(element, column);
       }
     }
@@ -304,7 +304,7 @@ export class WorksheetElement extends HTMLElement {
       const columnHeader = createElement('div', 'grid__column-header');
 
       columnHeader.textContent = getColumnName(column);
-      columnHeader.dataset.column = String(column);
+      columnHeader.dataset['column'] = String(column);
       columnHeader.style.width = `${columnWidth}px`;
       columnHeader.setAttribute('role', 'columnheader');
       this.#initLockableColumn(columnHeader, column);
@@ -747,7 +747,7 @@ export class WorksheetElement extends HTMLElement {
 
     for (let row = firstRow; row < firstRow + length; row++) {
       // Slots are recycled by row index, so only rows newly scrolled into view need to be updated.
-      const slot = this.#pool[row % length];
+      const slot = this.#pool[row % length]!;
 
       if (slot.row !== row) {
         slot.row = row;
@@ -844,10 +844,10 @@ export class WorksheetElement extends HTMLElement {
   #applyColumnWidth(column: number) {
     const style = `${this.#getColumnWidth(column)}px`;
 
-    this.#columnHeaders[column].style.width = style;
+    this.#columnHeaders[column]!.style.width = style;
 
     for (const { cells } of [...this.#pool, ...this.#frozenRows]) {
-      cells[column].style.width = style;
+      cells[column]!.style.width = style;
     }
   }
 
@@ -861,17 +861,10 @@ export class WorksheetElement extends HTMLElement {
   }
 
   /**
-   * Resizes a column to fit the content of all its cells and its header.
-   */
-  #autoFitColumn(column: number) {
-    this.#autoFitColumns([column]);
-  }
-
-  /**
    * Returns the width needed to fit the content of all cells in a column and its header.
    */
   #measureColumn(column: number) {
-    const sample = this.#pool[0]?.cells[column] || this.#columnHeaders[column];
+    const sample = this.#pool[0]?.cells[column] || this.#columnHeaders[column]!;
     const context = (this.#measureContext ||= document.createElement('canvas').getContext('2d'));
     const style = getComputedStyle(sample);
     // Padding plus right border.
@@ -896,8 +889,8 @@ export class WorksheetElement extends HTMLElement {
         continue;
       }
 
-      const value = merge ? this.#worksheet.getValue(merge.x, row) : values[row][0];
-      const format = (merge ? this.#worksheet.getFormattings(merge.x, row, 1, 1)[0][0] : formattings[row][0]).format;
+      const value = merge ? this.#worksheet.getValue(merge.x, row) : values[row]![0];
+      const format = (merge ? this.#worksheet.getFormattings(merge.x, row, 1, 1)[0]![0] : formattings[row]![0])!.format;
       let otherColumnsWidth = 0;
 
       if (merge) {
@@ -930,10 +923,10 @@ export class WorksheetElement extends HTMLElement {
     for (let column = 0; column < this.#lockedColumnCount; column++) {
       const left = `${this.#rowHeaderWidth + this.#columnOffset(column)}px`;
 
-      this.#columnHeaders[column].style.setProperty('--sticky-left', left);
+      this.#columnHeaders[column]!.style.setProperty('--sticky-left', left);
 
       for (const { cells } of [...this.#pool, ...this.#frozenRows]) {
-        cells[column].style.setProperty('--sticky-left', left);
+        cells[column]!.style.setProperty('--sticky-left', left);
       }
     }
 
@@ -966,8 +959,8 @@ export class WorksheetElement extends HTMLElement {
     let mergeIndex = 0;
 
     for (let column = 0; column < cells.length; column++) {
-      const cell = cells[column];
-      const merge = merges[mergeIndex]?.x <= column ? merges[mergeIndex] : undefined;
+      const cell = cells[column]!;
+      const merge = (merges[mergeIndex]?.x ?? Infinity) <= column ? merges[mergeIndex] : undefined;
       const lastColumn = merge ? merge.x + merge.width - 1 : column;
       const lastRow = merge ? merge.y + merge.height - 1 : row;
       // Content and formatting of a merged cell are in its top-left cell.
@@ -1008,7 +1001,7 @@ export class WorksheetElement extends HTMLElement {
 
       const value = worksheet.getValue(x, y);
       const type = typeof value;
-      const formatting = worksheet.getFormattings(x, y, 1, 1)[0][0];
+      const formatting = worksheet.getFormattings(x, y, 1, 1)[0]![0];
       // Number formats only apply to numbers, decorations (e.g. currency sign) are added by CSS.
       const format = (type === 'number' && formatting?.format) || '';
       const { negative, text } = formatDisplayValue(value, formatting?.format);
@@ -1020,12 +1013,12 @@ export class WorksheetElement extends HTMLElement {
         content.textContent = text;
       }
 
-      if (cell.dataset.type !== type) {
-        cell.dataset.type = type;
+      if (cell.dataset['type'] !== type) {
+        cell.dataset['type'] = type;
       }
 
-      if ((cell.dataset.format || '') !== format) {
-        format ? (cell.dataset.format = format) : delete cell.dataset.format;
+      if ((cell.dataset['format'] || '') !== format) {
+        format ? (cell.dataset['format'] = format) : delete cell.dataset['format'];
       }
 
       cell.classList.toggle('grid__cell--negative', negative);
@@ -1042,8 +1035,8 @@ export class WorksheetElement extends HTMLElement {
         cell.style.textDecorationLine = decorations;
       }
 
-      if ((cell.dataset.align || '') !== align) {
-        align ? (cell.dataset.align = align) : delete cell.dataset.align;
+      if ((cell.dataset['align'] || '') !== align) {
+        align ? (cell.dataset['align'] = align) : delete cell.dataset['align'];
       }
 
       const highlight = getHighlight(formatting?.highlight);
@@ -1051,29 +1044,29 @@ export class WorksheetElement extends HTMLElement {
       const color = highlight?.color || '';
 
       // Compare with the last set value, as the browser normalizes colors.
-      if ((cell.dataset.background || '') !== background) {
+      if ((cell.dataset['background'] || '') !== background) {
         background ? content.style.setProperty('--marker-color', background) : content.style.removeProperty('--marker-color');
         content.classList.toggle('grid__cell-text--marker', !!background);
-        background ? (cell.dataset.background = background) : delete cell.dataset.background;
+        background ? (cell.dataset['background'] = background) : delete cell.dataset['background'];
       }
 
-      if ((cell.dataset.color || '') !== color) {
+      if ((cell.dataset['color'] || '') !== color) {
         cell.style.color = color;
-        color ? (cell.dataset.color = color) : delete cell.dataset.color;
+        color ? (cell.dataset['color'] = color) : delete cell.dataset['color'];
       }
 
       const shadow = this.#getBorderShadow(worksheet, x, y, lastColumn, lastRow);
 
       // Compare with the last set value, as the browser normalizes `style.boxShadow`.
-      if ((cell.dataset.border || '') !== shadow) {
-        cell.dataset.border = shadow;
+      if ((cell.dataset['border'] || '') !== shadow) {
+        cell.dataset['border'] = shadow;
         cell.style.boxShadow = shadow;
       }
 
       const corners = this.#getBorderCorners(worksheet, x, y, lastColumn, lastRow);
 
-      if ((cell.dataset.borderCorners || '') !== corners) {
-        cell.dataset.borderCorners = corners;
+      if ((cell.dataset['borderCorners'] || '') !== corners) {
+        cell.dataset['borderCorners'] = corners;
         corners ? cell.style.setProperty('--border-corners', corners) : cell.style.removeProperty('--border-corners');
         cell.toggleAttribute('data-border-corner', !!corners);
       }
@@ -1566,7 +1559,7 @@ export class WorksheetElement extends HTMLElement {
 
       return;
     } else if (target.closest('.grid__column-header')) {
-      const column = Number((target.closest('.grid__column-header') as HTMLElement).dataset.column);
+      const column = Number((target.closest('.grid__column-header') as HTMLElement).dataset['column']);
 
       this.#dragging = 'column';
       shiftKey
@@ -1937,7 +1930,7 @@ export class WorksheetElement extends HTMLElement {
 
     worksheet.edit(edit => {
       for (let rowOffset = 0; rowOffset < pasteRows; rowOffset++) {
-        const rowValues = values[rowOffset % dataRows];
+        const rowValues = values[rowOffset % dataRows]!;
 
         for (let columnOffset = 0; columnOffset < pasteColumns; columnOffset++) {
           const column = left + columnOffset;
