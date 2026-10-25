@@ -1,30 +1,29 @@
 import '@primer/primitives/dist/css/primitives.css';
 import '@primer/primitives/dist/css/functional/themes/light.css';
 import { BaseStyles, PageLayout, ThemeProvider } from '@primer/react';
+import type { RefObject } from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { Toolbar } from './Toolbar.jsx';
-
-/** @typedef {import('./Toolbar.jsx').ToolbarActions} ToolbarActions */
-/** @typedef {import('./Toolbar.jsx').ToolbarState} ToolbarState */
+import { Toolbar } from './Toolbar.tsx';
+import type { ToolbarActions, ToolbarState } from './Toolbar.tsx';
 
 /**
  * Renders the page layout synchronously, so `#grid-container`, `#add-sheet-button` and `#sheet-tabs` are in the DOM
  * when this function returns. Their contents are owned by the caller, React never re-renders them.
  *
- * @param {HTMLElement} container
- * @param {ToolbarActions} actions
- * @param {ToolbarState} initialState
- * @param {import('react').RefObject<HTMLElement>} returnFocusRef Element to focus after a toolbar menu closes.
+ * @param returnFocusRef Element to focus after a toolbar menu closes.
  */
-export function mountUI(container, actions, initialState, returnFocusRef) {
+export function mountUI(
+  container: HTMLElement,
+  actions: ToolbarActions,
+  initialState: ToolbarState,
+  returnFocusRef: RefObject<HTMLElement>
+) {
   let state = initialState;
-  /** @type {Set<() => void>} */
-  const listeners = new Set();
+  const listeners = new Set<() => void>();
   const store = {
     getState: () => state,
-    /** @param {() => void} listener */
-    subscribe(listener) {
+    subscribe(listener: () => void) {
       listeners.add(listener);
 
       return () => listeners.delete(listener);
@@ -63,13 +62,8 @@ export function mountUI(container, actions, initialState, returnFocusRef) {
   );
 
   return {
-    /** @param {Partial<ToolbarState>} nextState */
-    update(nextState) {
-      if (
-        Object.entries(nextState).some(
-          ([key, value]) => !Object.is(state[/** @type {keyof ToolbarState} */ (key)], value)
-        )
-      ) {
+    update(nextState: Partial<ToolbarState>) {
+      if (Object.entries(nextState).some(([key, value]) => !Object.is(state[key as keyof ToolbarState], value))) {
         state = { ...state, ...nextState };
         listeners.forEach(listener => listener());
       }

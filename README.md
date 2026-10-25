@@ -16,7 +16,7 @@ The grid is written in plain JavaScript (ES modules). The page layout and toolba
 - Values are booleans, numbers or strings. Formulas are not supported.
 - Up to 50 named sheets in the bottom bar: <kbd>+</kbd> to add, double-click to rename, × to delete.
 - Toolbar built with Primer: `ActionBar` for file, undo/redo, bold/italic/underline/strikethrough, border, merge and unformat; `SegmentedControl` for alignment (Auto/Left/Center/Right) and the highlight marker (None or a colour); `ActionMenu` for the number format; `PageLayout` for the overall page.
-- Lock switch: makes the rows/columns listed in `LOCKED_ROWS` and `LOCKED_COLUMNS` in [`src/app.js`](src/app.js) read-only.
+- Lock switch: makes the rows/columns listed in `LOCKED_ROWS` and `LOCKED_COLUMNS` in [`src/app.ts`](src/app.ts) read-only.
 - Open a CSV file (added as a new sheet) or a ZIP file of CSV files (replaces the workbook). Save the current sheet as CSV, or the whole workbook as a ZIP of CSV files.
 
 ## Running locally
@@ -31,8 +31,8 @@ To deploy, run `npm run build` and publish the `public/` folder. All paths are r
 ## Programming interface
 
 ```js
-import { Workbook } from './src/workbook/Workbook.js';
-import { Worksheet } from './src/worksheet/Worksheet.js';
+import { Workbook } from './src/workbook/Workbook.ts';
+import { Worksheet } from './src/worksheet/Worksheet.ts';
 
 const workbook = new Workbook(); // EventTarget
 const sheet = workbook.addWorksheet('Data'); // Worksheet, also an EventTarget
@@ -62,10 +62,10 @@ const zip = await workbook.toZip(); // Uint8Array, one "<sheet name>.csv" per wo
 const loaded = await Workbook.fromZip(zip);
 ```
 
-In a browser where `<compulim-worksheet>` ([`src/worksheet/WorksheetElement.js`](src/worksheet/WorksheetElement.js)) is defined, the workbook instantiates one element per worksheet. The element renders the grid, handles user interactions, and wholly owns the worksheet. Its public members are the read-only `worksheet` property, `selection`, `undo()`, `redo()`, `canUndo` and `canRedo`:
+In a browser where `<compulim-worksheet>` ([`src/worksheet/WorksheetElement.ts`](src/worksheet/WorksheetElement.ts)) is defined, the workbook instantiates one element per worksheet. The element renders the grid, handles user interactions, and wholly owns the worksheet. Its public members are the read-only `worksheet` property, `selection`, `undo()`, `redo()`, `canUndo` and `canRedo`:
 
 ```js
-import './src/worksheet/WorksheetElement.js';
+import './src/worksheet/WorksheetElement.ts';
 
 const worksheet = workbook.addWorksheet('Hello');
 const element = workbook.getWorksheetElement(worksheet); // <compulim-worksheet>, element.worksheet === worksheet
@@ -77,10 +77,10 @@ element.toggleAttribute('locked', true); // Locks row 1
 worksheet.edit(edit => edit.setValue(0, 1, 'Hello')); // The grid updates
 ```
 
-The element keeps the undo history: it subscribes to the change events of its worksheet and remembers the `undo()` object of each `edit()` transaction (and the `redo()` object returned by undoing it) in a stack. The history logic lives in [`src/worksheet/WorksheetHistory.js`](src/worksheet/WorksheetHistory.js), which has no DOM dependency. The selection is an immutable [`WorksheetSelection`](src/worksheet/WorksheetSelection.js):
+The element keeps the undo history: it subscribes to the change events of its worksheet and remembers the `undo()` object of each `edit()` transaction (and the `redo()` object returned by undoing it) in a stack. The history logic lives in [`src/worksheet/WorksheetHistory.ts`](src/worksheet/WorksheetHistory.ts), which has no DOM dependency. The selection is an immutable [`WorksheetSelection`](src/worksheet/WorksheetSelection.ts):
 
 ```js
-import { WorksheetSelection } from './src/worksheet/WorksheetSelection.js';
+import { WorksheetSelection } from './src/worksheet/WorksheetSelection.ts';
 
 element.undo(); // true, reverted and selected the changed cells; false if nothing to undo
 element.redo();

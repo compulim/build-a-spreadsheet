@@ -1,9 +1,11 @@
-import { createZip, readZip } from '../zip.js';
-import { WorksheetChangeEvent } from '../worksheet/WorksheetChangeEvent.js';
-import { MAX_WORKSHEET_NAME_LENGTH, MAX_WORKSHEETS } from './constants.js';
-import { Worksheet } from '../worksheet/Worksheet.js';
-import { sanitizeWorksheetName, validateWorksheetName } from './private/worksheetName.js';
-import { WorksheetEvent } from '../worksheet/WorksheetEvent.js';
+import { createZip, readZip } from '../zip.ts';
+import { WorksheetChangeEvent } from '../worksheet/WorksheetChangeEvent.ts';
+import { MAX_WORKSHEET_NAME_LENGTH, MAX_WORKSHEETS } from './constants.ts';
+import { Worksheet } from '../worksheet/Worksheet.ts';
+import { sanitizeWorksheetName, validateWorksheetName } from './private/worksheetName.ts';
+import { WorksheetEvent } from '../worksheet/WorksheetEvent.ts';
+
+type WorksheetElement = HTMLElement & { readonly worksheet: Worksheet };
 
 /**
  * A workbook with up to 50 worksheets.
@@ -15,40 +17,28 @@ import { WorksheetEvent } from '../worksheet/WorksheetEvent.js';
  * `worksheetadd`, `worksheetremove` and `worksheetrename` (`WorksheetEvent`).
  */
 export class Workbook extends EventTarget {
-  /** @type {Worksheet[]} */
-  #worksheets = [];
+  #worksheets: Worksheet[] = [];
 
-  /** @type {Map<Worksheet, string>} */
-  #names = new Map();
+  #names: Map<Worksheet, string> = new Map();
 
-  /** @type {Map<Worksheet, HTMLElement & { readonly worksheet: Worksheet }>} */
-  #elements = new Map();
+  #elements: Map<Worksheet, WorksheetElement> = new Map();
 
-  /** @param {Event} event */
-  #handleChange = event => {
-    this.dispatchEvent(new WorksheetChangeEvent('change', /** @type {WorksheetChangeEvent} */ (event)));
+  #handleChange = (event: Event): void => {
+    this.dispatchEvent(new WorksheetChangeEvent('change', event as WorksheetChangeEvent));
   };
 
-  /** @returns {Worksheet[]} */
-  get worksheets() {
+  get worksheets(): Worksheet[] {
     return [...this.#worksheets];
   }
 
-  /**
-   * @param {Worksheet} worksheet
-   * @returns {number}
-   */
-  indexOf(worksheet) {
+  indexOf(worksheet: Worksheet): number {
     return this.#worksheets.indexOf(worksheet);
   }
 
   /**
    * Finds a worksheet by name (case-insensitive) or by index.
-   *
-   * @param {string | number} nameOrIndex
-   * @returns {Worksheet | undefined}
    */
-  getWorksheet(nameOrIndex) {
+  getWorksheet(nameOrIndex: string | number): Worksheet | undefined {
     if (typeof nameOrIndex === 'number') {
       return this.#worksheets[nameOrIndex];
     }
@@ -60,19 +50,12 @@ export class Workbook extends EventTarget {
 
   /**
    * Returns the name of a worksheet in this workbook, or `undefined` if it does not belong to this workbook.
-   *
-   * @param {Worksheet} worksheet
-   * @returns {string | undefined}
    */
-  getWorksheetName(worksheet) {
+  getWorksheetName(worksheet: Worksheet): string | undefined {
     return this.#names.get(worksheet);
   }
 
-  /**
-   * @param {string} name
-   * @param {Worksheet} [except]
-   */
-  #assertName(name, except) {
+  #assertName(name: string, except?: Worksheet): void {
     const error = validateWorksheetName(name);
 
     if (error) {
@@ -88,11 +71,8 @@ export class Workbook extends EventTarget {
 
   /**
    * Renames a worksheet. Dispatches `worksheetrename` if changed.
-   *
-   * @param {Worksheet} worksheet
-   * @param {string} name
    */
-  renameWorksheet(worksheet, name) {
+  renameWorksheet(worksheet: Worksheet, name: string): void {
     const previousName = this.#names.get(worksheet);
 
     if (previousName === undefined) {
@@ -111,11 +91,8 @@ export class Workbook extends EventTarget {
 
   /**
    * Returns an unused name, based on `base`.
-   *
-   * @param {string} [base]
-   * @returns {string}
    */
-  getUniqueWorksheetName(base) {
+  getUniqueWorksheetName(base?: string): string {
     if (base === undefined) {
       for (let index = this.#worksheets.length + 1; ; index++) {
         if (!this.getWorksheet(`Sheet${index}`)) {
@@ -143,22 +120,18 @@ export class Workbook extends EventTarget {
   /**
    * Returns the `<compulim-worksheet>` element owning a worksheet of this workbook, or `undefined` if not found or
    * `<compulim-worksheet>` is not defined (e.g. outside of a browser).
-   *
-   * @param {Worksheet} worksheet
-   * @returns {(HTMLElement & { readonly worksheet: Worksheet }) | undefined}
    */
-  getWorksheetElement(worksheet) {
+  getWorksheetElement(worksheet: Worksheet): WorksheetElement | undefined {
     return this.#elements.get(worksheet);
   }
 
   /**
    * Adds a new worksheet, owned by a newly instantiated `<compulim-worksheet>` if it is defined.
    *
-   * @param {string} [name] Name of the worksheet, default to an unused name.
-   * @param {number} [index] Position of the worksheet, default to the end.
-   * @returns {Worksheet}
+   * @param name Name of the worksheet, default to an unused name.
+   * @param index Position of the worksheet, default to the end.
    */
-  addWorksheet(name = this.getUniqueWorksheetName(), index = this.#worksheets.length) {
+  addWorksheet(name: string = this.getUniqueWorksheetName(), index: number = this.#worksheets.length): Worksheet {
     if (this.#worksheets.length >= MAX_WORKSHEETS) {
       throw new RangeError(`A workbook cannot have more than ${MAX_WORKSHEETS} sheets.`);
     }
@@ -167,8 +140,8 @@ export class Workbook extends EventTarget {
 
     index = Math.max(0, Math.min(index, this.#worksheets.length));
 
-    /** @type {(HTMLElement & { readonly worksheet: Worksheet }) | undefined} */
-    const element = globalThis.customElements?.get('compulim-worksheet') && document.createElement('compulim-worksheet');
+    const element = (globalThis.customElements?.get('compulim-worksheet') &&
+      document.createElement('compulim-worksheet')) as WorksheetElement | undefined;
     const worksheet = element ? element.worksheet : new Worksheet();
 
     element && this.#elements.set(worksheet, element);
@@ -183,11 +156,8 @@ export class Workbook extends EventTarget {
 
   /**
    * Removes a worksheet.
-   *
-   * @param {Worksheet | number} worksheetOrIndex
-   * @returns {Worksheet}
    */
-  removeWorksheet(worksheetOrIndex) {
+  removeWorksheet(worksheetOrIndex: Worksheet | number): Worksheet {
     const index =
       typeof worksheetOrIndex === 'number' ? worksheetOrIndex : this.#worksheets.indexOf(worksheetOrIndex);
     const worksheet = this.#worksheets[index];
@@ -209,10 +179,8 @@ export class Workbook extends EventTarget {
 
   /**
    * Saves all worksheets as CSV files (named `<sheet name>.csv`) into a ZIP file.
-   *
-   * @returns {Promise<Uint8Array>}
    */
-  async toZip() {
+  async toZip(): Promise<Uint8Array> {
     const encoder = new TextEncoder();
 
     return createZip(
@@ -226,11 +194,8 @@ export class Workbook extends EventTarget {
 
   /**
    * Loads a workbook from a ZIP file containing CSV files, one worksheet per CSV file (in the order stored in the ZIP).
-   *
-   * @param {ArrayBuffer | Uint8Array} data
-   * @returns {Promise<Workbook>}
    */
-  static async fromZip(data) {
+  static async fromZip(data: ArrayBuffer | Uint8Array): Promise<Workbook> {
     const decoder = new TextDecoder();
     const workbook = new Workbook();
 

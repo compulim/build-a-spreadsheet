@@ -1,7 +1,5 @@
-/**
- * @typedef {{ readonly column: number; readonly row: number }} CellPosition
- * @typedef {{ readonly left: number; readonly top: number; readonly right: number; readonly bottom: number }} CellRange
- */
+export type CellPosition = { readonly column: number; readonly row: number };
+export type CellRange = { readonly left: number; readonly top: number; readonly right: number; readonly bottom: number };
 
 /**
  * An immutable selection of a `<compulim-worksheet>`: the active cell and the selected range containing it.
@@ -11,10 +9,9 @@
  */
 export class WorksheetSelection {
   /**
-   * @param {CellPosition} activeCell
-   * @param {CellRange} [range] Defaults to the active cell. Must contain the active cell.
+   * @param range Defaults to the active cell. Must contain the active cell.
    */
-  constructor(activeCell, range) {
+  constructor(activeCell: CellPosition, range?: CellRange) {
     const { column, row } = activeCell;
     const { left, top, right, bottom } = range ?? { left: column, top: row, right: column, bottom: row };
 
@@ -26,28 +23,22 @@ export class WorksheetSelection {
     this.#range = Object.freeze({ left, top, right, bottom });
   }
 
-  /** @type {Readonly<CellPosition>} */
-  #activeCell;
+  #activeCell: Readonly<CellPosition>;
 
-  /** @type {Readonly<CellRange>} */
-  #range;
+  #range: Readonly<CellRange>;
 
-  /** @returns {Readonly<CellPosition>} */
-  get activeCell() {
+  get activeCell(): Readonly<CellPosition> {
     return this.#activeCell;
   }
 
-  /** @returns {Readonly<CellRange>} */
-  get range() {
+  get range(): Readonly<CellRange> {
     return this.#range;
   }
 
   /**
    * The corner of the range opposite to the active cell, i.e. where the selection extends to.
-   *
-   * @returns {CellPosition}
    */
-  get focus() {
+  get focus(): CellPosition {
     const { column, row } = this.#activeCell;
     const { left, top, right, bottom } = this.#range;
 

@@ -3,9 +3,8 @@
  *
  * Uses the native `CompressionStream`/`DecompressionStream` (`deflate-raw`) when available.
  * Supports "stored" (0) and "deflate" (8) methods. ZIP64 is not supported.
- *
- * @typedef {{ name: string; data: Uint8Array }} ZipEntry
  */
+export type ZipEntry = { name: string; data: Uint8Array };
 
 const LOCAL_FILE_HEADER_SIGNATURE = 0x04034b50;
 const CENTRAL_DIRECTORY_SIGNATURE = 0x02014b50;
@@ -32,36 +31,26 @@ const CRC_TABLE = (() => {
   return table;
 })();
 
-/**
- * @param {Uint8Array} data
- * @returns {number}
- */
-export function crc32(data) {
+export function crc32(data: Uint8Array): number {
   let crc = 0xffffffff;
 
   for (let index = 0; index < data.length; index++) {
-    crc = CRC_TABLE[(crc ^ data[index]) & 0xff] ^ (crc >>> 8);
+    crc = CRC_TABLE[(crc ^ data[index]!) & 0xff]! ^ (crc >>> 8);
   }
 
   return (crc ^ 0xffffffff) >>> 0;
 }
 
-/**
- * @param {Uint8Array} data
- * @param {TransformStream<Uint8Array, Uint8Array>} transformStream
- * @returns {Promise<Uint8Array>}
- */
-async function transform(data, transformStream) {
-  const stream = new Blob([data]).stream().pipeThrough(transformStream);
+async function transform(
+  data: Uint8Array,
+  transformStream: ReadableWritablePair<Uint8Array, BufferSource>
+): Promise<Uint8Array> {
+  const stream = new Blob([data as BlobPart]).stream().pipeThrough(transformStream);
 
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
-/**
- * @param {Date} date
- * @returns {{ date: number; time: number }}
- */
-function toDOSDateTime(date) {
+function toDOSDateTime(date: Date): { date: number; time: number } {
   // DOS date/time can only represent 1980-01-01 to 2107-12-31.
   if (date.getFullYear() < 1980) {
     date = new Date(1980, 0, 1);
@@ -77,20 +66,17 @@ function toDOSDateTime(date) {
 
 /**
  * Creates a ZIP archive.
- *
- * @param {ZipEntry[]} entries
- * @param {{ compress?: boolean; date?: Date }} [options]
- * @returns {Promise<Uint8Array>}
  */
-export async function createZip(entries, { compress = true, date = new Date() } = {}) {
+export async function createZip(
+  entries: ZipEntry[],
+  { compress = true, date = new Date() }: { compress?: boolean; date?: Date } = {}
+): Promise<Uint8Array> {
   const encoder = new TextEncoder();
   const canCompress = compress && typeof CompressionStream !== 'undefined';
   const { date: dosDate, time: dosTime } = toDOSDateTime(date);
 
-  /** @type {Uint8Array[]} */
-  const localParts = [];
-  /** @type {Uint8Array[]} */
-  const centralParts = [];
+  const localParts: Uint8Array[] = [];
+  const centralParts: Uint8Array[] = [];
   let offset = 0;
 
   for (const { name, data } of entries) {
@@ -171,11 +157,8 @@ export async function createZip(entries, { compress = true, date = new Date() } 
 
 /**
  * Reads all file entries (directories are skipped) from a ZIP archive.
- *
- * @param {ArrayBuffer | Uint8Array} input
- * @returns {Promise<ZipEntry[]>}
  */
-export async function readZip(input) {
+export async function readZip(input: ArrayBuffer | Uint8Array): Promise<ZipEntry[]> {
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const decoder = new TextDecoder();
@@ -197,8 +180,7 @@ export async function readZip(input) {
   const entryCount = view.getUint16(endOffset + 10, true);
   let offset = view.getUint32(endOffset + 16, true);
 
-  /** @type {ZipEntry[]} */
-  const entries = [];
+  const entries: ZipEntry[] = [];
 
   for (let index = 0; index < entryCount; index++) {
     if (offset + 46 > bytes.length || view.getUint32(offset, true) !== CENTRAL_DIRECTORY_SIGNATURE) {

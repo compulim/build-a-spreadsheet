@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { formatValue, inferValue, parseCSV, parseDelimited, parseTSV, stringifyCSV, stringifyTSV } from '../src/csv.js';
+import { formatValue, inferValue, parseCSV, parseDelimited, parseTSV, stringifyCSV, stringifyTSV } from '../src/csv.ts';
 
 describe('inferValue', () => {
   test('numbers', () => {

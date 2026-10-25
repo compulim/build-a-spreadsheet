@@ -1,17 +1,18 @@
-import { calculate } from '../calculator.js';
-import { formatValue, inferValue, parseTSV, stringifyTSV } from '../csv.js';
-import { getHighlight } from '../highlights.js';
-import { formatDisplayValue } from '../numberFormats.js';
-import { getColumnName } from './getColumnName.js';
-import { Worksheet } from './Worksheet.js';
-import { WorksheetHistory } from './WorksheetHistory.js';
-import { WorksheetSelection } from './WorksheetSelection.js';
+import { calculate } from '../calculator.ts';
+import { formatValue, inferValue, parseTSV, stringifyTSV } from '../csv.ts';
+import { getHighlight } from '../highlights.ts';
+import { formatDisplayValue } from '../numberFormats.ts';
+import { getColumnName } from './getColumnName.ts';
+import { Worksheet } from './Worksheet.ts';
+import { WorksheetHistory } from './WorksheetHistory.ts';
+import { WorksheetSelection } from './WorksheetSelection.ts';
+import type { CellFormatting, CellValue } from './Worksheet.ts';
+import type { WorksheetChangeEvent } from './WorksheetChangeEvent.ts';
 
-/**
- * @typedef {import('./Worksheet.js').CellValue} CellValue
- * @typedef {{ readonly column: number; readonly row: number }} CellPosition
- * @typedef {{ readonly left: number; readonly top: number; readonly right: number; readonly bottom: number }} CellRange
- */
+export type { CellValue };
+export type CellPosition = { readonly column: number; readonly row: number };
+export type CellRange = { readonly left: number; readonly top: number; readonly right: number; readonly bottom: number };
+export type RowSlot = { element: HTMLElement; header: HTMLElement; cells: HTMLElement[]; row: number };
 
 /**
  * Minimum number of extra rows rendered above and below the visible area. Otherwise, about one viewport of extra rows is
@@ -23,11 +24,6 @@ const MIN_OVERSCAN = 4;
 const prefersReducedMotion =
   typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
 
-/**
- * @param {string} tagName
- * @param {string} className
- * @returns {HTMLElement}
- */
 const MIN_COLUMN_WIDTH = 20;
 
 /** Distance in pixels from a column header border where resizing can start. */
@@ -43,12 +39,8 @@ const BORDER_OUTSIDE_WIDTH = Math.floor((BORDER_WIDTH - 1) / 2);
 
 /**
  * Returns the border of a cell, or `undefined` if the cell is outside of the worksheet.
- *
- * @param {Worksheet} worksheet
- * @param {number} column
- * @param {number} row
  */
-function getBorderOrNone(worksheet, column, row) {
+function getBorderOrNone(worksheet: Worksheet, column: number, row: number) {
   return column >= 0 && row >= 0 && column < worksheet.columnCount && row < worksheet.rowCount
     ? worksheet.getBorder(column, row)
     : undefined;
@@ -56,34 +48,22 @@ function getBorderOrNone(worksheet, column, row) {
 
 /**
  * Returns `true` if there is a border on the grid line on the right of the cell (column may be -1).
- *
- * @param {Worksheet} worksheet
- * @param {number} column
- * @param {number} row
  */
-function hasVerticalEdge(worksheet, column, row) {
+function hasVerticalEdge(worksheet: Worksheet, column: number, row: number) {
   return !!(getBorderOrNone(worksheet, column, row)?.right || getBorderOrNone(worksheet, column + 1, row)?.left);
 }
 
 /**
  * Returns `true` if there is a border on the grid line below the cell (row may be -1).
- *
- * @param {Worksheet} worksheet
- * @param {number} column
- * @param {number} row
  */
-function hasHorizontalEdge(worksheet, column, row) {
+function hasHorizontalEdge(worksheet: Worksheet, column: number, row: number) {
   return !!(getBorderOrNone(worksheet, column, row)?.bottom || getBorderOrNone(worksheet, column, row + 1)?.top);
 }
 
 /**
  * Returns `true` if any border ends at or passes through the bottom-right corner of the cell.
- *
- * @param {Worksheet} worksheet
- * @param {number} column
- * @param {number} row
  */
-function hasJunction(worksheet, column, row) {
+function hasJunction(worksheet: Worksheet, column: number, row: number) {
   return (
     hasVerticalEdge(worksheet, column, row) ||
     hasVerticalEdge(worksheet, column, row + 1) ||
@@ -92,7 +72,7 @@ function hasJunction(worksheet, column, row) {
   );
 }
 
-function createElement(tagName, className) {
+function createElement(tagName: string, className: string): HTMLElement {
   const element = document.createElement(tagName);
 
   element.className = className;
@@ -102,11 +82,8 @@ function createElement(tagName, className) {
 
 /**
  * Returns formattings embedded by this app in clipboard HTML, or `undefined` if the HTML is not from this app.
- *
- * @param {string} html
- * @returns {Partial<import('./Worksheet.js').CellFormatting>[][] | undefined}
  */
-function parseClipboardFormattings(html) {
+function parseClipboardFormattings(html: string): Partial<CellFormatting>[][] | undefined {
   if (!html) {
     return;
   }
@@ -121,24 +98,18 @@ function parseClipboardFormattings(html) {
   }
 }
 
-/**
- * @param {string} text
- * @returns {string}
- */
-function escapeHTML(text) {
+function escapeHTML(text: string): string {
   return text.replace(
     /[&<>"']/g,
-    char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char] || char
+    char => (({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }) as Record<string, string>)[char] || char
   );
 }
 
-/**
- * @param {WorksheetSelection} selection
- * @param {CellPosition} activeCell
- * @param {CellRange} range
- * @returns {boolean}
- */
-function isSameSelection({ activeCell, range }, { column, row }, { left, top, right, bottom }) {
+function isSameSelection(
+  { activeCell, range }: WorksheetSelection,
+  { column, row }: CellPosition,
+  { left, top, right, bottom }: CellRange
+): boolean {
   return (
     activeCell.column === column &&
     activeCell.row === row &&
@@ -169,11 +140,10 @@ function isSameSelection({ activeCell, range }, { column, row }, { left, top, ri
 export class WorksheetElement extends HTMLElement {
   static observedAttributes = ['locked', 'locked-column-count', 'locked-row-count'];
 
-  /** @readonly */
-  #worksheet = new Worksheet();
+  readonly #worksheet = new Worksheet();
 
-  /** Undo history, built by subscribing to the worksheet. @readonly */
-  #history = new WorksheetHistory(this.#worksheet);
+  /** Undo history, built by subscribing to the worksheet. */
+  readonly #history = new WorksheetHistory(this.#worksheet);
 
   #initialized = false;
 
@@ -184,11 +154,11 @@ export class WorksheetElement extends HTMLElement {
   #columnCount = 0;
   #rowCount = 0;
 
-  /** Cell the active cell was entered from, used when moving out of a merged cell. @type {CellPosition} */
-  #preferred = { column: 0, row: 0 };
+  /** Cell the active cell was entered from, used when moving out of a merged cell. */
+  #preferred: CellPosition = { column: 0, row: 0 };
 
-  /** Cell the selection was extended to (before expanding to merged cells). @type {CellPosition} */
-  #focus = { column: 0, row: 0 };
+  /** Cell the selection was extended to (before expanding to merged cells). */
+  #focus: CellPosition = { column: 0, row: 0 };
 
   #locked = false;
 
@@ -198,33 +168,29 @@ export class WorksheetElement extends HTMLElement {
   /** Number of leading rows that are read-only and frozen while locked. */
   #lockedRowCount = 0;
 
-  /** Copies of the locked rows, shown in a sticky pane while locked. @type {{ header: HTMLElement; cells: HTMLElement[]; row: number }[]} */
-  #frozenRows = [];
+  /** Copies of the locked rows, shown in a sticky pane while locked. */
+  #frozenRows: RowSlot[] = [];
 
-  /** @type {{ element: HTMLElement; header: HTMLElement; cells: HTMLElement[]; row: number }[]} */
-  #pool = [];
+  #pool: RowSlot[] = [];
 
-  /** @type {HTMLElement[]} */
-  #columnHeaders = [];
+  #columnHeaders: HTMLElement[] = [];
 
   /** Whether the editor is open, and whether arrow keys should commit ("enter" mode) or move the caret ("edit" mode). */
-  #editMode = /** @type {'' | 'enter' | 'edit'} */ ('');
+  #editMode = '' as '' | 'enter' | 'edit';
 
   #renderScheduled = false;
 
-  /** Where an in-progress smooth scroll will end. @type {{ left: number; top: number } | undefined} */
-  #scrollTarget;
+  /** Where an in-progress smooth scroll will end. */
+  #scrollTarget: { left: number; top: number } | undefined;
 
-  /** @type {ReturnType<typeof setTimeout> | undefined} */
-  #scrollEndTimeout;
+  #scrollEndTimeout: ReturnType<typeof setTimeout> | undefined;
   #firstRow = 0;
   #contentDirty = false;
 
-  /** @type {'cell' | 'row' | 'column' | 'resize' | ''} */
-  #dragging = '';
+  #dragging: 'cell' | 'row' | 'column' | 'resize' | '' = '';
 
-  /** Columns being resized and where the drag started. @type {{ columns: number[]; startX: number; startWidth: number } | undefined} */
-  #resizing;
+  /** Columns being resized and where the drag started. */
+  #resizing: { columns: number[]; startX: number; startWidth: number } | undefined;
 
   connectedCallback() {
     if (!this.#initialized) {
@@ -233,12 +199,7 @@ export class WorksheetElement extends HTMLElement {
     }
   }
 
-  /**
-   * @param {string} name
-   * @param {string | null} _oldValue
-   * @param {string | null} value
-   */
-  attributeChangedCallback(name, _oldValue, value) {
+  attributeChangedCallback(name: string, _oldValue: string | null, value: string | null) {
     if (!this.#initialized) {
       return;
     }
@@ -270,7 +231,7 @@ export class WorksheetElement extends HTMLElement {
     this.style.setProperty('--locked-row-count', String(lockedRowCount));
 
     for (let column = 0; column < this.#columnCount; column++) {
-      for (const element of [this.#columnHeaders[column], ...this.#pool.map(({ cells }) => cells[column])]) {
+      for (const element of [this.#columnHeaders[column]!, ...this.#pool.map(({ cells }) => cells[column]!)]) {
         this.#initLockableColumn(element, column);
       }
     }
@@ -343,7 +304,7 @@ export class WorksheetElement extends HTMLElement {
       const columnHeader = createElement('div', 'grid__column-header');
 
       columnHeader.textContent = getColumnName(column);
-      columnHeader.dataset.column = String(column);
+      columnHeader.dataset['column'] = String(column);
       columnHeader.style.width = `${columnWidth}px`;
       columnHeader.setAttribute('role', 'columnheader');
       this.#initLockableColumn(columnHeader, column);
@@ -362,7 +323,7 @@ export class WorksheetElement extends HTMLElement {
     this.#rangeOverlay = createElement('div', 'grid__range');
     this.#activeOverlay = createElement('div', 'grid__active');
 
-    const editor = (this.#editor = /** @type {HTMLInputElement} */ (createElement('input', 'grid__editor')));
+    const editor = (this.#editor = createElement('input', 'grid__editor') as HTMLInputElement);
 
     editor.type = 'text';
     editor.spellcheck = false;
@@ -401,31 +362,24 @@ export class WorksheetElement extends HTMLElement {
     this.#setLocked(this.hasAttribute('locked'));
   }
 
-  /** @type {HTMLElement} */
-  #content;
+  #content!: HTMLElement;
 
-  /** Sticky pane showing copies of the locked rows. @type {HTMLElement} */
-  #frozen;
+  /** Sticky pane showing copies of the locked rows. */
+  #frozen!: HTMLElement;
 
-  /** @type {HTMLElement} */
-  #body;
+  #body!: HTMLElement;
 
-  /** @type {HTMLElement} */
-  #rangeOverlay;
+  #rangeOverlay!: HTMLElement;
 
-  /** @type {HTMLElement} */
-  #activeOverlay;
+  #activeOverlay!: HTMLElement;
 
-  /** @type {HTMLInputElement} */
-  #editor;
+  #editor!: HTMLInputElement;
 
   /**
    * Re-renders what a transaction changed.
-   *
-   * @param {Event} event
    */
-  #handleChange = event => {
-    const { changes } = /** @type {import('./WorksheetChangeEvent.js').WorksheetChangeEvent} */ (event);
+  #handleChange = (event: Event) => {
+    const { changes } = event as WorksheetChangeEvent;
     let anchorChanged = false;
     let mergeChanged = false;
 
@@ -461,9 +415,8 @@ export class WorksheetElement extends HTMLElement {
     this.#scheduleHistoryChange();
   };
 
-  /** @param {Event} event */
-  #handleColumnWidthChange = event => {
-    this.#applyColumnWidth(/** @type {CustomEvent<{ x: number }>} */ (event).detail.x);
+  #handleColumnWidthChange = (event: Event) => {
+    this.#applyColumnWidth((event as CustomEvent<{ x: number }>).detail.x);
     this.#updateColumnLayout();
     // Merged cells span multiple columns.
     this.#contentDirty = true;
@@ -472,11 +425,8 @@ export class WorksheetElement extends HTMLElement {
 
   /**
    * Returns the top-left cell of the merged cell containing the cell, or the cell itself if not merged.
-   *
-   * @param {CellPosition} cell
-   * @returns {CellPosition}
    */
-  #toMergeStart(cell) {
+  #toMergeStart(cell: CellPosition): CellPosition {
     const merge = this.#worksheet.getMerges(cell.column, cell.row, 1, 1)[0];
 
     return merge ? { column: merge.x, row: merge.y } : cell;
@@ -484,18 +434,14 @@ export class WorksheetElement extends HTMLElement {
 
   /**
    * Returns the bottom-right cell of the merged cell containing the cell, or the cell itself if not merged.
-   *
-   * @param {CellPosition} cell
-   * @returns {CellPosition}
    */
-  #toMergeEnd(cell) {
+  #toMergeEnd(cell: CellPosition): CellPosition {
     const merge = this.#worksheet.getMerges(cell.column, cell.row, 1, 1)[0];
 
     return merge ? { column: merge.x + merge.width - 1, row: merge.y + merge.height - 1 } : cell;
   }
 
-  /** @returns {Worksheet} */
-  get worksheet() {
+  get worksheet(): Worksheet {
     return this.#worksheet;
   }
 
@@ -519,10 +465,8 @@ export class WorksheetElement extends HTMLElement {
 
   /**
    * Sets whether lockable rows and columns are locked (read-only).
-   *
-   * @param {boolean} locked
    */
-  #setLocked(locked) {
+  #setLocked(locked: boolean) {
 
     if (locked === this.#locked) {
       return;
@@ -539,11 +483,8 @@ export class WorksheetElement extends HTMLElement {
 
   /**
    * Returns `true` if the cell can be edited by the user (i.e. not locked).
-   *
-   * @param {number} column
-   * @param {number} row
    */
-  #isEditable(column, row) {
+  #isEditable(column: number, row: number) {
     return (
       !(this.#locked && (column < this.#lockedColumnCount || row < this.#lockedRowCount))
     );
@@ -551,19 +492,14 @@ export class WorksheetElement extends HTMLElement {
 
   /**
    * Current selection, the source of truth for the active cell and the selected range.
-   *
-   * @type {WorksheetSelection}
    */
-  #selectionObject = new WorksheetSelection({ column: 0, row: 0 });
+  #selectionObject: WorksheetSelection = new WorksheetSelection({ column: 0, row: 0 });
 
   /**
    * Updates `#selectionObject` from an anchor and a focus. The anchor snaps to the start of its merged cell and the
    * range expands to cover merged cells. Keeps the current instance if nothing changed.
-   *
-   * @param {CellPosition} anchor
-   * @param {CellPosition} [focus]
    */
-  #setSelection(anchor, focus = anchor) {
+  #setSelection(anchor: CellPosition, focus: CellPosition = anchor) {
     const activeCell = this.#toMergeStart(this.#clamp(anchor));
 
     this.#focus = this.#clamp(focus);
@@ -577,20 +513,16 @@ export class WorksheetElement extends HTMLElement {
 
   /**
    * Returns the same instance until the selection changes.
-   *
-   * @returns {WorksheetSelection}
    */
-  get selection() {
+  get selection(): WorksheetSelection {
     return this.#selectionObject;
   }
 
   /**
    * Selects cells. The getter returns the very same instance, unless the selection was adjusted (e.g. clamped or
    * expanded to cover merged cells).
-   *
-   * @param {WorksheetSelection} selection
    */
-  set selection(selection) {
+  set selection(selection: WorksheetSelection) {
     this.#select(selection.activeCell, selection.focus);
 
     if (isSameSelection(this.#selectionObject, selection.activeCell, selection.range)) {
@@ -611,29 +543,25 @@ export class WorksheetElement extends HTMLElement {
   /**
    * Reverts the last transaction made to the worksheet and selects the changed cells.
    *
-   * @returns {boolean} `false` if there is nothing to undo.
+   * Returns `false` if there is nothing to undo.
    */
-  undo() {
+  undo(): boolean {
     return this.#undoOrRedo('undo');
   }
 
   /**
    * Re-applies the last undone transaction and selects the changed cells.
    *
-   * @returns {boolean} `false` if there is nothing to redo.
+   * Returns `false` if there is nothing to redo.
    */
-  redo() {
+  redo(): boolean {
     return this.#undoOrRedo('redo');
   }
 
   /**
    * Returns the range between two cells, expanded to cover all merged cells partially in it.
-   *
-   * @param {CellPosition} anchor
-   * @param {CellPosition} focus
-   * @returns {CellRange}
    */
-  #rangeOf(anchor, focus) {
+  #rangeOf(anchor: CellPosition, focus: CellPosition): CellRange {
     let top = Math.min(anchor.row, focus.row);
     let bottom = Math.max(anchor.row, focus.row);
     let left = Math.min(anchor.column, focus.column);
@@ -660,11 +588,8 @@ export class WorksheetElement extends HTMLElement {
 
   /**
    * Selects a cell or a range. The anchor is the active cell.
-   *
-   * @param {CellPosition} anchor
-   * @param {CellPosition} [focus]
    */
-  #select(anchor, focus = anchor) {
+  #select(anchor: CellPosition, focus: CellPosition = anchor) {
     this.#editMode && this.#commitEdit();
 
     this.#setSelection(anchor, focus);
@@ -679,11 +604,8 @@ export class WorksheetElement extends HTMLElement {
    *
    * Short distances (up to one viewport) are scrolled smoothly by the browser, unless `behavior` is `'instant'` or the
    * user prefers reduced motion. Long jumps (e.g. Ctrl+Down) are instant, same as Excel.
-   *
-   * @param {CellPosition} cell
-   * @param {{ behavior?: 'auto' | 'instant' }} [options]
    */
-  #scrollIntoView({ column, row }, { behavior = 'auto' } = {}) {
+  #scrollIntoView({ column, row }: CellPosition, { behavior = 'auto' }: { behavior?: 'auto' | 'instant' } = {}) {
     const element = this;
     const rowHeight = this.#rowHeight;
     const headerHeight = this.#headerHeight;
@@ -749,7 +671,7 @@ export class WorksheetElement extends HTMLElement {
    * is no scroll event for a while.
    */
   #armScrollEndFallback() {
-    if (!('onscrollend' in this)) {
+    if (!('onscrollend' in (this as object))) {
       clearTimeout(this.#scrollEndTimeout);
       this.#scrollEndTimeout = setTimeout(() => (this.#scrollTarget = undefined), 150);
     }
@@ -825,7 +747,7 @@ export class WorksheetElement extends HTMLElement {
 
     for (let row = firstRow; row < firstRow + length; row++) {
       // Slots are recycled by row index, so only rows newly scrolled into view need to be updated.
-      const slot = this.#pool[row % length];
+      const slot = this.#pool[row % length]!;
 
       if (slot.row !== row) {
         slot.row = row;
@@ -843,11 +765,10 @@ export class WorksheetElement extends HTMLElement {
     forceContent && this.#frozenRows.forEach(slot => this.#renderRowContent(slot));
   }
 
-  /** @returns {{ element: HTMLElement; header: HTMLElement; cells: HTMLElement[]; row: number }} */
-  #createRow() {
+  #createRow(): RowSlot {
     const element = createElement('div', 'grid__row');
     const header = createElement('div', 'grid__row-header');
-    const cells = [];
+    const cells: HTMLElement[] = [];
 
     element.setAttribute('role', 'row');
     header.setAttribute('role', 'rowheader');
@@ -869,10 +790,8 @@ export class WorksheetElement extends HTMLElement {
 
   /**
    * Returns the left offset of a column, relative to the right of the row header.
-   *
-   * @param {number} column
    */
-  #columnOffset(column) {
+  #columnOffset(column: number) {
     let offset = 0;
 
     for (let index = 0; index < column; index++) {
@@ -884,10 +803,8 @@ export class WorksheetElement extends HTMLElement {
 
   /**
    * Returns the column at an offset relative to the right of the row header.
-   *
-   * @param {number} x
    */
-  #columnAtOffset(x) {
+  #columnAtOffset(x: number) {
     if (x < 0) {
       return -1;
     }
@@ -905,10 +822,8 @@ export class WorksheetElement extends HTMLElement {
 
   /**
    * Returns the width of a column of the current worksheet.
-   *
-   * @param {number} column
    */
-  #getColumnWidth(column) {
+  #getColumnWidth(column: number) {
     return column >= 0 && column < this.#columnCount
       ? this.#worksheet.getColumnWidth(column)
       : this.#columnWidth;
@@ -916,11 +831,8 @@ export class WorksheetElement extends HTMLElement {
 
   /**
    * Sets the width of a column of the current worksheet.
-   *
-   * @param {number} column
-   * @param {number} width
    */
-  #setColumnWidth(column, width) {
+  #setColumnWidth(column: number, width: number) {
     if (column >= 0 && column < this.#columnCount) {
       this.#worksheet.setColumnWidth(column, Math.max(MIN_COLUMN_WIDTH, Math.round(width)));
     }
@@ -928,46 +840,31 @@ export class WorksheetElement extends HTMLElement {
 
   /**
    * Applies the width of a column to the column header and cells.
-   *
-   * @param {number} column
    */
-  #applyColumnWidth(column) {
+  #applyColumnWidth(column: number) {
     const style = `${this.#getColumnWidth(column)}px`;
 
-    this.#columnHeaders[column].style.width = style;
+    this.#columnHeaders[column]!.style.width = style;
 
     for (const { cells } of [...this.#pool, ...this.#frozenRows]) {
-      cells[column].style.width = style;
+      cells[column]!.style.width = style;
     }
   }
 
   /**
    * Resizes columns to fit the content of all their cells and headers. All columns are set to the same width.
-   *
-   * @param {number[]} columns
    */
-  #autoFitColumns(columns) {
+  #autoFitColumns(columns: number[]) {
     const width = Math.max(...columns.map(column => this.#measureColumn(column)));
 
     columns.forEach(column => this.#setColumnWidth(column, width));
   }
 
   /**
-   * Resizes a column to fit the content of all its cells and its header.
-   *
-   * @param {number} column
-   */
-  #autoFitColumn(column) {
-    this.#autoFitColumns([column]);
-  }
-
-  /**
    * Returns the width needed to fit the content of all cells in a column and its header.
-   *
-   * @param {number} column
    */
-  #measureColumn(column) {
-    const sample = this.#pool[0]?.cells[column] || this.#columnHeaders[column];
+  #measureColumn(column: number) {
+    const sample = this.#pool[0]?.cells[column] || this.#columnHeaders[column]!;
     const context = (this.#measureContext ||= document.createElement('canvas').getContext('2d'));
     const style = getComputedStyle(sample);
     // Padding plus right border.
@@ -992,8 +889,8 @@ export class WorksheetElement extends HTMLElement {
         continue;
       }
 
-      const value = merge ? this.#worksheet.getValue(merge.x, row) : values[row][0];
-      const format = (merge ? this.#worksheet.getFormattings(merge.x, row, 1, 1)[0][0] : formattings[row][0]).format;
+      const value = merge ? this.#worksheet.getValue(merge.x, row) : values[row]![0];
+      const format = (merge ? this.#worksheet.getFormattings(merge.x, row, 1, 1)[0]![0] : formattings[row]![0])!.format;
       let otherColumnsWidth = 0;
 
       if (merge) {
@@ -1017,8 +914,7 @@ export class WorksheetElement extends HTMLElement {
     return Math.ceil(width + extra + 2);
   }
 
-  /** @type {CanvasRenderingContext2D | null | undefined} */
-  #measureContext;
+  #measureContext: CanvasRenderingContext2D | null | undefined;
 
   /** Updates positions which depend on column widths. */
   #updateColumnLayout() {
@@ -1027,10 +923,10 @@ export class WorksheetElement extends HTMLElement {
     for (let column = 0; column < this.#lockedColumnCount; column++) {
       const left = `${this.#rowHeaderWidth + this.#columnOffset(column)}px`;
 
-      this.#columnHeaders[column].style.setProperty('--sticky-left', left);
+      this.#columnHeaders[column]!.style.setProperty('--sticky-left', left);
 
       for (const { cells } of [...this.#pool, ...this.#frozenRows]) {
-        cells[column].style.setProperty('--sticky-left', left);
+        cells[column]!.style.setProperty('--sticky-left', left);
       }
     }
 
@@ -1040,11 +936,8 @@ export class WorksheetElement extends HTMLElement {
 
   /**
    * Marks a cell or column header in a locked column. While locked, it sticks to the left so the column is frozen.
-   *
-   * @param {HTMLElement} element
-   * @param {number} column
    */
-  #initLockableColumn(element, column) {
+  #initLockableColumn(element: HTMLElement, column: number) {
     const lockable = column < this.#lockedColumnCount;
 
     element.classList.toggle('grid__lockable', lockable);
@@ -1057,8 +950,7 @@ export class WorksheetElement extends HTMLElement {
     }
   }
 
-  /** @param {{ cells: HTMLElement[]; row: number }} slot */
-  #renderRowContent(slot) {
+  #renderRowContent(slot: RowSlot) {
     const { cells, row } = slot;
     const worksheet = this.#worksheet;
     const merges = worksheet.getMerges(0, row, this.#columnCount, 1).sort((a, b) => a.x - b.x);
@@ -1067,8 +959,8 @@ export class WorksheetElement extends HTMLElement {
     let mergeIndex = 0;
 
     for (let column = 0; column < cells.length; column++) {
-      const cell = cells[column];
-      const merge = merges[mergeIndex]?.x <= column ? merges[mergeIndex] : undefined;
+      const cell = cells[column]!;
+      const merge = (merges[mergeIndex]?.x ?? Infinity) <= column ? merges[mergeIndex] : undefined;
       const lastColumn = merge ? merge.x + merge.width - 1 : column;
       const lastRow = merge ? merge.y + merge.height - 1 : row;
       // Content and formatting of a merged cell are in its top-left cell.
@@ -1109,24 +1001,24 @@ export class WorksheetElement extends HTMLElement {
 
       const value = worksheet.getValue(x, y);
       const type = typeof value;
-      const formatting = worksheet.getFormattings(x, y, 1, 1)[0][0];
+      const formatting = worksheet.getFormattings(x, y, 1, 1)[0]![0];
       // Number formats only apply to numbers, decorations (e.g. currency sign) are added by CSS.
       const format = (type === 'number' && formatting?.format) || '';
       const { negative, text } = formatDisplayValue(value, formatting?.format);
 
       // Text is in an inner element, so the highlight marker only covers the text, not the whole cell.
-      const content = /** @type {HTMLElement} */ (cell.firstElementChild);
+      const content = cell.firstElementChild as HTMLElement;
 
       if (content.textContent !== text) {
         content.textContent = text;
       }
 
-      if (cell.dataset.type !== type) {
-        cell.dataset.type = type;
+      if (cell.dataset['type'] !== type) {
+        cell.dataset['type'] = type;
       }
 
-      if ((cell.dataset.format || '') !== format) {
-        format ? (cell.dataset.format = format) : delete cell.dataset.format;
+      if ((cell.dataset['format'] || '') !== format) {
+        format ? (cell.dataset['format'] = format) : delete cell.dataset['format'];
       }
 
       cell.classList.toggle('grid__cell--negative', negative);
@@ -1143,8 +1035,8 @@ export class WorksheetElement extends HTMLElement {
         cell.style.textDecorationLine = decorations;
       }
 
-      if ((cell.dataset.align || '') !== align) {
-        align ? (cell.dataset.align = align) : delete cell.dataset.align;
+      if ((cell.dataset['align'] || '') !== align) {
+        align ? (cell.dataset['align'] = align) : delete cell.dataset['align'];
       }
 
       const highlight = getHighlight(formatting?.highlight);
@@ -1152,29 +1044,29 @@ export class WorksheetElement extends HTMLElement {
       const color = highlight?.color || '';
 
       // Compare with the last set value, as the browser normalizes colors.
-      if ((cell.dataset.background || '') !== background) {
+      if ((cell.dataset['background'] || '') !== background) {
         background ? content.style.setProperty('--marker-color', background) : content.style.removeProperty('--marker-color');
         content.classList.toggle('grid__cell-text--marker', !!background);
-        background ? (cell.dataset.background = background) : delete cell.dataset.background;
+        background ? (cell.dataset['background'] = background) : delete cell.dataset['background'];
       }
 
-      if ((cell.dataset.color || '') !== color) {
+      if ((cell.dataset['color'] || '') !== color) {
         cell.style.color = color;
-        color ? (cell.dataset.color = color) : delete cell.dataset.color;
+        color ? (cell.dataset['color'] = color) : delete cell.dataset['color'];
       }
 
       const shadow = this.#getBorderShadow(worksheet, x, y, lastColumn, lastRow);
 
       // Compare with the last set value, as the browser normalizes `style.boxShadow`.
-      if ((cell.dataset.border || '') !== shadow) {
-        cell.dataset.border = shadow;
+      if ((cell.dataset['border'] || '') !== shadow) {
+        cell.dataset['border'] = shadow;
         cell.style.boxShadow = shadow;
       }
 
       const corners = this.#getBorderCorners(worksheet, x, y, lastColumn, lastRow);
 
-      if ((cell.dataset.borderCorners || '') !== corners) {
-        cell.dataset.borderCorners = corners;
+      if ((cell.dataset['borderCorners'] || '') !== corners) {
+        cell.dataset['borderCorners'] = corners;
         corners ? cell.style.setProperty('--border-corners', corners) : cell.style.removeProperty('--border-corners');
         cell.toggleAttribute('data-border-corner', !!corners);
       }
@@ -1186,15 +1078,11 @@ export class WorksheetElement extends HTMLElement {
    * the last pixel of the cell on the left or above: that cell draws the grid line and 1px before it, the cell on the
    * right or below draws the remaining 1px.
    *
-   * @param {Worksheet} worksheet
-   * @param {number} column
-   * @param {number} row
-   * @param {number} [lastColumn] Last column of a merged cell.
-   * @param {number} [lastRow] Last row of a merged cell.
+   * `lastColumn` and `lastRow` are the last column and row of a merged cell.
    */
-  #getBorderShadow(worksheet, column, row, lastColumn = column, lastRow = row) {
+  #getBorderShadow(worksheet: Worksheet, column: number, row: number, lastColumn: number = column, lastRow: number = row) {
     const inside = BORDER_WIDTH - BORDER_OUTSIDE_WIDTH;
-    const shadows = [];
+    const shadows: string[] = [];
 
     // Edges along a merged cell only span its full size if present in every column or row, otherwise drawn by segments.
     this.#every(row, lastRow, r => hasVerticalEdge(worksheet, lastColumn, r)) &&
@@ -1213,17 +1101,13 @@ export class WorksheetElement extends HTMLElement {
    * Returns the background layers filling the parts of border junctions (where grid lines cross) inside a cell, so
    * borders meeting at a corner join without a notch. Empty if none.
    *
-   * @param {Worksheet} worksheet
-   * @param {number} column
-   * @param {number} row
-   * @param {number} [lastColumn] Last column of a merged cell.
-   * @param {number} [lastRow] Last row of a merged cell.
+   * `lastColumn` and `lastRow` are the last column and row of a merged cell.
    */
-  #getBorderCorners(worksheet, column, row, lastColumn = column, lastRow = row) {
+  #getBorderCorners(worksheet: Worksheet, column: number, row: number, lastColumn: number = column, lastRow: number = row) {
     const inside = BORDER_WIDTH - BORDER_OUTSIDE_WIDTH;
     const outside = BORDER_OUTSIDE_WIDTH;
     const fill = `linear-gradient(${BORDER_COLOR}, ${BORDER_COLOR})`;
-    const layers = [];
+    const layers: string[] = [];
 
     hasJunction(worksheet, lastColumn, lastRow) && layers.push(`${fill} right bottom / ${inside}px ${inside}px no-repeat`);
     hasJunction(worksheet, column - 1, lastRow) && layers.push(`${fill} left bottom / ${outside}px ${inside}px no-repeat`);
@@ -1264,12 +1148,8 @@ export class WorksheetElement extends HTMLElement {
 
   /**
    * Returns `true` if the predicate is true for every column or row from `first` to `last`.
-   *
-   * @param {number} first
-   * @param {number} last
-   * @param {(index: number) => boolean} predicate
    */
-  #every(first, last, predicate) {
+  #every(first: number, last: number, predicate: (index: number) => boolean) {
     for (let index = first; index <= last; index++) {
       if (!predicate(index)) {
         return false;
@@ -1279,8 +1159,7 @@ export class WorksheetElement extends HTMLElement {
     return true;
   }
 
-  /** @param {{ header: HTMLElement; row: number }} slot */
-  #renderRowSelection({ header, row }) {
+  #renderRowSelection({ header, row }: Pick<RowSlot, 'header' | 'row'>) {
     const { top, bottom } = this.#selectionObject.range;
 
     header.classList.toggle('grid__row-header--selected', row >= top && row <= bottom);
@@ -1335,27 +1214,22 @@ export class WorksheetElement extends HTMLElement {
   /**
    * Undoes or redoes the next group of changes, then selects the changed cells.
    *
-   * @param {'undo' | 'redo'} action
-   * @returns {boolean} `false` if there is nothing to undo or redo.
+   * Returns `false` if there is nothing to undo or redo.
    */
-  #undoOrRedo(action) {
+  #undoOrRedo(action: 'undo' | 'redo'): boolean {
     if (!(action === 'undo' ? this.#history.canUndo : this.#history.canRedo)) {
       return false;
     }
 
     this.#editMode && this.#cancelEdit();
 
-    /** @type {CellPosition[]} */
-    const cells = [];
+    const cells: CellPosition[] = [];
 
-    /** @param {Event} event */
-    const handleChange = event => {
-      for (const change of /** @type {import('./WorksheetChangeEvent.js').WorksheetChangeEvent} */ (
-        event
-      ).changes) {
+    const handleChange = (event: Event) => {
+      for (const change of (event as WorksheetChangeEvent).changes) {
         if (change.type === 'merge') {
           // All cells of a merged cell are involved, not only the cells with content.
-          const { width, height } = /** @type {{ width: number; height: number }} */ (change.merge || change.previousMerge);
+          const { width, height } = (change.merge || change.previousMerge) as { width: number; height: number };
 
           cells.push({ column: change.x, row: change.y }, { column: change.x + width - 1, row: change.y + height - 1 });
         } else if (change.type !== 'border') {
@@ -1392,11 +1266,7 @@ export class WorksheetElement extends HTMLElement {
 
   // #region Keyboard
 
-  /**
-   * @param {CellPosition} position
-   * @returns {CellPosition}
-   */
-  #clamp({ column, row }) {
+  #clamp({ column, row }: CellPosition): CellPosition {
     return {
       column: Math.max(0, Math.min(this.#columnCount - 1, column)),
       row: Math.max(0, Math.min(this.#rowCount - 1, row))
@@ -1405,12 +1275,8 @@ export class WorksheetElement extends HTMLElement {
 
   /**
    * Moves the active cell, or extends the selection.
-   *
-   * @param {number} deltaColumn
-   * @param {number} deltaRow
-   * @param {boolean} extend
    */
-  #move(deltaColumn, deltaRow, extend) {
+  #move(deltaColumn: number, deltaRow: number, extend: boolean) {
     if (extend) {
       return this.#select(this.#selectionObject.activeCell, this.#extendFocus(deltaColumn, deltaRow));
     }
@@ -1439,12 +1305,8 @@ export class WorksheetElement extends HTMLElement {
   /**
    * Returns the new focus when extending the selection. The focus moves in the direction until the selection changes,
    * skipping positions that select the same range because merged cells already cover them.
-   *
-   * @param {number} deltaColumn
-   * @param {number} deltaRow
-   * @returns {CellPosition}
    */
-  #extendFocus(deltaColumn, deltaRow) {
+  #extendFocus(deltaColumn: number, deltaRow: number): CellPosition {
     const selection = this.#selectionObject.range;
     let focus = this.#focus;
 
@@ -1472,11 +1334,8 @@ export class WorksheetElement extends HTMLElement {
 
   /**
    * Moves the active cell within the selection (Enter / Tab), wrapping around like Excel when a range is selected.
-   *
-   * @param {number} deltaColumn
-   * @param {number} deltaRow
    */
-  #moveWithinSelection(deltaColumn, deltaRow) {
+  #moveWithinSelection(deltaColumn: number, deltaRow: number) {
     const { left, top, right, bottom } = this.#selectionObject.range;
 
     const end = this.#toMergeEnd(this.#selectionObject.activeCell);
@@ -1513,8 +1372,7 @@ export class WorksheetElement extends HTMLElement {
     this.#scrollIntoView(this.#selectionObject.activeCell);
   }
 
-  /** @param {KeyboardEvent} event */
-  #handleKeyDown(event) {
+  #handleKeyDown(event: KeyboardEvent) {
     if (event.target !== this || event.isComposing) {
       return;
     }
@@ -1548,8 +1406,7 @@ export class WorksheetElement extends HTMLElement {
       return;
     }
 
-    /** @type {[number, number] | undefined} */
-    let delta;
+    let delta: [number, number] | undefined;
 
     switch (key) {
       case 'ArrowUp':
@@ -1636,11 +1493,7 @@ export class WorksheetElement extends HTMLElement {
 
   // #region Pointer
 
-  /**
-   * @param {PointerEvent | MouseEvent} event
-   * @returns {CellPosition}
-   */
-  #cellFromPoint({ clientX, clientY }) {
+  #cellFromPoint({ clientX, clientY }: PointerEvent | MouseEvent): CellPosition {
     const element = this;
     const headerHeight = this.#headerHeight;
     const rowHeaderWidth = this.#rowHeaderWidth;
@@ -1664,9 +1517,8 @@ export class WorksheetElement extends HTMLElement {
     });
   }
 
-  /** @param {PointerEvent} event */
-  #handlePointerDown(event) {
-    const target = /** @type {HTMLElement} */ (event.target);
+  #handlePointerDown(event: PointerEvent) {
+    const target = event.target as HTMLElement;
 
     if (event.button !== 0 || target === this.#editor) {
       return;
@@ -1707,7 +1559,7 @@ export class WorksheetElement extends HTMLElement {
 
       return;
     } else if (target.closest('.grid__column-header')) {
-      const column = Number(/** @type {HTMLElement} */ (target.closest('.grid__column-header')).dataset.column);
+      const column = Number((target.closest('.grid__column-header') as HTMLElement).dataset['column']);
 
       this.#dragging = 'column';
       shiftKey
@@ -1728,18 +1580,14 @@ export class WorksheetElement extends HTMLElement {
 
   /**
    * Selects without scrolling to the focus cell, used for whole row/column selection.
-   *
-   * @param {CellPosition} anchor
-   * @param {CellPosition} focus
    */
-  #selectKeepingScroll(anchor, focus) {
+  #selectKeepingScroll(anchor: CellPosition, focus: CellPosition) {
     this.#editMode && this.#commitEdit();
     this.#setSelection(anchor, focus);
     this.#updateSelection();
   }
 
-  /** @param {PointerEvent} event */
-  #handlePointerMove(event) {
+  #handlePointerMove(event: PointerEvent) {
     if (!this.#dragging) {
       this.classList.toggle('grid--resize-hover', this.#resizeColumnFromPoint(event) >= 0);
 
@@ -1747,7 +1595,7 @@ export class WorksheetElement extends HTMLElement {
     }
 
     if (this.#dragging === 'resize') {
-      const { columns, startX, startWidth } = /** @type {NonNullable<typeof this.#resizing>} */ (this.#resizing);
+      const { columns, startX, startWidth } = this.#resizing!;
 
       columns.forEach(column => this.#setColumnWidth(column, startWidth + event.clientX - startX));
 
@@ -1765,8 +1613,7 @@ export class WorksheetElement extends HTMLElement {
     }
   }
 
-  /** @param {PointerEvent} event */
-  #handlePointerUp(event) {
+  #handlePointerUp(event: PointerEvent) {
     if (this.#dragging) {
       this.#dragging = '';
       this.#resizing = undefined;
@@ -1776,10 +1623,8 @@ export class WorksheetElement extends HTMLElement {
 
   /**
    * Returns the column whose right border in the column header is under the pointer, or -1. Always -1 while locked.
-   *
-   * @param {PointerEvent | MouseEvent} event
    */
-  #resizeColumnFromPoint({ clientX, clientY }) {
+  #resizeColumnFromPoint({ clientX, clientY }: PointerEvent | MouseEvent) {
     if (this.#locked) {
       return -1;
     }
@@ -1819,11 +1664,8 @@ export class WorksheetElement extends HTMLElement {
 
   /**
    * Returns the columns to resize when resizing a column: all selected columns if the column is part of a whole-column selection, otherwise only the column.
-   *
-   * @param {number} column
-   * @returns {number[]}
    */
-  #columnsToResize(column) {
+  #columnsToResize(column: number): number[] {
     const { left, top, right, bottom } = this.#selectionObject.range;
 
     if (top === 0 && bottom === this.#rowCount - 1 && column >= left && column <= right) {
@@ -1833,9 +1675,8 @@ export class WorksheetElement extends HTMLElement {
     return [column];
   }
 
-  /** @param {MouseEvent} event */
-  #handleDoubleClick(event) {
-    const target = /** @type {HTMLElement} */ (event.target);
+  #handleDoubleClick(event: MouseEvent) {
+    const target = event.target as HTMLElement;
     const resizeColumn = this.#resizeColumnFromPoint(event);
 
     if (resizeColumn >= 0) {
@@ -1862,10 +1703,10 @@ export class WorksheetElement extends HTMLElement {
   /**
    * Opens the in-cell editor on the active cell.
    *
-   * @param {string} [initialText] When specified, replaces the cell content ("enter" mode). Otherwise, edits the current content ("edit" mode).
-   * @returns {boolean} `false` if the cell is locked.
+   * When `initialText` is specified, replaces the cell content ("enter" mode). Otherwise, edits the current content ("edit" mode).
+   * Returns `false` if the cell is locked.
    */
-  #startEdit(initialText) {
+  #startEdit(initialText?: string): boolean {
     const { column, row } = this.#selectionObject.activeCell;
 
     if (!this.#isEditable(column, row)) {
@@ -1938,8 +1779,7 @@ export class WorksheetElement extends HTMLElement {
     hadFocus && this.focus({ preventScroll: true });
   }
 
-  /** @param {KeyboardEvent} event */
-  #handleEditorKeyDown(event) {
+  #handleEditorKeyDown(event: KeyboardEvent) {
     if (event.isComposing) {
       return;
     }
@@ -2000,17 +1840,15 @@ export class WorksheetElement extends HTMLElement {
 
   // #region Clipboard
 
-  /** @returns {CellValue[][]} */
-  #getSelectedValues() {
+  #getSelectedValues(): CellValue[][] {
     const worksheet = this.#worksheet;
     const { left, top, right, bottom } = this.#selectionObject.range;
 
-    /** @type {CellValue[][]} */
-    const values = [];
+    const values: CellValue[][] = [];
 
     if (worksheet) {
       for (let row = top; row <= bottom; row++) {
-        const rowValues = [];
+        const rowValues: CellValue[] = [];
 
         for (let column = left; column <= right; column++) {
           rowValues.push(worksheet.getValue(column, row) ?? '');
@@ -2023,11 +1861,7 @@ export class WorksheetElement extends HTMLElement {
     return values;
   }
 
-  /**
-   * @param {ClipboardEvent} event
-   * @param {boolean} cut
-   */
-  #handleCopy(event, cut) {
+  #handleCopy(event: ClipboardEvent, cut: boolean) {
     if (event.target !== this || !event.clipboardData) {
       return;
     }
@@ -2060,8 +1894,7 @@ export class WorksheetElement extends HTMLElement {
     cut && this.#clearSelection();
   }
 
-  /** @param {ClipboardEvent} event */
-  #handlePaste(event) {
+  #handlePaste(event: ClipboardEvent) {
     const worksheet = this.#worksheet;
 
     if (event.target !== this || !event.clipboardData) {
@@ -2097,7 +1930,7 @@ export class WorksheetElement extends HTMLElement {
 
     worksheet.edit(edit => {
       for (let rowOffset = 0; rowOffset < pasteRows; rowOffset++) {
-        const rowValues = values[rowOffset % dataRows];
+        const rowValues = values[rowOffset % dataRows]!;
 
         for (let columnOffset = 0; columnOffset < pasteColumns; columnOffset++) {
           const column = left + columnOffset;

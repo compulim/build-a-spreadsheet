@@ -2,18 +2,14 @@
  * A very simple calculator supporting `+`, `-`, `*`, `/`, unary signs and nested parentheses.
  *
  * Returns the computed number, or `undefined` if the expression is invalid or the result is not finite.
- *
- * @param {string} expression
- * @returns {number | undefined}
  */
-export function calculate(expression) {
+export function calculate(expression: string): number | undefined {
   const tokens = expression.match(/\d+\.?\d*(?:[eE][-+]?\d+)?|\.\d+(?:[eE][-+]?\d+)?|[-+*/()]|\S/gu) || [];
   let index = 0;
 
   const peek = () => tokens[index];
 
-  /** @returns {number} */
-  const parseExpression = () => {
+  const parseExpression = (): number => {
     let value = parseTerm();
 
     while (peek() === '+' || peek() === '-') {
@@ -26,8 +22,7 @@ export function calculate(expression) {
     return value;
   };
 
-  /** @returns {number} */
-  const parseTerm = () => {
+  const parseTerm = (): number => {
     let value = parseFactor();
 
     while (peek() === '*' || peek() === '/') {
@@ -40,8 +35,7 @@ export function calculate(expression) {
     return value;
   };
 
-  /** @returns {number} */
-  const parseFactor = () => {
+  const parseFactor = (): number => {
     const token = tokens[index++];
 
     if (token === '+' || token === '-') {

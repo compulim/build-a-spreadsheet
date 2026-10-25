@@ -1,7 +1,7 @@
 import assert from 'node:assert';
 import test from 'node:test';
 
-import { formatDisplayValue } from '../src/numberFormats.js';
+import { formatDisplayValue } from '../src/numberFormats.ts';
 
 test('formatDisplayValue keeps values as-is without a format or for non-numbers', () => {
   assert.deepStrictEqual(formatDisplayValue(1.5, undefined), { text: '1.5', negative: false });

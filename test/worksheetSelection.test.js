@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { WorksheetSelection } from '../src/worksheet/WorksheetSelection.js';
+import { WorksheetSelection } from '../src/worksheet/WorksheetSelection.ts';
 
 test('WorksheetSelection defaults the range to the active cell', () => {
   const selection = new WorksheetSelection({ column: 2, row: 3 });

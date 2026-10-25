@@ -16,66 +16,60 @@ import {
 } from '@primer/octicons-react';
 import { ActionBar, ActionList, ActionMenu, SegmentedControl, Text, TextInput, ToggleSwitch } from '@primer/react';
 import { useSyncExternalStore } from 'react';
-import { HIGHLIGHTS } from '../highlights.js';
-import { MarkerIcon, UnderlineIcon } from './icons.jsx';
+import type { RefObject } from 'react';
+import { HIGHLIGHTS } from '../highlights.ts';
+import type { CellAlign, CellNumberFormat } from '../worksheet/Worksheet.ts';
+import { MarkerIcon, UnderlineIcon } from './icons.tsx';
 
-/** @typedef {import('../worksheet/Worksheet.js').CellAlign} CellAlign */
-/** @typedef {import('../worksheet/Worksheet.js').CellNumberFormat} CellNumberFormat */
-/** @typedef {'bold' | 'italic' | 'underline' | 'strikethrough'} CellStyle */
-/** @typedef {'left' | 'right' | 'top' | 'bottom' | 'outside' | 'all' | 'none'} BorderPreset */
+export type { CellAlign, CellNumberFormat };
+export type CellStyle = 'bold' | 'italic' | 'underline' | 'strikethrough';
+export type BorderPreset = 'left' | 'right' | 'top' | 'bottom' | 'outside' | 'all' | 'none';
 
-/**
- * @typedef {{
- *   align: CellAlign | undefined;
- *   canRedo: boolean;
- *   canUndo: boolean;
- *   format: CellNumberFormat | undefined;
- *   highlight: string | undefined;
- *   locked: boolean;
- *   merged: boolean;
- *   nameBox: string;
- *   status: string;
- *   styles: Record<CellStyle, boolean>;
- *   valueBox: string;
- * }} ToolbarState
- */
+export type ToolbarState = {
+  align: CellAlign | undefined;
+  canRedo: boolean;
+  canUndo: boolean;
+  format: CellNumberFormat | undefined;
+  highlight: string | undefined;
+  locked: boolean;
+  merged: boolean;
+  nameBox: string;
+  status: string;
+  styles: Record<CellStyle, boolean>;
+  valueBox: string;
+};
 
-/**
- * @typedef {{
- *   merge(): void;
- *   open(): void;
- *   print(): void;
- *   redo(): void;
- *   saveCSV(): void;
- *   saveZip(): void;
- *   setAlign(align: CellAlign | undefined): void;
- *   setBorder(preset: BorderPreset): void;
- *   setFormat(format: CellNumberFormat | undefined): void;
- *   setHighlight(name: string | undefined): void;
- *   setLocked(locked: boolean): void;
- *   toggleStyle(style: CellStyle): void;
- *   undo(): void;
- *   unformat(): void;
- * }} ToolbarActions
- */
+export type ToolbarActions = {
+  merge(): void;
+  open(): void;
+  print(): void;
+  redo(): void;
+  saveCSV(): void;
+  saveZip(): void;
+  setAlign(align: CellAlign | undefined): void;
+  setBorder(preset: BorderPreset): void;
+  setFormat(format: CellNumberFormat | undefined): void;
+  setHighlight(name: string | undefined): void;
+  setLocked(locked: boolean): void;
+  toggleStyle(style: CellStyle): void;
+  undo(): void;
+  unformat(): void;
+};
 
-/**
- * @typedef {{
- *   getState(): ToolbarState;
- *   subscribe(listener: () => void): () => void;
- * }} ToolbarStore
- */
+export type ToolbarStore = {
+  getState(): ToolbarState;
+  subscribe(listener: () => void): () => void;
+};
 
 /** Segments of the alignment control, the first segment is the default (type-based) alignment. */
-const ALIGNS = /** @type {const} */ ([
+const ALIGNS = [
   { align: undefined, label: 'Auto', description: 'Align by value type' },
   { align: 'left', label: 'Left', description: 'Align left (Ctrl+L)' },
   { align: 'center', label: 'Center', description: 'Align center (Ctrl+E)' },
   { align: 'right', label: 'Right', description: 'Align right (Ctrl+R)' }
-]);
+] as const;
 
-/** @type {readonly { format: CellNumberFormat | undefined; label: string; description?: string }[]} */
-const FORMATS = [
+const FORMATS: readonly { format: CellNumberFormat | undefined; label: string; description?: string }[] = [
   { format: undefined, label: 'General' },
   { format: 'currency', label: 'Currency', description: 'Accounting' },
   { format: 'percent', label: 'Percentage', description: '1 is 100%' },
@@ -94,8 +88,7 @@ const MARKERS = [
   }))
 ];
 
-/** @type {readonly { preset: BorderPreset; label: string }[]} */
-const BORDERS = [
+const BORDERS: readonly { preset: BorderPreset; label: string }[] = [
   { preset: 'left', label: 'Left' },
   { preset: 'right', label: 'Right' },
   { preset: 'top', label: 'Top' },
@@ -107,10 +100,16 @@ const BORDERS = [
 
 /**
  * `returnFocusRef` is where focus goes after a menu closes, i.e. the grid.
- *
- * @param {{ actions: ToolbarActions; returnFocusRef: import('react').RefObject<HTMLElement>; store: ToolbarStore }} props
  */
-export function Toolbar({ actions, returnFocusRef, store }) {
+export function Toolbar({
+  actions,
+  returnFocusRef,
+  store
+}: {
+  actions: ToolbarActions;
+  returnFocusRef: RefObject<HTMLElement>;
+  store: ToolbarStore;
+}) {
   const state = useSyncExternalStore(store.subscribe, store.getState);
   const formatLabel = FORMATS.find(({ format }) => format === state.format)?.label ?? 'General';
 
@@ -216,7 +215,7 @@ export function Toolbar({ actions, returnFocusRef, store }) {
             />
           </ActionBar.Group>
         </ActionBar>
-        <SegmentedControl aria-label="Alignment" onChange={index => actions.setAlign(ALIGNS[index].align)} size="small">
+        <SegmentedControl aria-label="Alignment" onChange={index => actions.setAlign(ALIGNS[index]!.align)} size="small">
           {ALIGNS.map(({ align, description, label }) => (
             <SegmentedControl.Button key={label} selected={align === state.align} title={description}>
               {label}
@@ -225,7 +224,7 @@ export function Toolbar({ actions, returnFocusRef, store }) {
         </SegmentedControl>
         <SegmentedControl
           aria-label="Highlight"
-          onChange={index => actions.setHighlight(MARKERS[index].name)}
+          onChange={index => actions.setHighlight(MARKERS[index]!.name)}
           size="small"
         >
           {MARKERS.map(({ icon, label, name }) => (

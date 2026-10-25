@@ -1,14 +1,22 @@
-import { formatValue } from './csv.js';
-import { HIGHLIGHTS } from './highlights.js';
-import { cellsToPNG } from './printCells.js';
-import { MAX_WORKSHEETS } from './workbook/constants.js';
-import { getColumnName } from './worksheet/getColumnName.js';
-import { Workbook } from './workbook/Workbook.js';
-import { WorksheetElement } from './worksheet/WorksheetElement.js';
-import { WorksheetSelection } from './worksheet/WorksheetSelection.js';
-import { mountUI } from './ui/mountUI.jsx';
-
-/** @typedef {import('./worksheet/Worksheet.js').Worksheet} Worksheet */
+import { formatValue } from './csv.ts';
+import { HIGHLIGHTS } from './highlights.ts';
+import { cellsToPNG } from './printCells.ts';
+import { MAX_WORKSHEETS } from './workbook/constants.ts';
+import { getColumnName } from './worksheet/getColumnName.ts';
+import { Workbook } from './workbook/Workbook.ts';
+import { WorksheetElement } from './worksheet/WorksheetElement.ts';
+import { WorksheetSelection } from './worksheet/WorksheetSelection.ts';
+import { mountUI } from './ui/mountUI.tsx';
+import type { BorderPreset, CellStyle, ToolbarActions } from './ui/Toolbar.tsx';
+import type {
+  BorderEdges,
+  CellAlign,
+  CellFormatting,
+  CellNumberFormat,
+  FormattingUpdater,
+  Worksheet
+} from './worksheet/Worksheet.ts';
+import type { WorksheetEvent } from './worksheet/WorksheetEvent.ts';
 
 /**
  * Number of leading rows and columns that become read-only, and frozen on screen, when the lock button is pressed.
@@ -17,18 +25,12 @@ import { mountUI } from './ui/mountUI.jsx';
 const LOCKED_ROW_COUNT = 1;
 const LOCKED_COLUMN_COUNT = 1;
 
-/** @typedef {import('./ui/Toolbar.jsx').ToolbarActions} ToolbarActions */
+const fileInput = document.getElementById('file-input') as HTMLInputElement;
+const NO_STYLES: Record<CellStyle, boolean> = { bold: false, italic: false, underline: false, strikethrough: false };
+const ALIGNS: readonly CellAlign[] = ['left', 'center', 'right'];
+const FORMATS: readonly CellNumberFormat[] = ['currency', 'percent', 'date', 'datetime', 'duration'];
 
-const fileInput = /** @type {HTMLInputElement} */ (document.getElementById('file-input'));
-/** @type {Record<import('./ui/Toolbar.jsx').CellStyle, boolean>} */
-const NO_STYLES = { bold: false, italic: false, underline: false, strikethrough: false };
-/** @type {readonly import('./worksheet/Worksheet.js').CellAlign[]} */
-const ALIGNS = ['left', 'center', 'right'];
-/** @type {readonly import('./worksheet/Worksheet.js').CellNumberFormat[]} */
-const FORMATS = ['currency', 'percent', 'date', 'datetime', 'duration'];
-
-/** @type {ToolbarActions} */
-const toolbarActions = {
+const toolbarActions: ToolbarActions = {
   merge: () => mergeSelection(),
   open: () => fileInput.click(),
   print: () => printSelection(),
@@ -50,7 +52,7 @@ const toolbarActions = {
 };
 
 const ui = mountUI(
-  /** @type {HTMLElement} */ (document.getElementById('root')),
+  document.getElementById('root') as HTMLElement,
   toolbarActions,
   {
     align: undefined,
@@ -68,31 +70,28 @@ const ui = mountUI(
   // Menus return focus to the grid after closing.
   {
     get current() {
-      return activeElement ?? null;
+      return (activeElement ?? null) as HTMLElement;
     }
   }
 );
 
-const gridContainer = /** @type {HTMLElement} */ (document.getElementById('grid-container'));
-const sheetTabs = /** @type {HTMLElement} */ (document.getElementById('sheet-tabs'));
-const addSheetButton = /** @type {HTMLButtonElement} */ (document.getElementById('add-sheet-button'));
+const gridContainer = document.getElementById('grid-container') as HTMLElement;
+const sheetTabs = document.getElementById('sheet-tabs') as HTMLElement;
+const addSheetButton = document.getElementById('add-sheet-button') as HTMLButtonElement;
 
-/** `<compulim-worksheet>` of the active worksheet. @type {WorksheetElement | undefined} */
-let activeElement;
+/** `<compulim-worksheet>` of the active worksheet. */
+let activeElement: WorksheetElement | undefined;
 
 let locked = false;
 
-/** @param {Worksheet} worksheet */
-function getElement(worksheet) {
-  return /** @type {WorksheetElement} */ (workbook.getWorksheetElement(worksheet));
+function getElement(worksheet: Worksheet) {
+  return workbook.getWorksheetElement(worksheet) as WorksheetElement;
 }
 
 /**
  * Shows the `<compulim-worksheet>` instantiated by the workbook for a worksheet.
- *
- * @param {Worksheet} worksheet
  */
-function mountWorksheet(worksheet) {
+function mountWorksheet(worksheet: Worksheet) {
   const element = getElement(worksheet);
 
   element.setAttribute('locked-column-count', String(LOCKED_COLUMN_COUNT));
@@ -105,9 +104,8 @@ function mountWorksheet(worksheet) {
   gridContainer.append(element);
 }
 
-/** @param {Event} event */
-function handleWorksheetAdd(event) {
-  mountWorksheet(/** @type {import('./worksheet/WorksheetEvent.js').WorksheetEvent} */ (event).worksheet);
+function handleWorksheetAdd(event: Event) {
+  mountWorksheet((event as WorksheetEvent).worksheet);
 }
 
 /** Active cell and selection of the active worksheet. */
@@ -117,32 +115,22 @@ function getSelection() {
 
 /**
  * Returns `true` if the cell can be edited by the user (i.e. not locked).
- *
- * @param {number} column
- * @param {number} row
  */
-function isEditable(column, row) {
+function isEditable(column: number, row: number) {
   return !(locked && (column < LOCKED_COLUMN_COUNT || row < LOCKED_ROW_COUNT));
 }
 
-/** @type {Workbook} */
-let workbook;
+let workbook: Workbook;
 
-/** @type {ReturnType<typeof setTimeout> | undefined} */
-let statusTimeout;
+let statusTimeout: ReturnType<typeof setTimeout> | undefined;
 
-/** @param {string} message */
-function showStatus(message) {
+function showStatus(message: string) {
   clearTimeout(statusTimeout);
   ui.update({ status: message });
   statusTimeout = setTimeout(() => ui.update({ status: '' }), 4000);
 }
 
-/**
- * @param {Blob} blob
- * @param {string} fileName
- */
-function download(blob, fileName) {
+function download(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
 
@@ -167,7 +155,7 @@ function renderTabs() {
       tab.setAttribute('role', 'tab');
       tab.setAttribute('aria-selected', String(worksheet === active));
       tab.title = 'Click to select, double-click to rename';
-      const name = workbook.getWorksheetName(worksheet);
+      const name = workbook.getWorksheetName(worksheet)!;
 
       label.textContent = name;
       tab.append(label);
@@ -198,8 +186,7 @@ function renderTabs() {
   sheetTabs.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
-/** @param {Worksheet} worksheet */
-function activateWorksheet(worksheet) {
+function activateWorksheet(worksheet: Worksheet) {
   const element = getElement(worksheet);
 
   for (const other of workbook.worksheets) {
@@ -213,8 +200,7 @@ function activateWorksheet(worksheet) {
   activeElement?.focus();
 }
 
-/** @param {Worksheet} worksheet */
-function renameWorksheet(worksheet) {
+function renameWorksheet(worksheet: Worksheet) {
   const name = prompt('Rename sheet', workbook.getWorksheetName(worksheet));
 
   if (name === null) {
@@ -224,12 +210,11 @@ function renameWorksheet(worksheet) {
   try {
     workbook.renameWorksheet(worksheet, name.trim());
   } catch (error) {
-    alert(/** @type {Error} */ (error).message);
+    alert((error as Error).message);
   }
 }
 
-/** @param {Worksheet} worksheet */
-function deleteWorksheet(worksheet) {
+function deleteWorksheet(worksheet: Worksheet) {
   if (workbook.worksheets.length <= 1 || !confirm(`Delete sheet "${workbook.getWorksheetName(worksheet)}"?`)) {
     return;
   }
@@ -239,12 +224,11 @@ function deleteWorksheet(worksheet) {
   workbook.removeWorksheet(worksheet);
 
   if (activeElement?.worksheet === worksheet) {
-    activateWorksheet(workbook.worksheets[Math.min(index, workbook.worksheets.length - 1)]);
+    activateWorksheet(workbook.worksheets[Math.min(index, workbook.worksheets.length - 1)]!);
   }
 }
 
-/** @param {Workbook} nextWorkbook */
-function setWorkbook(nextWorkbook) {
+function setWorkbook(nextWorkbook: Workbook) {
   if (!nextWorkbook.worksheets.length) {
     nextWorkbook.addWorksheet();
   }
@@ -271,7 +255,7 @@ function setWorkbook(nextWorkbook) {
 
   gridContainer.replaceChildren();
   workbook.worksheets.forEach(mountWorksheet);
-  activateWorksheet(workbook.worksheets[0]);
+  activateWorksheet(workbook.worksheets[0]!);
 }
 
 function updateSelectionInfo() {
@@ -289,10 +273,8 @@ function updateSelectionInfo() {
 /**
  * Whether the predicate holds for the formatting of every contentful cell in the selection.
  * If the selection has no contentful cells, checks the active cell instead.
- *
- * @param {(formatting: import('./worksheet/Worksheet.js').CellFormatting | undefined) => boolean} predicate
  */
-function isFormattingAppliedToSelection(predicate) {
+function isFormattingAppliedToSelection(predicate: (formatting: CellFormatting | undefined) => boolean) {
   const worksheet = activeElement?.worksheet;
 
   if (!worksheet) {
@@ -317,14 +299,13 @@ function isFormattingAppliedToSelection(predicate) {
     }
   }
 
-  return hasContent || predicate(worksheet.getFormattings(activeCell.column, activeCell.row, 1, 1)[0][0]);
+  return hasContent || predicate(worksheet.getFormattings(activeCell.column, activeCell.row, 1, 1)[0]![0]);
 }
 
 function updateFormattingButtons() {
-  /** @type {Record<import('./ui/Toolbar.jsx').CellStyle, boolean>} */
-  const styles = { ...NO_STYLES };
+  const styles: Record<CellStyle, boolean> = { ...NO_STYLES };
 
-  for (const style of /** @type {const} */ (['bold', 'italic', 'underline', 'strikethrough'])) {
+  for (const style of ['bold', 'italic', 'underline', 'strikethrough'] as const) {
     styles[style] = isFormattingAppliedToSelection(formatting => !!formatting?.[style]);
   }
 
@@ -361,8 +342,7 @@ function isSelectionMerged() {
   return covered === (right - left + 1) * (bottom - top + 1);
 }
 
-/** @param {import('./worksheet/Worksheet.js').FormattingUpdater} updater */
-function formatSelection(updater) {
+function formatSelection(updater: FormattingUpdater) {
   const worksheet = activeElement?.worksheet;
 
   if (worksheet) {
@@ -376,16 +356,14 @@ function formatSelection(updater) {
   activeElement?.focus();
 }
 
-/** @param {import('./worksheet/Worksheet.js').CellAlign} align */
-function toggleAlign(align) {
+function toggleAlign(align: CellAlign) {
   // Toggling a pushed alignment goes back to the default (type-based) alignment.
   const nextAlign = isFormattingAppliedToSelection(formatting => formatting?.align === align) ? undefined : align;
 
   formatSelection(formatting => ({ ...formatting, align: nextAlign }));
 }
 
-/** @type {Record<string, () => void>} */
-const formattingHotkeys = {
+const formattingHotkeys: Record<string, () => void> = {
   b: () => toolbarActions.toggleStyle('bold'),
   i: () => toolbarActions.toggleStyle('italic'),
   u: () => toolbarActions.toggleStyle('underline'),
@@ -396,7 +374,7 @@ const formattingHotkeys = {
 };
 
 gridContainer.addEventListener('keydown', event => {
-  const target = /** @type {HTMLElement} */ (event.target);
+  const target = event.target as HTMLElement;
 
   if (
     (event.ctrlKey || event.metaKey) &&
@@ -433,7 +411,7 @@ function mergeSelection() {
       );
 
       // Keeps all cells of the unmerged cells selected, the selection may be only the merged cell itself.
-      /** @type {WorksheetElement} */ (activeElement).selection = new WorksheetSelection(
+      (activeElement as WorksheetElement).selection = new WorksheetSelection(
         { column: left, row: top },
         { left, top, right, bottom }
       );
@@ -455,8 +433,7 @@ function updateUndoButtons() {
   ui.update({ canRedo, canUndo });
 }
 
-/** @param {'undo' | 'redo'} action */
-function undoOrRedo(action) {
+function undoOrRedo(action: 'undo' | 'redo') {
   if (activeElement && activeElement[action]()) {
     updateFormattingButtons();
     updateSelectionInfo();
@@ -466,7 +443,7 @@ function undoOrRedo(action) {
 }
 
 document.addEventListener('keydown', event => {
-  const target = /** @type {HTMLElement} */ (event.target);
+  const target = event.target as HTMLElement;
 
   // Let text fields (e.g. the cell editor) handle their own undo.
   if (
@@ -496,8 +473,7 @@ addSheetButton.addEventListener('click', () => {
   }
 });
 
-/** @param {import('./ui/Toolbar.jsx').BorderPreset} preset */
-function setBorder(preset) {
+function setBorder(preset: BorderPreset) {
   const worksheet = activeElement?.worksheet;
 
   if (worksheet) {
@@ -508,7 +484,7 @@ function setBorder(preset) {
       if (preset === 'all' || preset === 'none') {
         edit.setBorder(range, new Set(['outside', 'inside']), preset === 'all');
       } else {
-        edit.setBorder(range, new Set([/** @type {import('./worksheet/Worksheet.js').BorderEdges} */ (preset)]));
+        edit.setBorder(range, new Set([preset as BorderEdges]));
       }
     });
 
@@ -518,8 +494,7 @@ function setBorder(preset) {
   activeElement?.focus();
 }
 
-/** @param {boolean} nextLocked */
-function setLocked(nextLocked) {
+function setLocked(nextLocked: boolean) {
   locked = nextLocked;
 
   for (const worksheet of workbook.worksheets) {
@@ -562,7 +537,7 @@ fileInput.addEventListener('change', async () => {
       activateWorksheet(worksheet);
     }
   } catch (error) {
-    alert(`Failed to open "${file.name}": ${/** @type {Error} */ (error).message}`);
+    alert(`Failed to open "${file.name}": ${(error as Error).message}`);
   }
 });
 
@@ -580,9 +555,9 @@ function saveCSV() {
 
 async function saveZip() {
   try {
-    download(new Blob([await workbook.toZip()], { type: 'application/zip' }), 'workbook.zip');
+    download(new Blob([(await workbook.toZip()) as BlobPart], { type: 'application/zip' }), 'workbook.zip');
   } catch (error) {
-    alert(`Failed to save workbook: ${/** @type {Error} */ (error).message}`);
+    alert(`Failed to save workbook: ${(error as Error).message}`);
   }
 }
 
@@ -597,20 +572,20 @@ async function printSelection() {
   const rows = worksheet.getValues(left, top, right - left + 1, bottom - top + 1);
 
   try {
-    const getBorder = (/** @type {number} */ column, /** @type {number} */ row) =>
+    const getBorder = (column: number, row: number) =>
       left + column >= 0 && top + row >= 0 && left + column < worksheet.columnCount && top + row < worksheet.rowCount
         ? worksheet.getBorder(left + column, top + row)
         : undefined;
 
-    const columnWidths = [];
+    const columnWidths: number[] = [];
 
     for (let column = left; column <= right; column++) {
       columnWidths.push(worksheet.getColumnWidth(column));
     }
 
     const formattings = worksheet.getFormattings(left, top, right - left + 1, bottom - top + 1);
-    /** Column and row spans of merged cells, keyed by `row,column`, 0 for cells not in the first column or row. @type {Map<string, { columns: number; rows: number }>} */
-    const spans = new Map();
+    /** Column and row spans of merged cells, keyed by `row,column`, 0 for cells not in the first column or row. */
+    const spans = new Map<string, { columns: number; rows: number }>();
 
     // The selection always covers whole merged cells.
     for (const merge of worksheet.getMerges(left, top, right - left + 1, bottom - top + 1)) {
@@ -624,18 +599,16 @@ async function printSelection() {
       }
     }
 
-    const getColumnSpan = (/** @type {number} */ column, /** @type {number} */ row) =>
-      spans.get(`${row},${column}`)?.columns ?? 1;
-    const getRowSpan = (/** @type {number} */ column, /** @type {number} */ row) =>
-      spans.get(`${row},${column}`)?.rows ?? 1;
-    const getFormatting = (/** @type {number} */ column, /** @type {number} */ row) => formattings[row]?.[column];
+    const getColumnSpan = (column: number, row: number) => spans.get(`${row},${column}`)?.columns ?? 1;
+    const getRowSpan = (column: number, row: number) => spans.get(`${row},${column}`)?.rows ?? 1;
+    const getFormatting = (column: number, row: number) => formattings[row]?.[column];
 
     download(
       await cellsToPNG(rows, { columnWidths, getBorder, getColumnSpan, getFormatting, getRowSpan }),
       `${workbook.getWorksheetName(worksheet)}.png`
     );
   } catch (error) {
-    alert(`Failed to print selected cells: ${/** @type {Error} */ (error).message}`);
+    alert(`Failed to print selected cells: ${(error as Error).message}`);
   }
 }
 
