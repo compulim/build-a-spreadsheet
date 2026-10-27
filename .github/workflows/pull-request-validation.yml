@@ -20,27 +20,13 @@ jobs:
 
       - run: npm clean-install
 
+      - run: npm run build
+
       - name: Typecheck
         run: npm run typecheck
-
-      - name: Run tests
-        run: npm test
-
-  test-e2e:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: lts/*
-
-      - run: npm clean-install
-
-      - run: npm run build
 
       - name: Docker Compose
         run: docker compose up --detach
 
       - name: Run tests
-        run: npm run test:e2e
+        run: npm test
