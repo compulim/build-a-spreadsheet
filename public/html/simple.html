@@ -25,11 +25,7 @@
       await stub.EXPERIMENTAL_click(undefined, { x: 100, y: 40 });
       await stub.EXPERIMENTAL_type('\uE015a\tb\tc\uE007');
 
-      const spreadsheetElement = document.getElementById('spreadsheet');
-
-      console.log(spreadsheetElement);
-
-      const { worksheet } = spreadsheetElement;
+      const { worksheet } = document.getElementById('spreadsheet');
 
       worksheet.edit(edit => {
         edit.mergeCells(1, 1, 2, 2);

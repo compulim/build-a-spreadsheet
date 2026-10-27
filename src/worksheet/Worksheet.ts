@@ -1,6 +1,7 @@
 import { formatValue, parseCSV, stringifyCSV } from '../csv.ts';
 import { WorksheetChangeEvent } from './WorksheetChangeEvent.ts';
 import { COLUMN_COUNT, COLUMN_WIDTH, ROW_COUNT } from './constants.ts';
+import mathRandomString from './private/mathRandomString.ts';
 
 export type CellValue = boolean | number | string;
 export type CellBorder = { top: boolean; right: boolean; bottom: boolean; left: boolean };
@@ -137,7 +138,7 @@ export class Worksheet extends EventTarget {
   #transaction: { changes: WorksheetChange[]; load: boolean } | undefined;
 
   /** Changes on every transaction with changes, restored by undo and redo. */
-  #version: string = crypto.randomUUID();
+  #version: string = mathRandomString();
 
   readonly columnCount: number;
   readonly rowCount: number;
@@ -843,7 +844,7 @@ export class Worksheet extends EventTarget {
 
     const { changes } = transaction;
     const previousVersion = this.#version;
-    const version = changes.length ? crypto.randomUUID() : previousVersion;
+    const version = changes.length ? mathRandomString() : previousVersion;
 
     this.#version = version;
 

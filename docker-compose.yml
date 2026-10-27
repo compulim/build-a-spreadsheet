@@ -1,15 +1,16 @@
 services:
   chrome:
-    image: selenium/standalone-chromium:150.0
+    image: selenium/standalone-chromium:155.0
     depends_on:
       - web
     environment:
       SE_OPTS: '--log-level WARNING'
       SE_NODE_GRID_URL: 'http://localhost:4444'
       SE_NODE_SESSION_TIMEOUT: '10'
+      SE_VNC_NO_PASSWORD: 1
     ports:
-      - '4444:4444'
-      - '7900:7900'
+      - '4444:4444/tcp'
+      - '7900:7900/tcp'
     shm_size: '2.5gb'
 
   web:
