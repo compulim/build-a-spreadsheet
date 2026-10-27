@@ -25,8 +25,9 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Docker Compose
-        run: docker compose up --detach
+      - run: npm run pretest
 
       - name: Run tests
         run: npm test
+
+      - run: npm run posttest
