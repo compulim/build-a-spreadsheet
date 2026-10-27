@@ -2,7 +2,8 @@ import { defineConfig } from 'tsup';
 
 export default defineConfig({
   entry: {
-    app: './src/app.ts'
+    app: './src/app.ts',
+    worksheet: './src/worksheet/WorksheetElement.ts'
   },
   env: {
     NODE_ENV: 'production'
@@ -11,7 +12,7 @@ export default defineConfig({
     options.jsx = 'automatic';
   },
   format: 'esm',
-  minify: true,
+  // minify: true,
   noExternal: [/./],
   outDir: './public/asset/js/',
   platform: 'browser',

@@ -1,0 +1,24 @@
+services:
+  chrome:
+    image: selenium/standalone-chromium:150.0
+    depends_on:
+      - web
+    environment:
+      SE_OPTS: '--log-level WARNING'
+      SE_NODE_GRID_URL: 'http://localhost:4444'
+      SE_NODE_SESSION_TIMEOUT: '10'
+    ports:
+      - '4444:4444'
+      - '7900:7900'
+    shm_size: '2.5gb'
+
+  web:
+    build:
+      context: ./
+      dockerfile: web.dockerfile
+    expose:
+      - '80/tcp'
+      - '443/tcp'
+    volumes:
+      - ./public/:/var/web/public/
+      - ./public/asset/:/var/web/public/asset/
