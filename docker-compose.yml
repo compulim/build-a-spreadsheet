@@ -11,6 +11,11 @@ services:
     ports:
       - '4444:4444/tcp'
       - '7900:7900/tcp'
+    healthcheck:
+      interval: 5s
+      start_period: 10s
+      test: ["CMD", "bash", "-lc", "curl -fsS http://localhost:4444/wd/hub/status | grep -Eq '\"ready\"[[:space:]]*:[[:space:]]*true' "]
+      timeout: 5s
     shm_size: '2.5gb'
 
   web:
