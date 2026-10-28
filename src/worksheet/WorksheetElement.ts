@@ -1354,22 +1354,33 @@ export class WorksheetElement extends HTMLElement {
 
     let { column, row } = this.#selectionObject.activeCell;
 
-    // Moving right or down skips the rest of a merged cell.
-    column = (deltaColumn > 0 ? end.column : column) + deltaColumn;
-    row = (deltaRow > 0 ? end.row : row) + deltaRow;
+    // Skips cells covered by a merged cell other than its top-left cell, which is visited once.
+    for (let count = (right - left + 1) * (bottom - top + 1); count > 0; count--) {
+      const end = this.#toMergeEnd({ column, row });
 
-    if (column > right) {
-      column = left;
-      row = row + 1 > bottom ? top : row + 1;
-    } else if (column < left) {
-      column = right;
-      row = row - 1 < top ? bottom : row - 1;
-    } else if (row > bottom) {
-      row = top;
-      column = column + 1 > right ? left : column + 1;
-    } else if (row < top) {
-      row = bottom;
-      column = column - 1 < left ? right : column - 1;
+      // Moving right or down skips the rest of a merged cell.
+      column = (deltaColumn > 0 ? end.column : column) + deltaColumn;
+      row = (deltaRow > 0 ? end.row : row) + deltaRow;
+
+      if (column > right) {
+        column = left;
+        row = row + 1 > bottom ? top : row + 1;
+      } else if (column < left) {
+        column = right;
+        row = row - 1 < top ? bottom : row - 1;
+      } else if (row > bottom) {
+        row = top;
+        column = column + 1 > right ? left : column + 1;
+      } else if (row < top) {
+        row = bottom;
+        column = column - 1 < left ? right : column - 1;
+      }
+
+      const start = this.#toMergeStart({ column, row });
+
+      if (start.column === column && start.row === row) {
+        break;
+      }
     }
 
     // Keep the selected range, only move the active cell within it.
