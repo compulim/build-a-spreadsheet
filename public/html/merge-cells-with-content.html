@@ -40,23 +40,6 @@
       // Merge cell B2..C3.
       worksheet.edit(edit => edit.mergeCells(1, 1, 2, 2));
 
-      // const screenshot = await stub.browsingContextCaptureScreenshot();
-
-      // console.log(screenshot);
-
-      // expect.extend({
-      //   toABC(value) {
-      //     return new Promise(resolve => {
-      //       console.log('XXXXXXXXXXXX', value);
-      //       resolve({ message: value, pass: true });
-      //     });
-      //   }
-      // });
-
-      // await expect(new Promise(resolve => resolve('123'))).resolves.toABC();
-      // console.log('YYYYYYYYYYYYYYYYYYYYY');
-
-      // await expect(screenshot).toMatchImageSnapshot();
       await expect(stub.browsingContextCaptureScreenshot()).resolves.toMatchImageSnapshot();
 
       console.log('🆗');
