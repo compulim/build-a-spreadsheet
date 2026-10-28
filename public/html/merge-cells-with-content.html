@@ -7,6 +7,7 @@
           "@onting/browser": "https://cdn.jsdelivr.net/npm/@onting/browser@0.1.1-main.202610251852.46007c3/static/index.js",
           "@onting/stub": "https://cdn.jsdelivr.net/npm/@onting/stub@0.1.0-main.202610280411.5f580b2/dist/index.js",
           "@onting/stub/": "https://cdn.jsdelivr.net/npm/@onting/stub@0.1.0-main.202610280411.5f580b2/dist/",
+          "@testduet/wait-for": "https://esm.sh/@testduet/wait-for",
           "expect": "https://esm.sh/expect?standalone",
           "worksheet": "../asset/js/worksheet.js"
         }
@@ -22,6 +23,7 @@
     <script type="module">
       import { getStub } from '@onting/browser';
       import { createExpectMatcher } from '@onting/stub/expectMatcher.js';
+      import { waitFor } from '@testduet/wait-for';
       import expect from 'expect';
 
       const stub = await getStub();
@@ -30,7 +32,7 @@
       expect.extend(createExpectMatcher(stub));
 
       // WHEN: Focus on the A1 cell.
-      await stub.EXPERIMENTAL_click(document.querySelectorAll('.grid__cell')[0]);
+      await stub.EXPERIMENTAL_click(document.querySelector('.grid__cell-ref--a1'));
 
       // WHEN: Press ArrowDown, A, Tab, B, Tab, C, Enter.
       // The keystrokes are from https://www.w3.org/TR/webdriver1/#keyboard-actions.
@@ -41,8 +43,11 @@
       // WHEN: Merge cell B2..C3.
       worksheet.edit(edit => edit.mergeCells(1, 1, 2, 2));
 
-      // THEN: Should merge content of C2 into B2.
+      // THEN: Should match snapshot.
       await expect(stub.browsingContextCaptureScreenshot()).resolves.toMatchImageSnapshot();
+
+      // THEN: Should merge content of C2 into B2.
+      await waitFor(() => expect(document.querySelector('.grid__cell-ref--b2')).toHaveProperty('textContent', 'b c'));
 
       console.log('🆗');
     </script>
