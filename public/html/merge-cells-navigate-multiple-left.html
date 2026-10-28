@@ -4,9 +4,9 @@
     <script type="importmap">
       {
         "imports": {
-          "@onting/browser": "https://cdn.jsdelivr.net/npm/@onting/browser@0.1.1-main.202610251852.46007c3/static/index.js",
-          "@onting/stub": "https://cdn.jsdelivr.net/npm/@onting/stub@0.1.0-main.202610280411.5f580b2/dist/index.js",
-          "@onting/stub/": "https://cdn.jsdelivr.net/npm/@onting/stub@0.1.0-main.202610280411.5f580b2/dist/",
+          "@onting/browser": "https://cdn.jsdelivr.net/npm/@onting/browser@0.1.1-main.202610280828.b09109b/static/index.js",
+          "@onting/stub": "https://cdn.jsdelivr.net/npm/@onting/stub@0.1.0-main.202610280824.1079aca/dist/index.js",
+          "@onting/stub/": "https://cdn.jsdelivr.net/npm/@onting/stub@0.1.0-main.202610280824.1079aca/dist/",
           "@testduet/wait-for": "https://esm.sh/@testduet/wait-for",
           "expect": "https://esm.sh/expect?standalone",
           "worksheet": "../asset/js/worksheet.js"
@@ -35,7 +35,7 @@
 
       // GIVEN: Merge cell B2..C3 and D3..E4.
       element.worksheet.edit(edit => edit.mergeCells(1, 1, 2, 2));
-      element.worksheet.edit(edit => edit.mergeCells(3, 2, 4, 3));
+      element.worksheet.edit(edit => edit.mergeCells(3, 2, 2, 2));
 
       // WHEN: Focus on the F3 cell.
       await stub.EXPERIMENTAL_click(document.querySelector('.grid__cell-ref--f3'));

@@ -4,9 +4,9 @@
     <script type="importmap">
       {
         "imports": {
-          "@onting/browser": "https://cdn.jsdelivr.net/npm/@onting/browser@0.1.1-main.202610251852.46007c3/static/index.js",
-          "@onting/stub": "https://cdn.jsdelivr.net/npm/@onting/stub@0.1.0-main.202610280411.5f580b2/dist/index.js",
-          "@onting/stub/": "https://cdn.jsdelivr.net/npm/@onting/stub@0.1.0-main.202610280411.5f580b2/dist/",
+          "@onting/browser": "https://cdn.jsdelivr.net/npm/@onting/browser@0.1.1-main.202610280828.b09109b/static/index.js",
+          "@onting/stub": "https://cdn.jsdelivr.net/npm/@onting/stub@0.1.0-main.202610280824.1079aca/dist/index.js",
+          "@onting/stub/": "https://cdn.jsdelivr.net/npm/@onting/stub@0.1.0-main.202610280824.1079aca/dist/",
           "@testduet/wait-for": "https://esm.sh/@testduet/wait-for",
           "expect": "https://esm.sh/expect?standalone",
           "worksheet": "../asset/js/worksheet.js"
@@ -41,7 +41,7 @@
 
       // WHEN: Press Shift+Enter twice.
       // The keystrokes are from https://www.w3.org/TR/webdriver1/#keyboard-actions.
-      await stub.EXPERIMENTAL_type('\uE008\uE007\uE007\uE000');
+      await stub.EXPERIMENTAL_type('\uF000\uE008\uE007\uE007\uF001\uE008');
 
       // THEN: Should land on B1.
       await waitFor(() =>
