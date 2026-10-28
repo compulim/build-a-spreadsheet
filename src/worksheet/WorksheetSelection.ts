@@ -1,5 +1,10 @@
 export type CellPosition = { readonly column: number; readonly row: number };
-export type CellRange = { readonly left: number; readonly top: number; readonly right: number; readonly bottom: number };
+export type CellRange = {
+  readonly left: number;
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+};
 
 /**
  * An immutable selection of a `<compulim-worksheet>`: the active cell and the selected range containing it.
@@ -43,5 +48,12 @@ export class WorksheetSelection {
     const { left, top, right, bottom } = this.#range;
 
     return { column: column === right ? left : right, row: row === bottom ? top : bottom };
+  }
+
+  toJSON() {
+    return {
+      activeCell: this.activeCell,
+      range: this.range
+    };
   }
 }

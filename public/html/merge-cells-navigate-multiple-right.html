@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <script type="importmap">
+      {
+        "imports": {
+          "@onting/browser": "https://cdn.jsdelivr.net/npm/@onting/browser@0.1.1-main.202610280828.b09109b/static/index.js",
+          "@onting/stub": "https://cdn.jsdelivr.net/npm/@onting/stub@0.1.0-main.202610280824.1079aca/dist/index.js",
+          "@onting/stub/": "https://cdn.jsdelivr.net/npm/@onting/stub@0.1.0-main.202610280824.1079aca/dist/",
+          "@testduet/wait-for": "https://esm.sh/@testduet/wait-for",
+          "expect": "https://esm.sh/expect?standalone",
+          "worksheet": "../asset/js/worksheet.js"
+        }
+      }
+    </script>
+    <link href="../asset/css/styles.css" rel="stylesheet" type="text/css" />
+  </head>
+  <body>
+    <script type="module">
+      import 'worksheet';
+    </script>
+    <compulim-worksheet id="spreadsheet"></compulim-worksheet>
+    <script type="module">
+      import { getStub } from '@onting/browser';
+      import { createExpectMatcher } from '@onting/stub/expectMatcher.js';
+      import { waitFor } from '@testduet/wait-for';
+      import expect from 'expect';
+
+      const stub = await getStub();
+
+      // TODO: Should move `createExpectMatcher` to `@onting/stub`.
+      expect.extend(createExpectMatcher(stub));
+
+      const element = document.getElementById('spreadsheet');
+
+      // GIVEN: Merge cell B2..C3 and D3..E4.
+      element.worksheet.edit(edit => edit.mergeCells(1, 1, 2, 2));
+      element.worksheet.edit(edit => edit.mergeCells(3, 2, 2, 2));
+
+      // WHEN: Focus on the A3 cell.
+      await stub.EXPERIMENTAL_click(document.querySelector('.grid__cell-ref--a3'));
+
+      // WHEN: Press ArrowRight 3 times.
+      // The keystrokes are from https://www.w3.org/TR/webdriver1/#keyboard-actions.
+      await stub.EXPERIMENTAL_type('\uE014\uE014\uE014');
+
+      // THEN: Should land on F3.
+      await waitFor(() =>
+        expect(element.selection).toEqual(
+          expect.objectContaining({
+            activeCell: { column: 5, row: 2 },
+            range: { left: 5, top: 2, right: 5, bottom: 2 }
+          })
+        )
+      );
+
+      console.log('🆗');
+    </script>
+  </body>
+</html>

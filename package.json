@@ -16,9 +16,9 @@
     "typecheck": "tsc -p ."
   },
   "devDependencies": {
-    "@onting/browser": "^0.1.1-main.202610251852.46007c3",
-    "@onting/harness": "^0.1.1-main.202610280518.227d313",
-    "@onting/stub": "^0.1.0-main.202610280411.5f580b2",
+    "@onting/browser": "^0.1.1-main.202610280828.b09109b",
+    "@onting/harness": "^0.1.1-main.202610280832.3bb2d56",
+    "@onting/stub": "^0.1.0-main.202610280824.1079aca",
     "@tsconfig/strictest": "^2.0.8",
     "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
