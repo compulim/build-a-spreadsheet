@@ -978,6 +978,13 @@ export class WorksheetElement extends HTMLElement {
       const height = merge && merge.height > 1 && !covered ? `${merge.height * this.#rowHeight}px` : '';
       const top = merge && row > merge.y && !covered ? `${(merge.y - row) * this.#rowHeight}px` : '';
 
+      const refClassName = `grid__cell-ref--${getColumnName(column).toLowerCase()}${row + 1}`;
+
+      if (!cell.classList.contains(refClassName)) {
+        [...cell.classList].forEach(className => className.startsWith('grid__cell-ref--') && cell.classList.remove(className));
+        cell.classList.add(refClassName);
+      }
+
       if (cell.style.display !== (hidden ? 'none' : '')) {
         cell.style.display = hidden ? 'none' : '';
       }
