@@ -38,9 +38,8 @@
       // The keystrokes are from https://www.w3.org/TR/webdriver1/#keyboard-actions.
       await stub.EXPERIMENTAL_type('\uE015a\tb\tc\uE007');
 
-      // \uF000\uE008 is holding SHIFT.
-      // \uF001\uE008 is releasing SHIFT.
-      // This is SHIFT+TAB.
+      // This is SHIFT (\uE008) + TAB (\t).
+      // Use modifier \uF000 to hold a key, \uF001 to release a key.
       await stub.EXPERIMENTAL_type('\uF000\uE008\t\uF001\uE008');
 
       const { worksheet } = document.getElementById('spreadsheet');

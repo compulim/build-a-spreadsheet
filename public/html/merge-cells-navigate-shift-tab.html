@@ -41,6 +41,7 @@
 
       // WHEN: Press Shift+Tab twice.
       // The keystrokes are from https://www.w3.org/TR/webdriver1/#keyboard-actions.
+      // Use modifier \uF000 to hold a key, \uF001 to release a key.
       await stub.EXPERIMENTAL_type('\uF000\uE008\uE004\uE004\uF001\uE008');
 
       // THEN: Should land on A2.
