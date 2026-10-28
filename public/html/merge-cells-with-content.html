@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <script type="importmap">
+      {
+        "imports": {
+          "@onting/browser": "https://cdn.jsdelivr.net/npm/@onting/browser@0.1.1-main.202610251852.46007c3/static/index.js",
+          "@onting/stub": "https://cdn.jsdelivr.net/npm/@onting/stub@0.1.0-main.202610280411.5f580b2/dist/index.js",
+          "@onting/stub/": "https://cdn.jsdelivr.net/npm/@onting/stub@0.1.0-main.202610280411.5f580b2/dist/",
+          "expect": "https://esm.sh/expect?standalone",
+          "worksheet": "../asset/js/worksheet.js"
+        }
+      }
+    </script>
+    <link href="../asset/css/styles.css" rel="stylesheet" type="text/css" />
+  </head>
+  <body>
+    <script type="module">
+      import 'worksheet';
+    </script>
+    <compulim-worksheet id="spreadsheet"></compulim-worksheet>
+    <script type="module">
+      import { getStub } from '@onting/browser';
+      import { createExpectMatcher } from '@onting/stub/expectMatcher.js';
+      import expect from 'expect';
+
+      const stub = await getStub();
+
+      // TODO: Should move `createExpectMatcher` to `@onting/stub`.
+      expect.extend(createExpectMatcher(stub));
+
+      await stub.EXPERIMENTAL_click(document.querySelectorAll('.grid__cell')[0]);
+
+      // The keystrokes are from https://www.w3.org/TR/webdriver1/#keyboard-actions.
+      // ArrowDown, A, Tab, B, Tab, C, Enter.
+      await stub.EXPERIMENTAL_type('\uE015a\tb\tc\uE007');
+
+      const { worksheet } = document.getElementById('spreadsheet');
+
+      // Merge cell B2..C3.
+      worksheet.edit(edit => edit.mergeCells(1, 1, 2, 2));
+
+      // const screenshot = await stub.browsingContextCaptureScreenshot();
+
+      // console.log(screenshot);
+
+      // expect.extend({
+      //   toABC(value) {
+      //     return new Promise(resolve => {
+      //       console.log('XXXXXXXXXXXX', value);
+      //       resolve({ message: value, pass: true });
+      //     });
+      //   }
+      // });
+
+      // await expect(new Promise(resolve => resolve('123'))).resolves.toABC();
+      // console.log('YYYYYYYYYYYYYYYYYYYYY');
+
+      // await expect(screenshot).toMatchImageSnapshot();
+      await expect(stub.browsingContextCaptureScreenshot()).resolves.toMatchImageSnapshot();
+
+      console.log('🆗');
+    </script>
+  </body>
+</html>
