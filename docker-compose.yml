@@ -6,7 +6,7 @@ services:
     environment:
       SE_OPTS: '--log-level WARNING'
       SE_NODE_GRID_URL: 'http://localhost:4444'
-      SE_NODE_SESSION_TIMEOUT: '10'
+      SE_NODE_SESSION_TIMEOUT: '15'
       SE_VNC_NO_PASSWORD: 1
     ports:
       - '4444:4444/tcp'
