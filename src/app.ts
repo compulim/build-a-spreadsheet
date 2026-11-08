@@ -314,9 +314,9 @@ function updateFormattingButtons() {
   ui.update({
     align: ALIGNS.find(align => isFormattingAppliedToSelection(formatting => formatting?.align === align)),
     format: FORMATS.find(format => isFormattingAppliedToSelection(formatting => formatting?.format === format)),
-    highlight: HIGHLIGHTS.find(({ name }) =>
-      isFormattingAppliedToSelection(formatting => formatting?.highlight === name)
-    )?.name,
+    highlight: HIGHLIGHTS.find(({ value }) =>
+      isFormattingAppliedToSelection(formatting => formatting?.highlight === value)
+    )?.value,
     merged: isSelectionMerged(),
     styles
   });

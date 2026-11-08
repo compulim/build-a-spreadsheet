@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { cellsToSVG } from '../src/printCells.ts';
-import { getHighlight } from '../src/highlights.ts';
+
 
 test('cellsToSVG sizes the SVG to the cells and escapes text', () => {
   const { svg, width, height } = cellsToSVG([
@@ -40,17 +40,17 @@ test('cellsToSVG renders formatting', () => {
   const { svg } = cellsToSVG([['a', 1, true]], {
     getFormatting: column =>
       column === 0
-        ? { bold: true, italic: true, underline: true, strikethrough: true, align: 'center', highlight: 'green' }
+        ? { bold: true, italic: true, underline: true, strikethrough: true, align: 'center', highlight: '#c6efce/' }
         : column === 1
-          ? { align: 'left', highlight: 'red-text' }
+          ? { align: 'left', highlight: '#ffdddd/#f70000' }
           : undefined
   });
 
-  assert.ok(svg.includes(`<feFlood flood-color="${getHighlight('green').background}"/>`));
+  assert.ok(svg.includes(`<feFlood flood-color="#c6efce"/>`));
   assert.ok(svg.includes('filter="url(#m0)"'));
   assert.equal((svg.match(/<rect [^/]*fill="#fff"/g) || []).length, 3);
   assert.ok(svg.includes('text-anchor="middle" font-weight="bold" font-style="italic" text-decoration="underline line-through"'));
-  assert.ok(svg.includes(`x="104.5" y="12.5" dominant-baseline="central" fill="${getHighlight('red-text').color}">1</text>`));
+  assert.ok(svg.includes(`x="104.5" y="12.5" dominant-baseline="central" fill="#f70000">1</text>`));
   assert.ok(svg.includes('text-anchor="middle">TRUE</text>'));
 });
 

@@ -759,11 +759,11 @@ test("Worksheet formatting", () => {
   );
 
   worksheet.edit((edit) =>
-    edit.setFormattings([[{ highlight: "green" }]], 0, 0),
+    edit.setFormattings([[{ highlight: "#c6efce/" }]], 0, 0),
   );
   assert.strictEqual(
     worksheet.getFormattings(0, 0, 1, 1)[0][0].highlight,
-    "green",
+    "#c6efce/",
   );
   worksheet.edit((edit) =>
     edit.setFormattings(
@@ -781,6 +781,11 @@ test("Worksheet formatting", () => {
   assert.throws(
     () =>
       worksheet.edit((edit) => edit.setFormattings([[{ highlight: 1 }]], 0, 0)),
+    TypeError,
+  );
+  assert.throws(
+    () =>
+      worksheet.edit((edit) => edit.setFormattings([[{ highlight: "green" }]], 0, 0)),
     TypeError,
   );
 

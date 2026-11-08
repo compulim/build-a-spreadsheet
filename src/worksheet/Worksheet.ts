@@ -2,6 +2,7 @@ import { formatValue, parseCSV, stringifyCSV } from '../csv.ts';
 import { WorksheetChangeEvent } from './WorksheetChangeEvent.ts';
 import { WorksheetHistory } from './WorksheetHistory.ts';
 import { type CellPosition, type CellRange, WorksheetSelection } from './WorksheetSelection.ts';
+import { isHighlight } from './highlight.ts';
 import { COLUMN_COUNT, COLUMN_WIDTH, ROW_COUNT } from './constants.ts';
 import mathRandomString from './private/mathRandomString.ts';
 
@@ -73,7 +74,7 @@ type WorksheetEdit = {
 const NUMBER_FORMATS: string[] = ['currency', 'date', 'datetime', 'duration', 'percent'];
 /**
  * `align` is `undefined` when not set: text is aligned left, numbers right and booleans center.
- * `highlight` is the name of a highlight (background/foreground color combination), `undefined` when not set.
+ * `highlight` is `"#background/#color"` in hex colors, either can be empty (e.g. `"#c6efce/"`), `undefined` when not set.
  * `format` is how numbers are displayed, `undefined` when not set (as-is).
  */
 type CellFormatting = {
@@ -693,8 +694,8 @@ class Worksheet extends EventTarget {
 
     const highlight = input?.highlight || undefined;
 
-    if (highlight !== undefined && typeof highlight !== 'string') {
-      throw new TypeError('Highlight must be a string.');
+    if (highlight !== undefined && (typeof highlight !== 'string' || !isHighlight(highlight))) {
+      throw new TypeError('Highlight must be a string of "#background/#color".');
     }
 
     const format = input?.format || undefined;

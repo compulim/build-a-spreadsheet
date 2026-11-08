@@ -1,6 +1,6 @@
 import { formatValue } from './csv.ts';
 import type { CellValue } from './csv.ts';
-import { getHighlight } from './highlights.ts';
+import { parseHighlight } from './worksheet/highlight.ts';
 import type { CellBorder, CellFormatting } from './worksheet/Worksheet.ts';
 
 type GetFormatting = (column: number, row: number) => Partial<CellFormatting> | undefined;
@@ -119,7 +119,7 @@ function cellsToSVG(
       const value = row[columnIndex];
       const text = value === undefined ? '' : formatValue(value as CellValue);
       const formatting = getFormatting(columnIndex, rowIndex);
-      const highlight = getHighlight(formatting?.highlight);
+      const highlight = parseHighlight(formatting?.highlight);
       // Same as the grid: text is aligned left, numbers right and booleans center unless set.
       const align =
         formatting?.align || (typeof value === 'number' ? 'right' : typeof value === 'boolean' ? 'center' : 'left');
