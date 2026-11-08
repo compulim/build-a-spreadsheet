@@ -40,6 +40,7 @@
     "@primer/react": "^38.42.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "react-is": "^19.3.1"
+    "react-is": "^19.3.1",
+    "valibot": "^1.5.0"
   }
 }

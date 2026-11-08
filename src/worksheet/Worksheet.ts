@@ -694,7 +694,7 @@ class Worksheet extends EventTarget {
 
     const highlight = input?.highlight || undefined;
 
-    if (highlight !== undefined && (typeof highlight !== 'string' || !isHighlight(highlight))) {
+    if (highlight !== undefined && !isHighlight(highlight)) {
       throw new TypeError('Highlight must be a string of "#background/#color".');
     }
 
