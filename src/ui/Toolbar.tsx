@@ -18,6 +18,7 @@ import { ActionBar, ActionList, ActionMenu, SegmentedControl, Text, TextInput, T
 import { useSyncExternalStore } from 'react';
 import type { RefObject } from 'react';
 import { HIGHLIGHTS } from '../highlights.ts';
+import { parseHighlight } from '../worksheet/highlight.ts';
 import type { CellAlign, CellNumberFormat } from '../worksheet/Worksheet.ts';
 import { MarkerIcon, UnderlineIcon } from './icons.tsx';
 
@@ -80,11 +81,11 @@ const FORMATS: readonly { format: CellNumberFormat | undefined; label: string; d
 /** Segments of the marker control, the first segment removes the highlight. */
 const MARKERS = [
   { name: undefined, label: 'No highlight', icon: CircleSlashIcon },
-  ...HIGHLIGHTS.map(({ background, color, label, name }) => ({
-    name,
-    label,
-    icon: <MarkerIcon background={background} color={color} />
-  }))
+  ...HIGHLIGHTS.map(({ label, value }) => {
+    const { background, color } = parseHighlight(value) ?? {};
+
+    return { name: value, label, icon: <MarkerIcon background={background} color={color} /> };
+  })
 ];
 
 const BORDERS: readonly { preset: BorderPreset; label: string }[] = [

@@ -1,5 +1,5 @@
-import { formatValue } from './csv.ts';
-import type { CellNumberFormat, CellValue } from './worksheet/Worksheet.ts';
+import { formatValue } from '../csv.ts';
+import type { CellNumberFormat, CellValue } from './Worksheet.ts';
 
 /**
  * Formats a cell value for display. Only finite numbers are affected by `format`. Decorations (the currency sign,

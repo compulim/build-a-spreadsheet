@@ -2,6 +2,23 @@ import { formatValue, parseCSV, stringifyCSV } from '../csv.ts';
 import { WorksheetChangeEvent } from './WorksheetChangeEvent.ts';
 import { WorksheetHistory } from './WorksheetHistory.ts';
 import { type CellPosition, type CellRange, WorksheetSelection } from './WorksheetSelection.ts';
+import {
+  boolean,
+  finite,
+  integer,
+  is,
+  looseObject,
+  minValue,
+  nullish,
+  optional,
+  number,
+  picklist,
+  pipe,
+  safeParse,
+  string,
+  union
+} from 'valibot';
+import { type Highlight, highlightSchema, parseHighlight, stringifyHighlight } from './highlight.ts';
 import { COLUMN_COUNT, COLUMN_WIDTH, ROW_COUNT } from './constants.ts';
 import mathRandomString from './private/mathRandomString.ts';
 
@@ -70,10 +87,28 @@ type WorksheetEdit = {
   loadCSV(text: string): void;
 };
 
-const NUMBER_FORMATS: string[] = ['currency', 'date', 'datetime', 'duration', 'percent'];
+const NUMBER_FORMATS = ['currency', 'date', 'datetime', 'duration', 'percent'] as const;
+
+const integerSchema = pipe(number(), integer());
+const nonNegativeIntegerSchema = pipe(number(), integer(), minValue(0));
+const nonNegativeFiniteSchema = pipe(number(), finite(), minValue(0));
+const cellInputSchema = nullish(union([boolean(), pipe(number(), finite()), string()]));
+const formattingInputSchema = nullish(
+  looseObject({
+    bold: optional(boolean()),
+    italic: optional(boolean()),
+    underline: optional(boolean()),
+    strikethrough: optional(boolean()),
+    align: optional(picklist(['left', 'center', 'right'])),
+    highlight: optional(highlightSchema),
+    format: optional(picklist(NUMBER_FORMATS))
+  })
+);
+
 /**
  * `align` is `undefined` when not set: text is aligned left, numbers right and booleans center.
- * `highlight` is the name of a highlight (background/foreground color combination), `undefined` when not set.
+ * `highlight` is the background and text colors in hex, either can be empty to keep the default (e.g.
+ * `{ background: '#c6efce', color: '' }`), `undefined` when not set.
  * `format` is how numbers are displayed, `undefined` when not set (as-is).
  */
 type CellFormatting = {
@@ -82,13 +117,15 @@ type CellFormatting = {
   underline: boolean;
   strikethrough: boolean;
   align: CellAlign | undefined;
-  highlight: string | undefined;
+  highlight: Highlight | undefined;
   format: CellNumberFormat | undefined;
 };
+/** Formatting for internal storage, `highlight` is stored as `"#background/#color"`. */
+type StoredFormatting = Omit<CellFormatting, 'highlight'> & { highlight: string | undefined };
 type FormattingInput = Partial<CellFormatting> | null | undefined;
 type FormattingUpdater = (formatting: CellFormatting, x: number, y: number) => FormattingInput;
 
-const DEFAULT_FORMATTING: Readonly<CellFormatting> = Object.freeze({
+const DEFAULT_FORMATTING: Readonly<StoredFormatting> = Object.freeze({
   bold: false,
   italic: false,
   underline: false,
@@ -97,6 +134,10 @@ const DEFAULT_FORMATTING: Readonly<CellFormatting> = Object.freeze({
   highlight: undefined,
   format: undefined
 });
+
+function toCellFormatting({ highlight, ...formatting }: StoredFormatting): CellFormatting {
+  return { ...formatting, highlight: parseHighlight(highlight) };
+}
 
 function isSameSelection(
   { activeCell, range }: WorksheetSelection,
@@ -153,7 +194,7 @@ class Worksheet extends EventTarget {
   /**
    * Formatting of cells, keyed by `y * columnCount + x`. Unformatted cells are not stored.
    */
-  #formattings: Map<number, CellFormatting> = new Map();
+  #formattings: Map<number, StoredFormatting> = new Map();
 
   /**
    * Merged cells, keyed by `y * columnCount + x` of the top-left cell, with the number of merged columns and rows.
@@ -376,9 +417,9 @@ class Worksheet extends EventTarget {
   }
 
   #assertCell(x: number, y: number): void {
-    if (!Number.isInteger(x) || x < 0 || x >= this.columnCount) {
+    if (!is(integerSchema, x) || x < 0 || x >= this.columnCount) {
       throw new RangeError(`X must be an integer between 0 and ${this.columnCount - 1}.`);
-    } else if (!Number.isInteger(y) || y < 0 || y >= this.rowCount) {
+    } else if (!is(integerSchema, y) || y < 0 || y >= this.rowCount) {
       throw new RangeError(`Y must be an integer between 0 and ${this.rowCount - 1}.`);
     }
   }
@@ -399,7 +440,7 @@ class Worksheet extends EventTarget {
   setColumnWidth(x: number, width: number): void {
     this.#assertCell(x, 0);
 
-    if (!Number.isFinite(width) || width < 0) {
+    if (!is(nonNegativeFiniteSchema, width)) {
       throw new RangeError('Width must be a non-negative finite number.');
     } else if (this.#columnWidths[x] === width) {
       return;
@@ -430,16 +471,16 @@ class Worksheet extends EventTarget {
 
     let value = typeof valueOrUpdater === 'function' ? valueOrUpdater(this.#rows[y]?.[x], x, y) : valueOrUpdater;
 
+    if (!is(cellInputSchema, value)) {
+      throw new TypeError(
+        typeof value === 'number' ? 'Number value must be finite.' : 'Value must be a boolean, number or string.'
+      );
+    }
+
     if (value === null || value === undefined) {
       value = '';
-    } else if (typeof value === 'number') {
-      if (!Number.isFinite(value)) {
-        throw new TypeError('Number value must be finite.');
-      }
     } else if (typeof value === 'string') {
       value = value.trim();
-    } else if (typeof value !== 'boolean') {
-      throw new TypeError('Value must be a boolean, number or string.');
     }
 
     const cells = this.#rows[y];
@@ -486,7 +527,7 @@ class Worksheet extends EventTarget {
    * Returns values of a range as a 2D array (`values[y][x]`). Empty cells are returned as `''`.
    */
   getValues(x: number, y: number, width: number, height: number): CellValue[][] {
-    if (!Number.isInteger(width) || !Number.isInteger(height) || width < 0 || height < 0) {
+    if (!is(nonNegativeIntegerSchema, width) || !is(nonNegativeIntegerSchema, height)) {
       throw new RangeError('Width and height must be non-negative integers.');
     }
 
@@ -532,7 +573,7 @@ class Worksheet extends EventTarget {
     this.#assertCell(x, y);
 
     if (typeof valuesOrUpdater === 'function') {
-      if (!Number.isInteger(width) || !Number.isInteger(height) || width! < 0 || height! < 0) {
+      if (!is(nonNegativeIntegerSchema, width) || !is(nonNegativeIntegerSchema, height)) {
         throw new RangeError('Width and height must be non-negative integers.');
       }
 
@@ -678,43 +719,30 @@ class Worksheet extends EventTarget {
     const key = y * this.columnCount + x;
     const input =
       typeof formattingOrUpdater === 'function'
-        ? formattingOrUpdater({ ...(this.#formattings.get(key) || DEFAULT_FORMATTING) }, x, y)
+        ? formattingOrUpdater(toCellFormatting(this.#formattings.get(key) || DEFAULT_FORMATTING), x, y)
         : formattingOrUpdater;
 
-    if (input !== null && input !== undefined && typeof input !== 'object') {
-      throw new TypeError('Formatting must be an object.');
+    const result = safeParse(formattingInputSchema, input);
+
+    if (!result.success) {
+      const path = result.issues[0].path?.map(({ key }) => String(key)).join('.');
+
+      throw new TypeError(`Invalid formatting${path ? ` at "${path}"` : ''}: ${result.issues[0].message}`);
     }
 
-    const align = input?.align ?? undefined;
-
-    if (align !== undefined && align !== 'left' && align !== 'center' && align !== 'right') {
-      throw new TypeError('Align must be "left", "center" or "right".');
-    }
-
-    const highlight = input?.highlight || undefined;
-
-    if (highlight !== undefined && typeof highlight !== 'string') {
-      throw new TypeError('Highlight must be a string.');
-    }
-
-    const format = input?.format || undefined;
-
-    if (format !== undefined && !NUMBER_FORMATS.includes(format)) {
-      throw new TypeError(`Format must be one of ${NUMBER_FORMATS.map(name => `"${name}"`).join(', ')}.`);
-    }
-
-    const formatting: CellFormatting = {
-      bold: !!input?.bold,
-      italic: !!input?.italic,
-      underline: !!input?.underline,
-      strikethrough: !!input?.strikethrough,
-      align,
-      highlight,
-      format
+    const { output } = result;
+    const formatting: StoredFormatting = {
+      bold: !!output?.bold,
+      italic: !!output?.italic,
+      underline: !!output?.underline,
+      strikethrough: !!output?.strikethrough,
+      align: output?.align ?? undefined,
+      highlight: output?.highlight ? stringifyHighlight(output.highlight) : undefined,
+      format: output?.format ?? undefined
     };
 
     const previous = this.#formattings.get(key) || DEFAULT_FORMATTING;
-    const isEqual = (a: CellFormatting, b: CellFormatting): boolean =>
+    const isEqual = (a: StoredFormatting, b: StoredFormatting): boolean =>
       a.bold === b.bold &&
       a.italic === b.italic &&
       a.underline === b.underline &&
@@ -729,7 +757,13 @@ class Worksheet extends EventTarget {
 
     isEqual(formatting, DEFAULT_FORMATTING) ? this.#formattings.delete(key) : this.#formattings.set(key, formatting);
 
-    this.#record({ type: 'formatting', x, y, formatting: { ...formatting }, previousFormatting: { ...previous } });
+    this.#record({
+      type: 'formatting',
+      x,
+      y,
+      formatting: toCellFormatting(formatting),
+      previousFormatting: toCellFormatting(previous)
+    });
   }
 
   /**
@@ -737,7 +771,7 @@ class Worksheet extends EventTarget {
    * formatting (no styles, `align` of `undefined`).
    */
   getFormattings(x: number, y: number, width: number, height: number): CellFormatting[][] {
-    if (!Number.isInteger(width) || !Number.isInteger(height) || width < 0 || height < 0) {
+    if (!is(nonNegativeIntegerSchema, width) || !is(nonNegativeIntegerSchema, height)) {
       throw new RangeError('Width and height must be non-negative integers.');
     }
 
@@ -754,9 +788,11 @@ class Worksheet extends EventTarget {
       const row = [];
 
       for (let columnOffset = 0; columnOffset < width; columnOffset++) {
-        row.push({
-          ...(this.#formattings.get((y + rowOffset) * this.columnCount + x + columnOffset) || DEFAULT_FORMATTING)
-        });
+        row.push(
+          toCellFormatting(
+            this.#formattings.get((y + rowOffset) * this.columnCount + x + columnOffset) || DEFAULT_FORMATTING
+          )
+        );
       }
 
       formattings.push(row);
@@ -785,7 +821,7 @@ class Worksheet extends EventTarget {
     this.#assertCell(x, y);
 
     if (typeof formattingsOrUpdater === 'function') {
-      if (!Number.isInteger(width) || !Number.isInteger(height) || width! < 0 || height! < 0) {
+      if (!is(nonNegativeIntegerSchema, width) || !is(nonNegativeIntegerSchema, height)) {
         throw new RangeError('Width and height must be non-negative integers.');
       }
 
@@ -890,9 +926,9 @@ class Worksheet extends EventTarget {
    * cleared. The formatting of the first non-empty cell is used. Borders between the merged cells are removed.
    */
   #mergeCells(x: number, y: number, width: number, height: number = 1): void {
-    if (!Number.isInteger(width) || width < 1) {
+    if (!is(nonNegativeIntegerSchema, width) || width < 1) {
       throw new RangeError('Width must be a positive integer.');
-    } else if (!Number.isInteger(height) || height < 1) {
+    } else if (!is(nonNegativeIntegerSchema, height) || height < 1) {
       throw new RangeError('Height must be a positive integer.');
     }
 
