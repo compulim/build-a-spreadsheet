@@ -45,7 +45,7 @@
 
       // THEN: Should select A2..C4.
       await waitFor(() =>
-        expect(element.selection).toEqual(
+        expect(element.worksheet.selection).toEqual(
           expect.objectContaining({
             activeCell: { column: 0, row: 1 },
             range: { left: 0, top: 1, right: 2, bottom: 3 }
@@ -58,7 +58,7 @@
 
       // THEN: Should anchor to A3 and keep the selection.
       await waitFor(() =>
-        expect(element.selection).toEqual(
+        expect(element.worksheet.selection).toEqual(
           expect.objectContaining({
             activeCell: { column: 0, row: 2 },
             range: { left: 0, top: 1, right: 2, bottom: 3 }
@@ -71,7 +71,7 @@
 
       // THEN: Should anchor to A4 (skipping the merged cell) and keep the selection.
       await waitFor(() =>
-        expect(element.selection).toEqual(
+        expect(element.worksheet.selection).toEqual(
           expect.objectContaining({
             activeCell: { column: 0, row: 3 },
             range: { left: 0, top: 1, right: 2, bottom: 3 }
@@ -84,7 +84,7 @@
 
       // THEN: Should anchor to B4 and keep the selection.
       await waitFor(() =>
-        expect(element.selection).toEqual(
+        expect(element.worksheet.selection).toEqual(
           expect.objectContaining({
             activeCell: { column: 1, row: 3 },
             range: { left: 0, top: 1, right: 2, bottom: 3 }

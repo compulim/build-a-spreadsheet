@@ -45,7 +45,7 @@
 
       // THEN: Should land on C1.
       await waitFor(() =>
-        expect(element.selection).toEqual(
+        expect(element.worksheet.selection).toEqual(
           expect.objectContaining({
             activeCell: { column: 2, row: 0 },
             range: { left: 2, top: 0, right: 2, bottom: 0 }

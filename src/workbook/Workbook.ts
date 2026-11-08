@@ -16,7 +16,7 @@ type WorksheetApp = HTMLElement & { readonly worksheet: Worksheet };
  * Re-dispatches `change` (`WorksheetChangeEvent`) from all of its worksheets, and dispatches
  * `worksheetadd`, `worksheetremove` and `worksheetrename` (`WorksheetEvent`).
  */
-export class Workbook extends EventTarget {
+class Workbook extends EventTarget {
   #worksheets: Worksheet[] = [];
 
   #names: Map<Worksheet, string> = new Map();
@@ -158,8 +158,7 @@ export class Workbook extends EventTarget {
    * Removes a worksheet.
    */
   removeWorksheet(worksheetOrIndex: Worksheet | number): Worksheet {
-    const index =
-      typeof worksheetOrIndex === 'number' ? worksheetOrIndex : this.#worksheets.indexOf(worksheetOrIndex);
+    const index = typeof worksheetOrIndex === 'number' ? worksheetOrIndex : this.#worksheets.indexOf(worksheetOrIndex);
     const worksheet = this.#worksheets[index];
 
     if (!worksheet) {
@@ -218,3 +217,5 @@ export class Workbook extends EventTarget {
     return workbook;
   }
 }
+
+export { Workbook };

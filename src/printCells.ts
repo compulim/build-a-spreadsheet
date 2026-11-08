@@ -3,12 +3,12 @@ import type { CellValue } from './csv.ts';
 import { getHighlight } from './highlights.ts';
 import type { CellBorder, CellFormatting } from './worksheet/Worksheet.ts';
 
-export type GetFormatting = (column: number, row: number) => Partial<CellFormatting> | undefined;
-export type GetColumnSpan = (column: number, row: number) => number;
-export type GetRowSpan = (column: number, row: number) => number;
+type GetFormatting = (column: number, row: number) => Partial<CellFormatting> | undefined;
+type GetColumnSpan = (column: number, row: number) => number;
+type GetRowSpan = (column: number, row: number) => number;
 
 /** Target print resolution of the generated PNG. Change to e.g. 300 for smaller files. */
-export const PRINT_DPI = 600;
+const PRINT_DPI = 600;
 
 /** CSS pixels per inch, used to scale the SVG (in CSS pixels) to the target DPI. */
 const CSS_DPI = 96;
@@ -42,7 +42,7 @@ function escapeXML(text: string) {
  *   `getBorder` returns the border of a cell relative to the first cell, called with -1 and the column/row count for neighbors.
  *   `getFormatting` returns the formatting of a cell relative to the first cell.
  */
-export function cellsToSVG(
+function cellsToSVG(
   rows: readonly (readonly unknown[])[],
   {
     columnWidths = [],
@@ -124,13 +124,12 @@ export function cellsToSVG(
       const align =
         formatting?.align || (typeof value === 'number' ? 'right' : typeof value === 'boolean' ? 'center' : 'left');
 
-      parts.push(
-        `<rect x="${x}" y="${y}" width="${cellWidth}" height="${cellHeight}" fill="#fff" stroke="#c0c0c0"/>`
-      );
+      parts.push(`<rect x="${x}" y="${y}" width="${cellWidth}" height="${cellHeight}" fill="#fff" stroke="#c0c0c0"/>`);
 
       if (text) {
         const clipId = `c${rowIndex}_${columnIndex}`;
-        const textX = align === 'right' ? x + cellWidth - PADDING : align === 'center' ? x + cellWidth / 2 : x + PADDING;
+        const textX =
+          align === 'right' ? x + cellWidth - PADDING : align === 'center' ? x + cellWidth / 2 : x + PADDING;
         const decorations = [formatting?.underline && 'underline', formatting?.strikethrough && 'line-through']
           .filter(Boolean)
           .join(' ');
@@ -162,7 +161,8 @@ export function cellsToSVG(
             );
           }
 
-          const markerX = align === 'right' ? textX + MARKER_EXTEND : align === 'center' ? textX : textX - MARKER_EXTEND;
+          const markerX =
+            align === 'right' ? textX + MARKER_EXTEND : align === 'center' ? textX : textX - MARKER_EXTEND;
           const markerAttributes = attributes.replace(/ (?:text-decoration|fill)="[^"]*"/g, '');
 
           parts.push(
@@ -195,7 +195,7 @@ export function cellsToSVG(
 /**
  * Renders the cells into a PNG suitable for printing at the given DPI.
  */
-export async function cellsToPNG(
+async function cellsToPNG(
   rows: readonly (readonly unknown[])[],
   {
     dpi = PRINT_DPI,
@@ -243,3 +243,5 @@ export async function cellsToPNG(
     URL.revokeObjectURL(url);
   }
 }
+
+export { cellsToPNG, cellsToSVG, type GetColumnSpan, type GetFormatting, type GetRowSpan, PRINT_DPI };

@@ -1,3 +1,57 @@
-export { WorksheetApp } from './worksheet/WorksheetApp.ts';
-export { type Worksheet } from './worksheet/Worksheet.ts';
-export { type WorksheetChangeEvent } from './worksheet/WorksheetChangeEvent.ts';
+import type {
+  BorderEdges,
+  CellAlign,
+  CellBorder,
+  CellBorderChange,
+  CellChange,
+  CellFormatting,
+  CellFormattingChange,
+  CellInput,
+  CellMerge,
+  CellMergeChange,
+  CellMergeSize,
+  CellNumberFormat,
+  CellUpdater,
+  CellValue,
+  CellValueChange,
+  FormattingInput,
+  FormattingUpdater,
+  Worksheet,
+  WorksheetChange,
+  WorksheetEdit,
+  WorksheetRedo,
+  WorksheetUndo
+} from './worksheet/Worksheet.ts';
+import { WorksheetApp } from './worksheet/WorksheetApp.ts';
+import type { WorksheetChangeEvent } from './worksheet/WorksheetChangeEvent.ts';
+import { type CellPosition, type CellRange, WorksheetSelection } from './worksheet/WorksheetSelection.ts';
+
+export {
+  type BorderEdges,
+  type CellAlign,
+  type CellBorder,
+  type CellBorderChange,
+  type CellChange,
+  type CellFormatting,
+  type CellFormattingChange,
+  type CellInput,
+  type CellMerge,
+  type CellMergeChange,
+  type CellMergeSize,
+  type CellNumberFormat,
+  type CellPosition,
+  type CellRange,
+  type CellUpdater,
+  type CellValue,
+  type CellValueChange,
+  type FormattingInput,
+  type FormattingUpdater,
+  type Worksheet,
+  WorksheetApp,
+  type WorksheetChange,
+  type WorksheetChangeEvent,
+  type WorksheetEdit,
+  type WorksheetRedo,
+  WorksheetSelection,
+  type WorksheetUndo
+};

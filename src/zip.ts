@@ -4,7 +4,7 @@
  * Uses the native `CompressionStream`/`DecompressionStream` (`deflate-raw`) when available.
  * Supports "stored" (0) and "deflate" (8) methods. ZIP64 is not supported.
  */
-export type ZipEntry = { name: string; data: Uint8Array };
+type ZipEntry = { name: string; data: Uint8Array };
 
 const LOCAL_FILE_HEADER_SIGNATURE = 0x04034b50;
 const CENTRAL_DIRECTORY_SIGNATURE = 0x02014b50;
@@ -31,7 +31,7 @@ const CRC_TABLE = (() => {
   return table;
 })();
 
-export function crc32(data: Uint8Array): number {
+function crc32(data: Uint8Array): number {
   let crc = 0xffffffff;
 
   for (let index = 0; index < data.length; index++) {
@@ -67,7 +67,7 @@ function toDOSDateTime(date: Date): { date: number; time: number } {
 /**
  * Creates a ZIP archive.
  */
-export async function createZip(
+async function createZip(
   entries: ZipEntry[],
   { compress = true, date = new Date() }: { compress?: boolean; date?: Date } = {}
 ): Promise<Uint8Array> {
@@ -158,7 +158,7 @@ export async function createZip(
 /**
  * Reads all file entries (directories are skipped) from a ZIP archive.
  */
-export async function readZip(input: ArrayBuffer | Uint8Array): Promise<ZipEntry[]> {
+async function readZip(input: ArrayBuffer | Uint8Array): Promise<ZipEntry[]> {
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const decoder = new TextDecoder();
@@ -234,3 +234,5 @@ export async function readZip(input: ArrayBuffer | Uint8Array): Promise<ZipEntry
 
   return entries;
 }
+
+export { crc32, createZip, readZip, type ZipEntry };

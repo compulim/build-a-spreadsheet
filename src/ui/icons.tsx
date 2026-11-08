@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react';
 
 /** Octicons has no underline icon, this is drawn in the same 16×16 style. */
-export function UnderlineIcon({ size: sizeProp = 16 }: { size?: number | 'small' | 'medium' | 'large' }) {
+function UnderlineIcon({ size: sizeProp = 16 }: { size?: number | 'small' | 'medium' | 'large' }) {
   const size = typeof sizeProp === 'number' ? sizeProp : { small: 16, medium: 32, large: 64 }[sizeProp];
 
   return (
@@ -12,7 +12,7 @@ export function UnderlineIcon({ size: sizeProp = 16 }: { size?: number | 'small'
 }
 
 /** Letter "A" painted like a cell with the highlight. */
-export function MarkerIcon({ background, color }: { background?: string | undefined; color?: string | undefined }) {
+function MarkerIcon({ background, color }: { background?: string | undefined; color?: string | undefined }) {
   return (
     <span
       aria-hidden="true"
@@ -23,3 +23,5 @@ export function MarkerIcon({ background, color }: { background?: string | undefi
     </span>
   );
 }
+
+export { MarkerIcon, UnderlineIcon };

@@ -5,7 +5,7 @@ import type { CellNumberFormat, CellValue } from './worksheet/Worksheet.ts';
  * Formats a cell value for display. Only finite numbers are affected by `format`. Decorations (the currency sign,
  * parentheses around negative currency and the percent sign) are not part of `text`, they are added by CSS.
  */
-export function formatDisplayValue(
+function formatDisplayValue(
   value: CellValue | undefined,
   format: CellNumberFormat | undefined
 ): { text: string; negative: boolean } {
@@ -50,3 +50,5 @@ export function formatDisplayValue(
     }
   }
 }
+
+export { formatDisplayValue };
