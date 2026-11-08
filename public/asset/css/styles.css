@@ -107,12 +107,12 @@ body {
   position: relative;
 }
 
-compulim-worksheet {
+worksheet-app {
   display: block;
   height: 100%;
 }
 
-compulim-worksheet[hidden] {
+worksheet-app[hidden] {
   display: none;
 }
 

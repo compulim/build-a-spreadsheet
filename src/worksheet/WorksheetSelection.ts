@@ -7,7 +7,7 @@ export type CellRange = {
 };
 
 /**
- * An immutable selection of a `<compulim-worksheet>`: the active cell and the selected range containing it.
+ * An immutable selection of a `<worksheet-app>`: the active cell and the selected range containing it.
  *
  * Get it from `element.selection`, set `element.selection = new WorksheetSelection(...)` to select. When set, the range is
  * expanded to cover merged cells partially in it, and the active cell is moved to the top-left cell of its merged cell.

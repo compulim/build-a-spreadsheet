@@ -62,13 +62,13 @@ const zip = await workbook.toZip(); // Uint8Array, one "<sheet name>.csv" per wo
 const loaded = await Workbook.fromZip(zip);
 ```
 
-In a browser where `<compulim-worksheet>` ([`src/worksheet/WorksheetElement.ts`](src/worksheet/WorksheetElement.ts)) is defined, the workbook instantiates one element per worksheet. The element renders the grid, handles user interactions, and wholly owns the worksheet. Its public members are the read-only `worksheet` property, `selection`, `undo()`, `redo()`, `canUndo` and `canRedo`:
+In a browser where `<worksheet-app>` ([`src/worksheet/WorksheetApp.ts`](src/worksheet/WorksheetApp.ts)) is defined, the workbook instantiates one element per worksheet. The element renders the grid, handles user interactions, and wholly owns the worksheet. Its public members are the read-only `worksheet` property, `selection`, `undo()`, `redo()`, `canUndo` and `canRedo`:
 
 ```js
-import './src/worksheet/WorksheetElement.ts';
+import './src/worksheet/WorksheetApp.ts';
 
 const worksheet = workbook.addWorksheet('Hello');
-const element = workbook.getWorksheetElement(worksheet); // <compulim-worksheet>, element.worksheet === worksheet
+const element = workbook.getWorksheetApp(worksheet); // <worksheet-app>, element.worksheet === worksheet
 
 element.setAttribute('locked-row-count', '1'); // Number of lockable rows, can be changed at any time
 element.setAttribute('locked-column-count', '1'); // Number of lockable columns
@@ -102,7 +102,7 @@ element.selection = new WorksheetSelection({ column: 0, row: 0 }, { left: 0, top
 | `Worksheet#getColumnWidth(x)` | Column width in pixels. |
 | `Worksheet#setColumnWidth(x, width)` | Sets a column width in pixels, outside of `edit()`: not undoable and does not change `version`. Dispatches `columnwidthchange` (`CustomEvent`, `detail` of `{ x, width, previousWidth }`) if changed. |
 | `Worksheet#toCSV()` / `Worksheet.fromCSV(text)` | CSV serialization. |
-| `Workbook#addWorksheet(name?, index?)` / `Workbook#getWorksheetElement(worksheet)` / `Workbook#removeWorksheet(worksheetOrIndex)` | Manage up to 50 sheets. |
+| `Workbook#addWorksheet(name?, index?)` / `Workbook#getWorksheetApp(worksheet)` / `Workbook#removeWorksheet(worksheetOrIndex)` | Manage up to 50 sheets. |
 | `Workbook#getWorksheetName(worksheet)` / `Workbook#renameWorksheet(worksheet, name)` | Sheet names are owned by the workbook. |
 | `Workbook#worksheets` / `Workbook#getWorksheet(nameOrIndex)` | Access sheets. |
 | `Workbook#toZip()` / `Workbook.fromZip(data)` | ZIP of CSV files. |

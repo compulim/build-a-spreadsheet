@@ -4,7 +4,7 @@ import { cellsToPNG } from './printCells.ts';
 import { MAX_WORKSHEETS } from './workbook/constants.ts';
 import { getColumnName } from './worksheet/getColumnName.ts';
 import { Workbook } from './workbook/Workbook.ts';
-import { WorksheetElement } from './worksheet/WorksheetElement.ts';
+import { WorksheetApp } from './worksheet/WorksheetApp.ts';
 import { WorksheetSelection } from './worksheet/WorksheetSelection.ts';
 import { mountUI } from './ui/mountUI.tsx';
 import type { BorderPreset, CellStyle, ToolbarActions } from './ui/Toolbar.tsx';
@@ -79,17 +79,17 @@ const gridContainer = document.getElementById('grid-container') as HTMLElement;
 const sheetTabs = document.getElementById('sheet-tabs') as HTMLElement;
 const addSheetButton = document.getElementById('add-sheet-button') as HTMLButtonElement;
 
-/** `<compulim-worksheet>` of the active worksheet. */
-let activeElement: WorksheetElement | undefined;
+/** `<worksheet-app>` of the active worksheet. */
+let activeElement: WorksheetApp | undefined;
 
 let locked = false;
 
 function getElement(worksheet: Worksheet) {
-  return workbook.getWorksheetElement(worksheet) as WorksheetElement;
+  return workbook.getWorksheetApp(worksheet) as WorksheetApp;
 }
 
 /**
- * Shows the `<compulim-worksheet>` instantiated by the workbook for a worksheet.
+ * Shows the `<worksheet-app>` instantiated by the workbook for a worksheet.
  */
 function mountWorksheet(worksheet: Worksheet) {
   const element = getElement(worksheet);
@@ -411,7 +411,7 @@ function mergeSelection() {
       );
 
       // Keeps all cells of the unmerged cells selected, the selection may be only the merged cell itself.
-      (activeElement as WorksheetElement).selection = new WorksheetSelection(
+      (activeElement as WorksheetApp).selection = new WorksheetSelection(
         { column: left, row: top },
         { left, top, right, bottom }
       );

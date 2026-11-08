@@ -3,11 +3,11 @@ import { formatValue, inferValue, parseTSV, stringifyTSV } from '../csv.ts';
 import { getHighlight } from '../highlights.ts';
 import { formatDisplayValue } from '../numberFormats.ts';
 import { getColumnName } from './getColumnName.ts';
+import type { CellFormatting, CellValue } from './Worksheet.ts';
 import { Worksheet } from './Worksheet.ts';
+import type { WorksheetChangeEvent } from './WorksheetChangeEvent.ts';
 import { WorksheetHistory } from './WorksheetHistory.ts';
 import { WorksheetSelection } from './WorksheetSelection.ts';
-import type { CellFormatting, CellValue } from './Worksheet.ts';
-import type { WorksheetChangeEvent } from './WorksheetChangeEvent.ts';
 
 export type { CellValue };
 export type CellPosition = { readonly column: number; readonly row: number };
@@ -121,7 +121,7 @@ function isSameSelection(
 }
 
 /**
- * `<compulim-worksheet>`, a virtualized spreadsheet grid showing the `Worksheet` it owns. Only the visible rows (plus a
+ * `<worksheet-app>`, a virtualized spreadsheet grid showing the `Worksheet` it owns. Only the visible rows (plus a
  * few extra) are in the DOM, while the scrolling itself is handled by the browser using a native scrollbar on the element
  * sized to the full worksheet.
  *
@@ -137,7 +137,7 @@ function isSameSelection(
  * Events: `selectionchange`, `historychange` (undo/redo availability may have changed) and `lockedit` (`CustomEvent`
  * with the `{ column, row }` of the locked cell).
  */
-export class WorksheetElement extends HTMLElement {
+export class WorksheetApp extends HTMLElement {
   static observedAttributes = ['locked', 'locked-column-count', 'locked-row-count'];
 
   readonly #worksheet = new Worksheet();
@@ -1979,4 +1979,4 @@ export class WorksheetElement extends HTMLElement {
   // #endregion
 }
 
-customElements.get('compulim-worksheet') || customElements.define('compulim-worksheet', WorksheetElement);
+customElements.get('worksheet-app') || customElements.define('worksheet-app', WorksheetApp);
