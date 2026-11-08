@@ -1,5 +1,6 @@
 import { formatValue } from './csv.ts';
 import { HIGHLIGHTS } from './highlights.ts';
+import { parseHighlight, stringifyHighlight } from './worksheet/highlight.ts';
 import { cellsToPNG } from './printCells.ts';
 import { MAX_WORKSHEETS } from './workbook/constants.ts';
 import { getColumnName } from './worksheet/getColumnName.ts';
@@ -40,7 +41,7 @@ const toolbarActions: ToolbarActions = {
   setAlign: align => formatSelection(formatting => ({ ...formatting, align })),
   setBorder: preset => setBorder(preset),
   setFormat: format => formatSelection(formatting => ({ ...formatting, format })),
-  setHighlight: highlight => formatSelection(formatting => ({ ...formatting, highlight })),
+  setHighlight: highlight => formatSelection(formatting => ({ ...formatting, highlight: parseHighlight(highlight) })),
   setLocked: nextLocked => setLocked(nextLocked),
   toggleStyle: style => {
     const value = !isFormattingAppliedToSelection(formatting => !!formatting?.[style]);
@@ -315,7 +316,10 @@ function updateFormattingButtons() {
     align: ALIGNS.find(align => isFormattingAppliedToSelection(formatting => formatting?.align === align)),
     format: FORMATS.find(format => isFormattingAppliedToSelection(formatting => formatting?.format === format)),
     highlight: HIGHLIGHTS.find(({ value }) =>
-      isFormattingAppliedToSelection(formatting => formatting?.highlight === value)
+      isFormattingAppliedToSelection(
+        formatting =>
+          !!formatting?.highlight && stringifyHighlight(formatting.highlight).toLowerCase() === value.toLowerCase()
+      )
     )?.value,
     merged: isSelectionMerged(),
     styles

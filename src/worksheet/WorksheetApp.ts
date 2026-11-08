@@ -1,6 +1,5 @@
 import { calculate } from '../calculator.ts';
 import { formatValue, inferValue, parseTSV, stringifyTSV } from '../csv.ts';
-import { parseHighlight } from './highlight.ts';
 import { formatDisplayValue } from './numberFormats.ts';
 import { getColumnName } from './getColumnName.ts';
 import type { CellFormatting, CellValue } from './Worksheet.ts';
@@ -1008,7 +1007,7 @@ class WorksheetApp extends HTMLElement {
         align ? (cell.dataset['align'] = align) : delete cell.dataset['align'];
       }
 
-      const highlight = parseHighlight(formatting?.highlight);
+      const highlight = formatting?.highlight;
       const background = highlight?.background || '';
       const color = highlight?.color || '';
 

@@ -40,9 +40,9 @@ test('cellsToSVG renders formatting', () => {
   const { svg } = cellsToSVG([['a', 1, true]], {
     getFormatting: column =>
       column === 0
-        ? { bold: true, italic: true, underline: true, strikethrough: true, align: 'center', highlight: '#c6efce/' }
+        ? { bold: true, italic: true, underline: true, strikethrough: true, align: 'center', highlight: { background: '#c6efce', color: '' } }
         : column === 1
-          ? { align: 'left', highlight: '#ffdddd/#f70000' }
+          ? { align: 'left', highlight: { background: '#ffdddd', color: '#f70000' } }
           : undefined
   });
 
