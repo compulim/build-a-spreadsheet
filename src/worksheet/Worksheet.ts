@@ -10,6 +10,7 @@ import {
   looseObject,
   minValue,
   nullish,
+  optional,
   number,
   picklist,
   pipe,
@@ -94,13 +95,13 @@ const nonNegativeFiniteSchema = pipe(number(), finite(), minValue(0));
 const cellInputSchema = nullish(union([boolean(), pipe(number(), finite()), string()]));
 const formattingInputSchema = nullish(
   looseObject({
-    bold: nullish(boolean()),
-    italic: nullish(boolean()),
-    underline: nullish(boolean()),
-    strikethrough: nullish(boolean()),
-    align: nullish(picklist(['left', 'center', 'right'])),
-    highlight: nullish(highlightSchema),
-    format: nullish(picklist(NUMBER_FORMATS))
+    bold: optional(boolean()),
+    italic: optional(boolean()),
+    underline: optional(boolean()),
+    strikethrough: optional(boolean()),
+    align: optional(picklist(['left', 'center', 'right'])),
+    highlight: optional(highlightSchema),
+    format: optional(picklist(NUMBER_FORMATS))
   })
 );
 
