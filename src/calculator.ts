@@ -3,7 +3,7 @@
  *
  * Returns the computed number, or `undefined` if the expression is invalid or the result is not finite.
  */
-export function calculate(expression: string): number | undefined {
+function calculate(expression: string): number | undefined {
   const tokens = expression.match(/\d+\.?\d*(?:[eE][-+]?\d+)?|\.\d+(?:[eE][-+]?\d+)?|[-+*/()]|\S/gu) || [];
   let index = 0;
 
@@ -65,3 +65,5 @@ export function calculate(expression: string): number | undefined {
     return undefined;
   }
 }
+
+export { calculate };

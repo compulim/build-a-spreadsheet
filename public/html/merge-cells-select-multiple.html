@@ -47,7 +47,7 @@
 
       // THEN: Should select A2..E4 with A2 as the active cell.
       await waitFor(() =>
-        expect(element.selection).toEqual(
+        expect(element.worksheet.selection).toEqual(
           expect.objectContaining({
             activeCell: { column: 0, row: 1 },
             range: { left: 0, top: 1, right: 4, bottom: 3 }

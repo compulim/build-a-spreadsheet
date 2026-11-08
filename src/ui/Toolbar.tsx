@@ -21,11 +21,10 @@ import { HIGHLIGHTS } from '../highlights.ts';
 import type { CellAlign, CellNumberFormat } from '../worksheet/Worksheet.ts';
 import { MarkerIcon, UnderlineIcon } from './icons.tsx';
 
-export type { CellAlign, CellNumberFormat };
-export type CellStyle = 'bold' | 'italic' | 'underline' | 'strikethrough';
-export type BorderPreset = 'left' | 'right' | 'top' | 'bottom' | 'outside' | 'all' | 'none';
+type CellStyle = 'bold' | 'italic' | 'underline' | 'strikethrough';
+type BorderPreset = 'left' | 'right' | 'top' | 'bottom' | 'outside' | 'all' | 'none';
 
-export type ToolbarState = {
+type ToolbarState = {
   align: CellAlign | undefined;
   canRedo: boolean;
   canUndo: boolean;
@@ -39,7 +38,7 @@ export type ToolbarState = {
   valueBox: string;
 };
 
-export type ToolbarActions = {
+type ToolbarActions = {
   merge(): void;
   open(): void;
   print(): void;
@@ -56,7 +55,7 @@ export type ToolbarActions = {
   unformat(): void;
 };
 
-export type ToolbarStore = {
+type ToolbarStore = {
   getState(): ToolbarState;
   subscribe(listener: () => void): () => void;
 };
@@ -101,7 +100,7 @@ const BORDERS: readonly { preset: BorderPreset; label: string }[] = [
 /**
  * `returnFocusRef` is where focus goes after a menu closes, i.e. the grid.
  */
-export function Toolbar({
+function Toolbar({
   actions,
   returnFocusRef,
   store
@@ -215,7 +214,11 @@ export function Toolbar({
             />
           </ActionBar.Group>
         </ActionBar>
-        <SegmentedControl aria-label="Alignment" onChange={index => actions.setAlign(ALIGNS[index]!.align)} size="small">
+        <SegmentedControl
+          aria-label="Alignment"
+          onChange={index => actions.setAlign(ALIGNS[index]!.align)}
+          size="small"
+        >
           {ALIGNS.map(({ align, description, label }) => (
             <SegmentedControl.Button key={label} selected={align === state.align} title={description}>
               {label}
@@ -285,3 +288,14 @@ export function Toolbar({
     </div>
   );
 }
+
+export {
+  type BorderPreset,
+  type CellAlign,
+  type CellNumberFormat,
+  type CellStyle,
+  Toolbar,
+  type ToolbarActions,
+  type ToolbarState,
+  type ToolbarStore
+};

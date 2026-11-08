@@ -62,7 +62,7 @@ const zip = await workbook.toZip(); // Uint8Array, one "<sheet name>.csv" per wo
 const loaded = await Workbook.fromZip(zip);
 ```
 
-In a browser where `<worksheet-app>` ([`src/worksheet/WorksheetApp.ts`](src/worksheet/WorksheetApp.ts)) is defined, the workbook instantiates one element per worksheet. The element renders the grid, handles user interactions, and wholly owns the worksheet. Its public members are the read-only `worksheet` property, `selection`, `undo()`, `redo()`, `canUndo` and `canRedo`:
+In a browser where `<worksheet-app>` ([`src/worksheet/WorksheetApp.ts`](src/worksheet/WorksheetApp.ts)) is defined, the workbook instantiates one element per worksheet. The element renders the grid, handles user interactions, and wholly owns the worksheet. Its only public member is the read-only `worksheet` property:
 
 ```js
 import './src/worksheet/WorksheetApp.ts';
@@ -77,17 +77,17 @@ element.toggleAttribute('locked', true); // Locks row 1
 worksheet.edit(edit => edit.setValue(0, 1, 'Hello')); // The grid updates
 ```
 
-The element keeps the undo history: it subscribes to the change events of its worksheet and remembers the `undo()` object of each `edit()` transaction (and the `redo()` object returned by undoing it) in a stack. The history logic lives in [`src/worksheet/WorksheetHistory.ts`](src/worksheet/WorksheetHistory.ts), which has no DOM dependency. The selection is an immutable [`WorksheetSelection`](src/worksheet/WorksheetSelection.ts):
+The worksheet keeps the undo history: it subscribes to its own change events and remembers the `undo()` object of each `edit()` transaction (and the `redo()` object returned by undoing it) in a stack. The history logic lives in [`src/worksheet/WorksheetHistory.ts`](src/worksheet/WorksheetHistory.ts). The worksheet also keeps the selection, an immutable [`WorksheetSelection`](src/worksheet/WorksheetSelection.ts). The selection is not data: it is set outside of `edit()`, is not undoable and does not change `version`. The element shows the selection of its worksheet:
 
 ```js
 import { WorksheetSelection } from './src/worksheet/WorksheetSelection.ts';
 
-element.undo(); // true, reverted and selected the changed cells; false if nothing to undo
-element.redo();
-element.canUndo; // Re-check `canUndo` / `canRedo` on the element's `historychange` event
+worksheet.undo(); // true, reverted and selected the changed cells; false if nothing to undo
+worksheet.redo();
+worksheet.canUndo; // Re-check `canUndo` / `canRedo` on the worksheet's `historychange` event
 
-element.selection; // WorksheetSelection { activeCell: { column, row }, range: { left, top, right, bottom } }
-element.selection = new WorksheetSelection({ column: 0, row: 0 }, { left: 0, top: 0, right: 2, bottom: 1 }); // Selects A1:C2
+worksheet.selection; // WorksheetSelection { activeCell: { column, row }, range: { left, top, right, bottom } }
+worksheet.selection = new WorksheetSelection({ column: 0, row: 0 }, { left: 0, top: 0, right: 2, bottom: 1 }); // Selects A1:C2
 ```
 
 | Member | Description |
@@ -102,6 +102,8 @@ element.selection = new WorksheetSelection({ column: 0, row: 0 }, { left: 0, top
 | `Worksheet#getColumnWidth(x)` | Column width in pixels. |
 | `Worksheet#setColumnWidth(x, width)` | Sets a column width in pixels, outside of `edit()`: not undoable and does not change `version`. Dispatches `columnwidthchange` (`CustomEvent`, `detail` of `{ x, width, previousWidth }`) if changed. |
 | `Worksheet#toCSV()` / `Worksheet.fromCSV(text)` | CSV serialization. |
+| `Worksheet#selection` | The `WorksheetSelection`, set it to select cells outside of `edit()`. It is clamped, the active cell moves to the top-left cell of its merged cell and the range expands to cover merged cells. Dispatches `selectionchange` if changed. |
+| `Worksheet#undo()` / `Worksheet#redo()` / `Worksheet#canUndo` / `Worksheet#canRedo` | Undo history of the transactions, undoing or redoing selects the changed cells. Dispatches `historychange` asynchronously when `canUndo` / `canRedo` may have changed. |
 | `Workbook#addWorksheet(name?, index?)` / `Workbook#getWorksheetApp(worksheet)` / `Workbook#removeWorksheet(worksheetOrIndex)` | Manage up to 50 sheets. |
 | `Workbook#getWorksheetName(worksheet)` / `Workbook#renameWorksheet(worksheet, name)` | Sheet names are owned by the workbook. |
 | `Workbook#worksheets` / `Workbook#getWorksheet(nameOrIndex)` | Access sheets. |

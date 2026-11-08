@@ -98,9 +98,11 @@ function mountWorksheet(worksheet: Worksheet) {
   element.setAttribute('locked-row-count', String(LOCKED_ROW_COUNT));
   element.toggleAttribute('locked', locked);
   element.hidden = true;
-  element.addEventListener('selectionchange', () => element === activeElement && updateSelectionInfo());
+  // The active cell value may have changed.
+  worksheet.addEventListener('change', () => element === activeElement && updateSelectionInfo());
+  worksheet.addEventListener('selectionchange', () => element === activeElement && updateSelectionInfo());
+  worksheet.addEventListener('historychange', () => element === activeElement && updateUndoButtons());
   element.addEventListener('lockedit', () => showStatus('Some cells are locked and cannot be edited.'));
-  element.addEventListener('historychange', () => element === activeElement && updateUndoButtons());
   gridContainer.append(element);
 }
 
@@ -110,7 +112,7 @@ function handleWorksheetAdd(event: Event) {
 
 /** Active cell and selection of the active worksheet. */
 function getSelection() {
-  return activeElement ? activeElement.selection : new WorksheetSelection({ column: 0, row: 0 });
+  return activeElement ? activeElement.worksheet.selection : new WorksheetSelection({ column: 0, row: 0 });
 }
 
 /**
@@ -411,10 +413,7 @@ function mergeSelection() {
       );
 
       // Keeps all cells of the unmerged cells selected, the selection may be only the merged cell itself.
-      (activeElement as WorksheetApp).selection = new WorksheetSelection(
-        { column: left, row: top },
-        { left, top, right, bottom }
-      );
+      worksheet.selection = new WorksheetSelection({ column: left, row: top }, { left, top, right, bottom });
     } else {
       worksheet.edit(edit => edit.mergeCells(left, top, right - left + 1, bottom - top + 1));
     }
@@ -428,13 +427,13 @@ function mergeSelection() {
 }
 
 function updateUndoButtons() {
-  const { canUndo, canRedo } = activeElement ?? { canUndo: false, canRedo: false };
+  const { canUndo, canRedo } = activeElement?.worksheet ?? { canUndo: false, canRedo: false };
 
   ui.update({ canRedo, canUndo });
 }
 
 function undoOrRedo(action: 'undo' | 'redo') {
-  if (activeElement && activeElement[action]()) {
+  if (activeElement?.worksheet[action]()) {
     updateFormattingButtons();
     updateSelectionInfo();
   }

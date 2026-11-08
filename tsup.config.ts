@@ -3,7 +3,7 @@ import { defineConfig } from 'tsup';
 export default defineConfig({
   entry: {
     app: './src/app.ts',
-    worksheet: './src/worksheet/WorksheetApp.ts'
+    worksheet: './src/worksheet.ts'
   },
   env: {
     NODE_ENV: 'production'

@@ -1,11 +1,14 @@
 import type { Worksheet } from './Worksheet.ts';
 
-export class WorksheetEvent extends Event {
+class WorksheetEvent extends Event {
   readonly worksheet: Worksheet;
   readonly index: number;
   readonly previousName: string | undefined;
 
-  constructor(type: string, { worksheet, index, previousName }: { worksheet: Worksheet; index: number; previousName?: string }) {
+  constructor(
+    type: string,
+    { worksheet, index, previousName }: { worksheet: Worksheet; index: number; previousName?: string }
+  ) {
     super(type);
 
     this.worksheet = worksheet;
@@ -13,3 +16,5 @@ export class WorksheetEvent extends Event {
     this.previousName = previousName;
   }
 }
+
+export { WorksheetEvent };

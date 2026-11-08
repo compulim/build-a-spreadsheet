@@ -5,7 +5,7 @@ import type { WorksheetChangeEvent } from './WorksheetChangeEvent.ts';
  * Undo/redo history of a `Worksheet`. It remembers the `undo()` objects of `edit()` transactions (from the `change`
  * event) and the `redo()` objects returned by undoing them. Loading from CSV clears the history.
  */
-export class WorksheetHistory {
+class WorksheetHistory {
   #undoStack: WorksheetUndo[] = [];
 
   #redoStack: WorksheetRedo[] = [];
@@ -75,3 +75,5 @@ export class WorksheetHistory {
     return true;
   }
 }
+
+export { WorksheetHistory };

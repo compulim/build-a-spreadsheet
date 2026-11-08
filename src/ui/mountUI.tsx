@@ -13,7 +13,7 @@ import type { ToolbarActions, ToolbarState } from './Toolbar.tsx';
  *
  * @param returnFocusRef Element to focus after a toolbar menu closes.
  */
-export function mountUI(
+function mountUI(
   container: HTMLElement,
   actions: ToolbarActions,
   initialState: ToolbarState,
@@ -70,3 +70,5 @@ export function mountUI(
     }
   };
 }
+
+export { mountUI };

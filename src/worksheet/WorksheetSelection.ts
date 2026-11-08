@@ -1,5 +1,5 @@
-export type CellPosition = { readonly column: number; readonly row: number };
-export type CellRange = {
+type CellPosition = { readonly column: number; readonly row: number };
+type CellRange = {
   readonly left: number;
   readonly top: number;
   readonly right: number;
@@ -7,12 +7,12 @@ export type CellRange = {
 };
 
 /**
- * An immutable selection of a `<worksheet-app>`: the active cell and the selected range containing it.
+ * An immutable selection of a `Worksheet`: the active cell and the selected range containing it.
  *
- * Get it from `element.selection`, set `element.selection = new WorksheetSelection(...)` to select. When set, the range is
+ * Get it from `worksheet.selection`, set `worksheet.selection = new WorksheetSelection(...)` to select. When set, the range is
  * expanded to cover merged cells partially in it, and the active cell is moved to the top-left cell of its merged cell.
  */
-export class WorksheetSelection {
+class WorksheetSelection {
   /**
    * @param range Defaults to the active cell. Must contain the active cell.
    */
@@ -57,3 +57,5 @@ export class WorksheetSelection {
     };
   }
 }
+
+export { type CellPosition, type CellRange, WorksheetSelection };

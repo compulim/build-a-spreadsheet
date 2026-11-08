@@ -2,7 +2,7 @@
  * Helpers for parsing and serializing delimited text (CSV and the TSV used by
  * Excel / Excel Web App on the clipboard).
  */
-export type CellValue = boolean | number | string;
+type CellValue = boolean | number | string;
 
 const NUMBER_PATTERN = /^[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?$/;
 
@@ -11,7 +11,7 @@ const NUMBER_PATTERN = /^[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?$/;
  * Numbers become `number`, `TRUE`/`FALSE` (case-insensitive) become `boolean`,
  * everything else is kept as `string`.
  */
-export function inferValue(text: string): CellValue {
+function inferValue(text: string): CellValue {
   if (text === '') {
     return '';
   }
@@ -40,7 +40,7 @@ export function inferValue(text: string): CellValue {
 /**
  * Converts a cell value into its textual representation (same as Excel).
  */
-export function formatValue(value: CellValue | null | undefined): string {
+function formatValue(value: CellValue | null | undefined): string {
   if (typeof value === 'boolean') {
     return value ? 'TRUE' : 'FALSE';
   }
@@ -52,7 +52,7 @@ export function formatValue(value: CellValue | null | undefined): string {
  * Parses delimited text (RFC 4180). Fields may be quoted with `"` and quotes inside quoted fields are escaped as `""`.
  * Accepts `\r\n`, `\n` and `\r` as line separators. A trailing line separator does not produce an extra empty row.
  */
-export function parseDelimited(text: string, delimiter: string = ','): string[][] {
+function parseDelimited(text: string, delimiter: string = ','): string[][] {
   const rows: string[][] = [];
 
   if (text.charCodeAt(0) === 0xfeff) {
@@ -140,7 +140,7 @@ export function parseDelimited(text: string, delimiter: string = ','): string[][
 /**
  * Serializes rows of values into delimited text (RFC 4180).
  */
-export function stringifyDelimited(rows: CellValue[][], delimiter: string = ',', lineSeparator: string = '\r\n'): string {
+function stringifyDelimited(rows: CellValue[][], delimiter: string = ',', lineSeparator: string = '\r\n'): string {
   return rows
     .map(row =>
       row
@@ -159,14 +159,14 @@ export function stringifyDelimited(rows: CellValue[][], delimiter: string = ',',
 /**
  * Parses CSV text into rows of typed values.
  */
-export function parseCSV(text: string): CellValue[][] {
+function parseCSV(text: string): CellValue[][] {
   return parseDelimited(text, ',').map(row => row.map(inferValue));
 }
 
 /**
  * Serializes rows of values into CSV text.
  */
-export function stringifyCSV(rows: CellValue[][]): string {
+function stringifyCSV(rows: CellValue[][]): string {
   const text = stringifyDelimited(rows, ',');
 
   return text && `${text}\r\n`;
@@ -175,13 +175,25 @@ export function stringifyCSV(rows: CellValue[][]): string {
 /**
  * Parses tab-separated text from the clipboard (as copied from Excel or Excel Web App) into rows of typed values.
  */
-export function parseTSV(text: string): CellValue[][] {
+function parseTSV(text: string): CellValue[][] {
   return parseDelimited(text, '\t').map(row => row.map(inferValue));
 }
 
 /**
  * Serializes rows of values into tab-separated text suitable for pasting into Excel.
  */
-export function stringifyTSV(rows: CellValue[][]): string {
+function stringifyTSV(rows: CellValue[][]): string {
   return stringifyDelimited(rows, '\t');
 }
+
+export {
+  type CellValue,
+  formatValue,
+  inferValue,
+  parseCSV,
+  parseDelimited,
+  parseTSV,
+  stringifyCSV,
+  stringifyDelimited,
+  stringifyTSV
+};

@@ -1,7 +1,7 @@
 import type { Worksheet, WorksheetChange, WorksheetUndo } from './Worksheet.ts';
 
 /** Dispatched once per `Worksheet#edit()` transaction, with all of its changes in order. */
-export class WorksheetChangeEvent extends Event {
+class WorksheetChangeEvent extends Event {
   readonly changes: readonly WorksheetChange[];
   /** `true` if the transaction loaded CSV, which is not meant to be undoable. */
   readonly load: boolean;
@@ -26,3 +26,5 @@ export class WorksheetChangeEvent extends Event {
     this.worksheet = worksheet;
   }
 }
+
+export { WorksheetChangeEvent };

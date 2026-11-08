@@ -1,29 +1,31 @@
 import { formatValue, parseCSV, stringifyCSV } from '../csv.ts';
 import { WorksheetChangeEvent } from './WorksheetChangeEvent.ts';
+import { WorksheetHistory } from './WorksheetHistory.ts';
+import { type CellPosition, type CellRange, WorksheetSelection } from './WorksheetSelection.ts';
 import { COLUMN_COUNT, COLUMN_WIDTH, ROW_COUNT } from './constants.ts';
 import mathRandomString from './private/mathRandomString.ts';
 
-export type CellValue = boolean | number | string;
-export type CellBorder = { top: boolean; right: boolean; bottom: boolean; left: boolean };
-export type BorderEdges = 'left' | 'right' | 'top' | 'bottom' | 'outside' | 'inside';
-export type CellValueChange = { type: 'value'; x: number; y: number; value: CellValue; previousValue: CellValue };
-export type CellFormattingChange = {
+type CellValue = boolean | number | string;
+type CellBorder = { top: boolean; right: boolean; bottom: boolean; left: boolean };
+type BorderEdges = 'left' | 'right' | 'top' | 'bottom' | 'outside' | 'inside';
+type CellValueChange = { type: 'value'; x: number; y: number; value: CellValue; previousValue: CellValue };
+type CellFormattingChange = {
   type: 'formatting';
   x: number;
   y: number;
   formatting: CellFormatting;
   previousFormatting: CellFormatting;
 };
-export type CellMergeSize = { width: number; height: number };
-export type CellMergeChange = {
+type CellMergeSize = { width: number; height: number };
+type CellMergeChange = {
   type: 'merge';
   x: number;
   y: number;
   merge: CellMergeSize | undefined;
   previousMerge: CellMergeSize | undefined;
 };
-export type CellMerge = { x: number; y: number; width: number; height: number };
-export type CellBorderChange = {
+type CellMerge = { x: number; y: number; width: number; height: number };
+type CellBorderChange = {
   type: 'border';
   x: number;
   y: number;
@@ -31,20 +33,26 @@ export type CellBorderChange = {
   border: boolean;
   previousBorder: boolean;
 };
-export type CellChange = CellValueChange | CellFormattingChange | CellMergeChange | CellBorderChange;
-export type WorksheetChange = CellChange;
-export type CellInput = CellValue | null | undefined;
-export type WorksheetUndo = { undo(): WorksheetRedo };
-export type WorksheetRedo = { redo(): WorksheetUndo };
-export type CellUpdater = (value: CellValue | undefined, x: number, y: number) => CellInput;
-export type CellAlign = 'left' | 'center' | 'right';
-export type CellNumberFormat = 'currency' | 'date' | 'datetime' | 'duration' | 'percent';
+type CellChange = CellValueChange | CellFormattingChange | CellMergeChange | CellBorderChange;
+type WorksheetChange = CellChange;
+type CellInput = CellValue | null | undefined;
+type WorksheetUndo = { undo(): WorksheetRedo };
+type WorksheetRedo = { redo(): WorksheetUndo };
+type CellUpdater = (value: CellValue | undefined, x: number, y: number) => CellInput;
+type CellAlign = 'left' | 'center' | 'right';
+type CellNumberFormat = 'currency' | 'date' | 'datetime' | 'duration' | 'percent';
 /**
  * Editing functions, only usable inside the `edit()` callback.
  */
-export type WorksheetEdit = {
+type WorksheetEdit = {
   setValue(x: number, y: number, valueOrUpdater: CellInput | CellUpdater): void;
-  setValues(valuesOrUpdater: CellInput[][] | CellUpdater, x?: number, y?: number, width?: number, height?: number): void;
+  setValues(
+    valuesOrUpdater: CellInput[][] | CellUpdater,
+    x?: number,
+    y?: number,
+    width?: number,
+    height?: number
+  ): void;
   setFormattings(
     formattingsOrUpdater: FormattingInput[][] | FormattingUpdater,
     x?: number,
@@ -68,7 +76,7 @@ const NUMBER_FORMATS: string[] = ['currency', 'date', 'datetime', 'duration', 'p
  * `highlight` is the name of a highlight (background/foreground color combination), `undefined` when not set.
  * `format` is how numbers are displayed, `undefined` when not set (as-is).
  */
-export type CellFormatting = {
+type CellFormatting = {
   bold: boolean;
   italic: boolean;
   underline: boolean;
@@ -77,8 +85,8 @@ export type CellFormatting = {
   highlight: string | undefined;
   format: CellNumberFormat | undefined;
 };
-export type FormattingInput = Partial<CellFormatting> | null | undefined;
-export type FormattingUpdater = (formatting: CellFormatting, x: number, y: number) => FormattingInput;
+type FormattingInput = Partial<CellFormatting> | null | undefined;
+type FormattingUpdater = (formatting: CellFormatting, x: number, y: number) => FormattingInput;
 
 const DEFAULT_FORMATTING: Readonly<CellFormatting> = Object.freeze({
   bold: false,
@@ -89,6 +97,21 @@ const DEFAULT_FORMATTING: Readonly<CellFormatting> = Object.freeze({
   highlight: undefined,
   format: undefined
 });
+
+function isSameSelection(
+  { activeCell, range }: WorksheetSelection,
+  { column, row }: CellPosition,
+  { left, top, right, bottom }: CellRange
+): boolean {
+  return (
+    activeCell.column === column &&
+    activeCell.row === row &&
+    range.left === left &&
+    range.top === top &&
+    range.right === right &&
+    range.bottom === bottom
+  );
+}
 
 /**
  * A single worksheet of 50 columns by 10,000 rows (by default). Values are stored sparsely.
@@ -111,8 +134,14 @@ const DEFAULT_FORMATTING: Readonly<CellFormatting> = Object.freeze({
  * Every transaction with changes gives the worksheet a new `version` (a GUID). `edit()` returns an object to undo
  * the transaction, only callable while the worksheet is still at the version right after it. Undoing restores the
  * previous version and returns an object to redo, only callable while the worksheet is at that previous version.
+ *
+ * The worksheet also keeps an undo history of its transactions (`undo()`, `redo()`, `canUndo` and `canRedo`) and the
+ * `selection`. The selection is not data: it is set directly, outside of `edit()`, and does not change the version.
+ *
+ * Events: `change` (`WorksheetChangeEvent`), `columnwidthchange` (`CustomEvent`), `selectionchange` and
+ * `historychange` (undo/redo availability may have changed, dispatched asynchronously).
  */
-export class Worksheet extends EventTarget {
+class Worksheet extends EventTarget {
   #rows: (CellValue[] | undefined)[] = [];
 
   /**
@@ -140,6 +169,16 @@ export class Worksheet extends EventTarget {
   /** Changes on every transaction with changes, restored by undo and redo. */
   #version: string = mathRandomString();
 
+  /** Undo history, built by subscribing to the `change` event. */
+  #history: WorksheetHistory;
+
+  #historyChangeScheduled = false;
+
+  #selection: WorksheetSelection = new WorksheetSelection({ column: 0, row: 0 });
+
+  /** Range of the last selection set, before it was expanded to cover merged cells. */
+  #requestedRange: CellRange = { left: 0, top: 0, right: 0, bottom: 0 };
+
   readonly columnCount: number;
   readonly rowCount: number;
 
@@ -154,6 +193,181 @@ export class Worksheet extends EventTarget {
     this.rowCount = rowCount;
 
     this.#columnWidths = new Array(columnCount).fill(columnWidth);
+
+    // The history subscribes first, so other `change` listeners see the history after it recorded the change.
+    this.#history = new WorksheetHistory(this);
+    this.addEventListener('change', this.#handleChange);
+  }
+
+  #handleChange = (event: Event) => {
+    const { changes } = event as WorksheetChangeEvent;
+
+    // Merged cells may have been added or removed, the selection must cover whole merged cells.
+    changes.some(({ type }) => type === 'merge') &&
+      this.#applySelection(this.#selection.activeCell, this.#requestedRange);
+
+    this.#scheduleHistoryChange();
+  };
+
+  #scheduleHistoryChange() {
+    if (!this.#historyChangeScheduled) {
+      this.#historyChangeScheduled = true;
+
+      queueMicrotask(() => {
+        this.#historyChangeScheduled = false;
+        this.dispatchEvent(new Event('historychange'));
+      });
+    }
+  }
+
+  /**
+   * Current selection. Returns the same instance until the selection changes.
+   */
+  get selection(): WorksheetSelection {
+    return this.#selection;
+  }
+
+  /**
+   * Selects cells. The selection is clamped to the worksheet, the active cell is moved to the top-left cell of its
+   * merged cell and the range is expanded to cover merged cells partially in it. The getter returns the very same
+   * instance, unless the selection was adjusted.
+   *
+   * Dispatches `selectionchange` if the selection changed.
+   */
+  set selection(selection: WorksheetSelection) {
+    const { left, top, right, bottom } = selection.range;
+    const topLeft = this.#clamp({ column: left, row: top });
+    const bottomRight = this.#clamp({ column: right, row: bottom });
+
+    this.#requestedRange = {
+      left: topLeft.column,
+      top: topLeft.row,
+      right: bottomRight.column,
+      bottom: bottomRight.row
+    };
+    this.#applySelection(this.#clamp(selection.activeCell), this.#requestedRange, selection);
+  }
+
+  #applySelection(activeCell: CellPosition, requestedRange: CellRange, candidate?: WorksheetSelection) {
+    const mergeStart = this.getMerges(activeCell.column, activeCell.row, 1, 1)[0];
+    const nextActiveCell = mergeStart ? { column: mergeStart.x, row: mergeStart.y } : activeCell;
+    const range = this.#expandRange({
+      left: Math.min(requestedRange.left, nextActiveCell.column),
+      top: Math.min(requestedRange.top, nextActiveCell.row),
+      right: Math.max(requestedRange.right, nextActiveCell.column),
+      bottom: Math.max(requestedRange.bottom, nextActiveCell.row)
+    });
+
+    if (candidate && isSameSelection(candidate, nextActiveCell, range)) {
+      const changed = !isSameSelection(this.#selection, nextActiveCell, range);
+
+      this.#selection = candidate;
+      changed && this.dispatchEvent(new Event('selectionchange'));
+    } else if (!isSameSelection(this.#selection, nextActiveCell, range)) {
+      this.#selection = new WorksheetSelection(nextActiveCell, range);
+      this.dispatchEvent(new Event('selectionchange'));
+    }
+  }
+
+  #clamp({ column, row }: CellPosition): CellPosition {
+    return {
+      column: Math.max(0, Math.min(this.columnCount - 1, column)),
+      row: Math.max(0, Math.min(this.rowCount - 1, row))
+    };
+  }
+
+  /**
+   * Returns the range expanded to cover all merged cells partially in it.
+   */
+  #expandRange({ left, top, right, bottom }: CellRange): CellRange {
+    // Expanding may cover more merged cells, so it repeats until nothing changes.
+    for (let changed = true; changed;) {
+      changed = false;
+
+      for (const { x, y, width, height } of this.getMerges(left, top, right - left + 1, bottom - top + 1)) {
+        if (x < left || y < top || x + width - 1 > right || y + height - 1 > bottom) {
+          left = Math.min(left, x);
+          top = Math.min(top, y);
+          right = Math.max(right, x + width - 1);
+          bottom = Math.max(bottom, y + height - 1);
+          changed = true;
+        }
+      }
+    }
+
+    return { left, top, right, bottom };
+  }
+
+  /** Whether there are changes to undo. */
+  get canUndo(): boolean {
+    return this.#history.canUndo;
+  }
+
+  /** Whether there are undone changes to redo. */
+  get canRedo(): boolean {
+    return this.#history.canRedo;
+  }
+
+  /**
+   * Reverts the last transaction and selects the changed cells.
+   *
+   * Returns `false` if there is nothing to undo.
+   */
+  undo(): boolean {
+    return this.#undoOrRedo('undo');
+  }
+
+  /**
+   * Re-applies the last undone transaction and selects the changed cells.
+   *
+   * Returns `false` if there is nothing to redo.
+   */
+  redo(): boolean {
+    return this.#undoOrRedo('redo');
+  }
+
+  #undoOrRedo(action: 'undo' | 'redo'): boolean {
+    const cells: CellPosition[] = [];
+
+    const handleChange = (event: Event) => {
+      for (const change of (event as WorksheetChangeEvent).changes) {
+        if (change.type === 'merge') {
+          // All cells of a merged cell are involved, not only the cells with content.
+          const { width, height } = (change.merge || change.previousMerge)!;
+
+          cells.push({ column: change.x, row: change.y }, { column: change.x + width - 1, row: change.y + height - 1 });
+        } else if (change.type !== 'border') {
+          cells.push({ column: change.x, row: change.y });
+        }
+      }
+    };
+
+    // The replay is a single transaction, dispatching a single `change` event synchronously.
+    this.addEventListener('change', handleChange);
+
+    try {
+      if (!this.#history[action]()) {
+        return false;
+      }
+    } finally {
+      this.removeEventListener('change', handleChange);
+    }
+
+    if (cells.length) {
+      const columns = cells.map(({ column }) => column);
+      const rows = cells.map(({ row }) => row);
+      const left = Math.min(...columns);
+      const top = Math.min(...rows);
+
+      this.selection = new WorksheetSelection(
+        { column: left, row: top },
+        { left, top, right: Math.max(...columns), bottom: Math.max(...rows) }
+      );
+    }
+
+    this.#scheduleHistoryChange();
+
+    return true;
   }
 
   /** Version of the worksheet, a GUID replaced on every transaction with changes. */
@@ -308,7 +522,13 @@ export class Worksheet extends EventTarget {
    * @param width Required with an updater function.
    * @param height Required with an updater function.
    */
-  #setValues(valuesOrUpdater: CellInput[][] | CellUpdater, x: number = 0, y: number = 0, width?: number, height?: number): void {
+  #setValues(
+    valuesOrUpdater: CellInput[][] | CellUpdater,
+    x: number = 0,
+    y: number = 0,
+    width?: number,
+    height?: number
+  ): void {
     this.#assertCell(x, y);
 
     if (typeof valuesOrUpdater === 'function') {
@@ -425,7 +645,10 @@ export class Worksheet extends EventTarget {
           x === left &&
           !(value && this.#isInsideMerge(x, y, 'left')) &&
           this.#setStoredEdge(x, y, 'left', value);
-        set.has('top') && y === top && !(value && this.#isInsideMerge(x, y, 'top')) && this.#setStoredEdge(x, y, 'top', value);
+        set.has('top') &&
+          y === top &&
+          !(value && this.#isInsideMerge(x, y, 'top')) &&
+          this.#setStoredEdge(x, y, 'top', value);
         set.has('right') &&
           x === right &&
           x + 1 < this.columnCount &&
@@ -682,11 +905,16 @@ export class Worksheet extends EventTarget {
     let bottom = y + height - 1;
 
     // Expanding to cover a merged cell may partially cover more merged cells, so it repeats until nothing changes.
-    for (let changed = true; changed; ) {
+    for (let changed = true; changed;) {
       changed = false;
 
       for (const merge of this.getMerges(left, top, right - left + 1, bottom - top + 1)) {
-        if (merge.x < left || merge.y < top || merge.x + merge.width - 1 > right || merge.y + merge.height - 1 > bottom) {
+        if (
+          merge.x < left ||
+          merge.y < top ||
+          merge.x + merge.width - 1 > right ||
+          merge.y + merge.height - 1 > bottom
+        ) {
           left = Math.min(left, merge.x);
           top = Math.min(top, merge.y);
           right = Math.max(right, merge.x + merge.width - 1);
@@ -718,7 +946,7 @@ export class Worksheet extends EventTarget {
       }
     }
 
-    this.#setValue(left, top, values.length > 1 ? values.map(formatValue).join(' ') : values[0] ?? '');
+    this.#setValue(left, top, values.length > 1 ? values.map(formatValue).join(' ') : (values[0] ?? ''));
     formatting && this.#setFormatting(left, top, formatting);
 
     for (let row = top; row <= bottom; row++) {
@@ -937,3 +1165,28 @@ export class Worksheet extends EventTarget {
     }
   }
 }
+
+export {
+  type BorderEdges,
+  type CellAlign,
+  type CellBorder,
+  type CellBorderChange,
+  type CellChange,
+  type CellFormatting,
+  type CellFormattingChange,
+  type CellInput,
+  type CellMerge,
+  type CellMergeChange,
+  type CellMergeSize,
+  type CellNumberFormat,
+  type CellUpdater,
+  type CellValue,
+  type CellValueChange,
+  type FormattingInput,
+  type FormattingUpdater,
+  Worksheet,
+  type WorksheetChange,
+  type WorksheetEdit,
+  type WorksheetRedo,
+  type WorksheetUndo
+};

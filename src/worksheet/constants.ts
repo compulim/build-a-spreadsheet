@@ -1,3 +1,5 @@
-export const COLUMN_COUNT = 50;
-export const ROW_COUNT = 10_000;
-export const COLUMN_WIDTH = 100;
+const COLUMN_COUNT = 50;
+const ROW_COUNT = 10_000;
+const COLUMN_WIDTH = 100;
+
+export { COLUMN_COUNT, COLUMN_WIDTH, ROW_COUNT };
